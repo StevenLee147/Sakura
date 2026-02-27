@@ -24,9 +24,12 @@ if(MSVC)
         /Zc:__cplusplus # 正确报告 __cplusplus 值
     )
     # Debug 模式
-    add_compile_options($<$<CONFIG:Debug>:/Zi /Od /RTC1>)
+    add_compile_options($<$<CONFIG:Debug>:/Zi>)
+    add_compile_options($<$<CONFIG:Debug>:/Od>)
+    add_compile_options($<$<CONFIG:Debug>:/RTC1>)
     # Release 模式
-    add_compile_options($<$<CONFIG:Release>:/O2 /DNDEBUG>)
+    add_compile_options($<$<CONFIG:Release>:/O2>)
+    add_compile_options($<$<CONFIG:Release>:/DNDEBUG>)
 endif()
 
 # ============================================================================
@@ -35,8 +38,6 @@ endif()
 find_package(SDL3 CONFIG REQUIRED)
 find_package(SDL3_image CONFIG REQUIRED)
 find_package(SDL3_ttf CONFIG REQUIRED)
-find_package(SDL3_mixer CONFIG REQUIRED)
-find_package(SDL3_net CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
@@ -71,8 +72,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    SDL3_net::SDL3_net
     nlohmann_json::nlohmann_json
     unofficial::sqlite3::sqlite3
     spdlog::spdlog
@@ -102,7 +101,7 @@ install(DIRECTORY resources/
 # 版本信息
 # ============================================================================
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/version.h.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/version.h"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE

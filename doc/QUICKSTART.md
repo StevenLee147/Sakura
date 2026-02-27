@@ -266,7 +266,7 @@ cmake --build --preset debug
 ### 8.3 运行
 
 ```powershell
-.\build\debug\Sakura.exe
+.\build\debug\Debug\Sakura.exe
 ```
 
 或 VS Code: `Ctrl+Shift+P` → "CMake: Run Without Debugging" (Shift+F5)
@@ -289,10 +289,10 @@ cmake --build --preset debug
             "name": "Debug Sakura",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Sakura.exe",
+            "program": "${workspaceFolder}/build/debug/Debug/Sakura.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/debug",
+            "cwd": "${workspaceFolder}/build/debug/Debug",
             "environment": [],
             "console": "integratedTerminal"
         }
@@ -322,6 +322,9 @@ git push -u origin main
 推送后查看 GitHub → Actions 页面，确认 build.yml 工作流运行通过。
 
 ---
+
+
+
 
 ## 常见问题
 
@@ -390,6 +393,7 @@ Sakura/
 │   └── data/
 └── build/
     └── debug/
+        └── Debug/        ← 可执行文件在此（VS 生成器自动添加配置子目录）
 ```
 
 接下来按 **ROADMAP.md** 从 Step 0.1 开始逐步开发。
