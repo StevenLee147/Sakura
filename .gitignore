@@ -1,0 +1,44 @@
+# Build outputs
+build/
+out/
+
+# vcpkg installed packages (managed by vcpkg, not committed)
+vcpkg_installed/
+
+# IDE / Editor
+.vs/
+.vscode/settings.json
+.vscode/launch.json
+*.suo
+*.user
+*.sln.docstates
+
+# Compiled Object files
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Libraries
+*.lib
+*.a
+*.dll
+*.so
+*.dylib
+
+# Logs
+logs/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Debug
+*.dmp

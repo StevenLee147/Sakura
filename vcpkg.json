@@ -1,0 +1,40 @@
+{
+    "name": "sakura",
+    "version-string": "0.1.0",
+    "description": "Sakura-樱 混合模式音乐节奏游戏",
+    "dependencies": [
+        {
+            "name": "sdl3",
+            "version>=": "3.2.0"
+        },
+        {
+            "name": "sdl3-image",
+            "version>=": "3.2.0"
+        },
+        {
+            "name": "sdl3-ttf",
+            "version>=": "3.2.0"
+        },
+        {
+            "name": "sdl3-mixer",
+            "version>=": "3.2.0"
+        },
+        {
+            "name": "sdl3-net",
+            "version>=": "3.0.0"
+        },
+        {
+            "name": "nlohmann-json",
+            "version>=": "3.11.0"
+        },
+        {
+            "name": "sqlite3",
+            "version>=": "3.45.0"
+        },
+        {
+            "name": "spdlog",
+            "version>=": "1.13.0"
+        }
+    ],
+    "builtin-baseline": "latest"
+}
