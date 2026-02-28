@@ -4,6 +4,7 @@
 #include "scene_select.h"
 #include "scene_settings.h"
 #include "scene_editor.h"
+#include "scene_chart_wizard.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -65,7 +66,7 @@ void SceneMenu::OnEnter()
 void SceneMenu::SetupButtons()
 {
     const char* labels[BUTTON_COUNT] = {
-        "开始游戏", "编辑器", "设置", "退出"
+        "开始游戏", "编辑器", "新建谱面", "设置", "退出"
     };
 
     sakura::ui::ButtonColors colors;
@@ -102,8 +103,8 @@ void SceneMenu::SetupButtons()
             TransitionType::SlideLeft, 0.4f);
     });
 
-    // 设置 → 切换到设置场景
-    m_buttons[2]->SetOnClick([this]()
+    // 设置→切换到设置场景
+    m_buttons[3]->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：设置");
         m_manager.SwitchScene(
@@ -111,8 +112,17 @@ void SceneMenu::SetupButtons()
             TransitionType::SlideLeft, 0.4f);
     });
 
+    // 新建谱面 → 切换到新建向导场景
+    m_buttons[2]->SetOnClick([this]()
+    {
+        LOG_INFO("[SceneMenu] 点击：新建谱面向导");
+        m_manager.SwitchScene(
+            std::make_unique<SceneChartWizard>(m_manager),
+            TransitionType::SlideLeft, 0.4f);
+    });
+
     // 退出 → 弹出确认对话框
-    m_buttons[3]->SetOnClick([this]()
+    m_buttons[4]->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：退出（显示确认框）");
         m_showExitConfirm = true;

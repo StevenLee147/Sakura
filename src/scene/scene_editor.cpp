@@ -216,6 +216,41 @@ void SceneEditor::SetupToolbar()
             if (v > cur) { m_core.SetBeatSnap(v); break; }
         }
     });
+
+    // 难度管理按钮（在属性面板区域内）
+    sakura::ui::ButtonColors diffColors;
+    diffColors.normal  = { 30, 25, 65, 200 };
+    diffColors.hover   = { 55, 45, 110, 225 };
+    diffColors.pressed = { 20, 15, 45, 240 };
+    diffColors.text    = sakura::core::Color{ 200, 190, 240, 210 };
+
+    m_btnDiffPrev = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.425f, 0.696f, 0.048f, 0.034f },
+        "◀", m_fontUI, 0.018f, 0.005f);
+    m_btnDiffPrev->SetColors(diffColors);
+    m_btnDiffPrev->SetOnClick([this]()
+    {
+        int cnt = static_cast<int>(m_core.GetChartInfo().difficulties.size());
+        if (cnt > 1)
+            SwitchDifficulty((m_currentDiffIndex + cnt - 1) % cnt);
+    });
+
+    m_btnDiffNext = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.697f, 0.696f, 0.048f, 0.034f },
+        "▶", m_fontUI, 0.018f, 0.005f);
+    m_btnDiffNext->SetColors(diffColors);
+    m_btnDiffNext->SetOnClick([this]()
+    {
+        int cnt = static_cast<int>(m_core.GetChartInfo().difficulties.size());
+        if (cnt > 1)
+            SwitchDifficulty((m_currentDiffIndex + 1) % cnt);
+    });
+
+    m_btnDiffAdd = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.597f, 0.696f, 0.048f, 0.034f },
+        "+ 难度", m_fontUI, 0.015f, 0.005f);
+    m_btnDiffAdd->SetColors(diffColors);
+    m_btnDiffAdd->SetOnClick([this]() { AddNewDifficulty(); });
 }
 
 // ── UpdateToolButtons ─────────────────────────────────────────────────────────
@@ -318,6 +353,80 @@ void SceneEditor::DoSave()
         sakura::ui::ToastManager::Instance().Show(
             "保存失败，请检查路径", sakura::ui::ToastType::Error);
     }
+}
+
+// ── SwitchDifficulty ──────────────────────────────────────────────────────────
+
+void SceneEditor::SwitchDifficulty(int index)
+{
+    const auto& diffs = m_core.GetChartInfo().difficulties;
+    if (diffs.empty() || index < 0 || index >= static_cast<int>(diffs.size())) return;
+    if (index == m_currentDiffIndex) return;
+
+    // 先保存当前难度
+    if (m_core.IsDirty()) DoSave();
+
+    m_currentDiffIndex = index;
+    const std::string& folderPath = m_core.GetFolderPath();
+    const std::string& diffFile   = diffs[index].chartFile;
+
+    if (!m_core.LoadChart(folderPath, diffFile))
+    {
+        sakura::ui::ToastManager::Instance().Show(
+            "难度加载失败: " + diffFile, sakura::ui::ToastType::Error);
+        return;
+    }
+
+    // 重新加载波形
+    const auto& info = m_core.GetChartInfo();
+    if (!info.musicFile.empty() && !info.folderPath.empty())
+        m_timeline.LoadWaveform(info.folderPath + "/" + info.musicFile);
+
+    m_timeline.CenterOnTime(0);
+    sakura::ui::ToastManager::Instance().Show(
+        "已切换到难度: " + diffs[index].name, sakura::ui::ToastType::Info);
+}
+
+// ── AddNewDifficulty ──────────────────────────────────────────────────────────
+
+void SceneEditor::AddNewDifficulty()
+{
+    auto& info = m_core.GetChartInfo();
+    int newIdx = static_cast<int>(info.difficulties.size());
+
+    // 新难度名
+    std::string newName  = "Hard";
+    if (newIdx == 1)      newName = "Hard";
+    else if (newIdx == 2) newName = "Expert";
+    else if (newIdx == 3) newName = "Master";
+    else                  newName = "Extra" + std::to_string(newIdx);
+
+    std::string newFile = newName;
+    std::transform(newFile.begin(), newFile.end(), newFile.begin(), ::tolower);
+    newFile += ".json";
+
+    // 先保存当前
+    if (m_core.IsDirty()) DoSave();
+
+    // 从当前难度复制到新文件
+    bool ok = m_core.SaveChartTo(info.folderPath + "/" + newFile);
+    if (!ok)
+    {
+        sakura::ui::ToastManager::Instance().Show(
+            "新建难度失败", sakura::ui::ToastType::Error);
+        return;
+    }
+
+    // 更新 info.json 的难度列表
+    sakura::game::DifficultyInfo di;
+    di.name      = newName;
+    di.level     = 7.0f;
+    di.chartFile = newFile;
+    info.difficulties.push_back(di);
+    m_currentDiffIndex = newIdx;
+
+    sakura::ui::ToastManager::Instance().Show(
+        "已添加并切换到难度: " + newName, sakura::ui::ToastType::Info);
 }
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
@@ -464,10 +573,33 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
     if (m_fontSmall == sakura::core::INVALID_HANDLE) return;
 
     float px = 0.585f;
+
+    // 属性面板标题（靠顶部，小字）
     renderer.DrawText(m_fontSmall, "属性面板",
-        px, 0.70f, 0.020f,
-        sakura::core::Color{ 160, 150, 200, 200 },
+        px, 0.686f, 0.016f,
+        sakura::core::Color{ 140, 130, 180, 180 },
         sakura::core::TextAlign::Center);
+
+    // ── 难度管理行 ────────────────────────────────────────────────────────
+    // 渲染 ◀ ▶ + 难度 三个按钮（位置已在 SetupToolbar 设置）
+    if (m_btnDiffPrev) m_btnDiffPrev->Render(renderer);
+    if (m_btnDiffNext) m_btnDiffNext->Render(renderer);
+    if (m_btnDiffAdd)  m_btnDiffAdd->Render(renderer);
+
+    // 当前难度名称（居中显示在 ◀ 和 ▶ 之间）
+    {
+        std::string diffName = "—";
+        const auto& diffs = m_core.GetChartInfo().difficulties;
+        if (m_currentDiffIndex >= 0 &&
+            m_currentDiffIndex < static_cast<int>(diffs.size()))
+        {
+            diffName = diffs[m_currentDiffIndex].name;
+        }
+        renderer.DrawText(m_fontSmall, diffName,
+            0.561f, 0.713f, 0.017f,
+            sakura::core::Color{ 220, 200, 255, 230 },
+            sakura::core::TextAlign::Center);
+    }
 
     // 选中音符信息
     int selIdx = m_core.GetSelectedKbNote();
@@ -532,12 +664,16 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
         px, 0.875f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+Z: 撤销  Ctrl+Y: 重做  Ctrl+S: 保存",
+    renderer.DrawText(m_fontSmall, "Ctrl+Z/Y: 撤销/重做  Ctrl+S: 保存",
         px, 0.898f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+滚轮: 缩放  ESC: 退出",
+    renderer.DrawText(m_fontSmall, "F5/F6: 试玩  Ctrl+Shift+S: 备份",
         px, 0.921f, 0.016f,
+        sakura::core::Color{ 120, 110, 160, 150 },
+        sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "Ctrl+A: 全选  Ctrl+M: 镜像  ESC: 退出",
+        px, 0.944f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
 }
@@ -626,7 +762,7 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
 
 void SceneEditor::OnEvent(const SDL_Event& event)
 {
-    // 追踪 Ctrl 键状态
+    // 追踪 Ctrl/Shift 键状态
     if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
     {
         bool pressed = (event.type == SDL_EVENT_KEY_DOWN);
@@ -634,6 +770,11 @@ void SceneEditor::OnEvent(const SDL_Event& event)
          || event.key.scancode == SDL_SCANCODE_RCTRL)
         {
             m_ctrlHeld = pressed;
+        }
+        if (event.key.scancode == SDL_SCANCODE_LSHIFT
+         || event.key.scancode == SDL_SCANCODE_RSHIFT)
+        {
+            m_shiftHeld = pressed;
         }
     }
 
@@ -696,9 +837,25 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         }
 
         // Ctrl+S → 保存
-        if (m_ctrlHeld && sc == SDL_SCANCODE_S)
+        if (m_ctrlHeld && !m_shiftHeld && sc == SDL_SCANCODE_S)
         {
             DoSave();
+            return;
+        }
+
+        // Ctrl+Shift+S → 另存为（保存到当前难度的副本）
+        if (m_ctrlHeld && m_shiftHeld && sc == SDL_SCANCODE_S)
+        {
+            const auto& info    = m_core.GetChartInfo();
+            std::string newFile = info.folderPath + "/backup_" + m_core.GetDiffFile();
+            bool ok = m_core.SaveChartTo(newFile);
+            if (ok)
+                sakura::ui::ToastManager::Instance().Show(
+                    "备份已保存到: backup_" + m_core.GetDiffFile(),
+                    sakura::ui::ToastType::Success);
+            else
+                sakura::ui::ToastManager::Instance().Show(
+                    "备份保存失败", sakura::ui::ToastType::Error);
             return;
         }
 
@@ -789,13 +946,16 @@ void SceneEditor::OnEvent(const SDL_Event& event)
 
     // ── 工具栏事件 ───────────────────────────────────────────────────────────
     for (auto& btn : m_toolBtns) if (btn) btn->HandleEvent(event);
-    if (m_btnPlay)    m_btnPlay->HandleEvent(event);
-    if (m_btnUndo)    m_btnUndo->HandleEvent(event);
-    if (m_btnRedo)    m_btnRedo->HandleEvent(event);
-    if (m_btnSave)    m_btnSave->HandleEvent(event);
-    if (m_btnBack)    m_btnBack->HandleEvent(event);
-    if (m_btnSnapDec) m_btnSnapDec->HandleEvent(event);
-    if (m_btnSnapInc) m_btnSnapInc->HandleEvent(event);
+    if (m_btnPlay)     m_btnPlay->HandleEvent(event);
+    if (m_btnUndo)     m_btnUndo->HandleEvent(event);
+    if (m_btnRedo)     m_btnRedo->HandleEvent(event);
+    if (m_btnSave)     m_btnSave->HandleEvent(event);
+    if (m_btnBack)     m_btnBack->HandleEvent(event);
+    if (m_btnSnapDec)  m_btnSnapDec->HandleEvent(event);
+    if (m_btnSnapInc)  m_btnSnapInc->HandleEvent(event);
+    if (m_btnDiffPrev) m_btnDiffPrev->HandleEvent(event);
+    if (m_btnDiffNext) m_btnDiffNext->HandleEvent(event);
+    if (m_btnDiffAdd)  m_btnDiffAdd->HandleEvent(event);
 
     // ── 时间轴事件（可能消费事件） ───────────────────────────────────────────
     m_mouseArea.HandleEvent(event);

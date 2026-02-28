@@ -41,16 +41,16 @@ private:
     sakura::core::FontHandle m_fontSub     = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontButton  = sakura::core::INVALID_HANDLE;
 
-    // 按钮组（开始/编辑器/设置/退出）
-    static constexpr int BUTTON_COUNT = 4;
+    // 按钮组（开始/编辑器/新建谱面向导/设置/退出）
+    static constexpr int BUTTON_COUNT = 5;
     std::array<std::unique_ptr<sakura::ui::Button>, BUTTON_COUNT> m_buttons;
 
     // 按钮中心 X（居中）
     static constexpr float BTN_X     = 0.5f - 0.11f;   // (center - half-width)
     static constexpr float BTN_W     = 0.22f;
-    static constexpr float BTN_H     = 0.055f;
-    static constexpr float BTN_GAP   = 0.082f;          // 每个按钮的 Y 间距
-    static constexpr float BTN_Y0    = 0.455f;          // 第一个按钮 Y
+    static constexpr float BTN_H     = 0.050f;
+    static constexpr float BTN_GAP   = 0.075f;          // 每个按钮的 Y 间距
+    static constexpr float BTN_Y0    = 0.415f;          // 第一个按钮 Y
 
     // ── 入场动画 ──────────────────────────────────────────────────────────────
     struct EnterAnim
@@ -61,8 +61,8 @@ private:
         static constexpr float TITLE_DURATION = 0.3f;
 
         // 每个按钮从右方滑入（初始 X 偏移 +0.4）
-        std::array<float, 4> btnOffsetX = { 0.4f, 0.4f, 0.4f, 0.4f };
-        std::array<float, 4> btnTimers  = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 5> btnOffsetX = { 0.4f, 0.4f, 0.4f, 0.4f, 0.4f };
+        std::array<float, 5> btnTimers  = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         static constexpr float BTN_DURATION     = 0.30f;   // 每个按钮动画时长
         static constexpr float BTN_STAGGER      = 0.10f;   // 按钮启动间隔
 

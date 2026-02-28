@@ -74,14 +74,23 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnSnapInc;
     std::unique_ptr<sakura::ui::Button> m_btnSnapDec;
 
+    // 难度管理（展示在属性面板）
+    std::unique_ptr<sakura::ui::Button> m_btnDiffPrev;   // 上一难度
+    std::unique_ptr<sakura::ui::Button> m_btnDiffNext;   // 下一难度
+    std::unique_ptr<sakura::ui::Button> m_btnDiffAdd;    // 新建难度
+    int m_currentDiffIndex = 0;                          // 当前难度索引
+
     // ── 按键辅助 ──────────────────────────────────────────────────────────────
-    bool m_ctrlHeld = false;
+    bool m_ctrlHeld  = false;
+    bool m_shiftHeld = false;
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
     void SetupToolbar();
     void UpdateToolButtons();       // 刷新工具按钮的选中状态颜色
     void UpdateUndoRedoButtons();   // 刷新撤销/重做按钮状态
     void DoSave();                  // 保存谱面并显示 Toast
+    void SwitchDifficulty(int index);  // 切换到指定难度索引
+    void AddNewDifficulty();           // 新建难度（从当前难度复制）
 
     // ── 渲染分区 ──────────────────────────────────────────────────────────────
     void RenderToolbar       (sakura::core::Renderer& renderer);
