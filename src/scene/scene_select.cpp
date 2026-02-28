@@ -2,6 +2,7 @@
 
 #include "scene_select.h"
 #include "scene_menu.h"
+#include "scene_game.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -121,11 +122,10 @@ void SceneSelect::SetupUI()
         LOG_INFO("[SceneSelect] 开始游戏: {} [{}]",
                  m_charts[m_selectedChart].title, m_selectedDifficulty);
         StopPreview();
-        // Step 1.11 完成后：切换到 SceneGame
-        // m_manager.SwitchScene(
-        //     std::make_unique<SceneGame>(m_manager,
-        //         m_charts[m_selectedChart], m_selectedDifficulty),
-        //     TransitionType::Fade, 0.5f);
+        m_manager.SwitchScene(
+            std::make_unique<SceneGame>(m_manager,
+                m_charts[m_selectedChart], m_selectedDifficulty),
+            TransitionType::Fade, 0.5f);
     });
 }
 
@@ -345,13 +345,16 @@ void SceneSelect::OnUpdate(float dt)
         if (sakura::core::Input::IsKeyPressed(SDL_SCANCODE_RETURN) ||
             sakura::core::Input::IsKeyPressed(SDL_SCANCODE_SPACE))
         {
-            if (m_btnStart && m_btnStart->IsEnabled())
+            if (m_btnStart && m_btnStart->IsEnabled() &&
+                m_selectedChart >= 0 &&
+                m_selectedChart < static_cast<int>(m_charts.size()))
             {
-                SDL_Event clickEvent;
-                clickEvent.type = SDL_EVENT_KEY_DOWN;
-                // 模拟点击：直接调用 OnClick 逻辑
                 LOG_INFO("[SceneSelect] 键盘确认选曲");
                 StopPreview();
+                m_manager.SwitchScene(
+                    std::make_unique<SceneGame>(m_manager,
+                        m_charts[m_selectedChart], m_selectedDifficulty),
+                    TransitionType::Fade, 0.5f);
             }
         }
     }
