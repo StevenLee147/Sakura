@@ -3,6 +3,7 @@
 #include "utils/logger.h"
 #include "scene/test_scenes.h"
 #include "audio/audio_manager.h"
+#include "game/chart_loader.h"
 
 namespace sakura::core
 {
@@ -57,6 +58,31 @@ bool App::Initialize()
     if (!sakura::audio::AudioManager::GetInstance().Initialize())
     {
         LOG_WARN("AudioManager 初始化失败（非致命）");
+    }
+
+    // ── 谱面加载器验证（Step 1.3 验收）──────────────────────────────────────────
+    {
+        sakura::game::ChartLoader loader;
+        auto charts = loader.ScanCharts("resources/charts/");
+        if (!charts.empty())
+        {
+            const auto& firstChart = charts[0];
+            if (!firstChart.difficulties.empty())
+            {
+                std::string chartDataPath = firstChart.folderPath + "/"
+                                          + firstChart.difficulties[0].chartFile;
+                auto chartData = loader.LoadChartData(chartDataPath);
+                if (chartData)
+                {
+                    bool valid = loader.ValidateChartData(*chartData);
+                    LOG_INFO("谱面验证 [{}]: 键盘音符={}, 鼠标音符={}, 校验={}",
+                             firstChart.id,
+                             chartData->keyboardNotes.size(),
+                             chartData->mouseNotes.size(),
+                             valid ? "通过" : "失败");
+                }
+            }
+        }
     }
 
     // ── 初始场景 ──────────────────────────────────────────────────────────────
