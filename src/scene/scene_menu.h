@@ -74,8 +74,14 @@ private:
     // 目标 Y 坐标（动画完成后的稳定位置）
     static constexpr float TITLE_Y = 0.22f;
 
+    // ── 退出确认对话框 ─────────────────────────────────────────────────────────
+    bool m_showExitConfirm = false;
+    std::unique_ptr<sakura::ui::Button> m_btnConfirmYes;
+    std::unique_ptr<sakura::ui::Button> m_btnConfirmNo;
+
     // 内部工具
     void SetupButtons();
+    void SetupConfirmButtons();
     void UpdateEnterAnimation(float dt);
 };
 

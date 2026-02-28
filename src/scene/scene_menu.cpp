@@ -50,8 +50,12 @@ void SceneMenu::OnEnter()
         m_anim.btnTimers[i]  = 0.0f;
     }
 
-    // 创建按钮（在最终位置，X 偏移在渲染时动态应用）
+    // 重置退出确认状态
+    m_showExitConfirm = false;
+
+    // 创建按钮
     SetupButtons();
+    SetupConfirmButtons();
 }
 
 // ── SetupButtons ──────────────────────────────────────────────────────────────
@@ -99,13 +103,54 @@ void SceneMenu::SetupButtons()
         LOG_INFO("[SceneMenu] 点击：设置 (Phase 2 实现)");
     });
 
-    // 退出
-    m_buttons[3]->SetOnClick([]()
+    // 退出 → 弹出确认对话框
+    m_buttons[3]->SetOnClick([this]()
     {
-        LOG_INFO("[SceneMenu] 点击：退出");
+        LOG_INFO("[SceneMenu] 点击：退出（显示确认框）");
+        m_showExitConfirm = true;
+    });
+}
+
+// ── SetupConfirmButtons ───────────────────────────────────────────────────────
+
+void SceneMenu::SetupConfirmButtons()
+{
+    sakura::ui::ButtonColors yesColors;
+    yesColors.normal   = { 160,  40,  60, 220 };
+    yesColors.hover    = { 200,  60,  80, 235 };
+    yesColors.pressed  = { 120,  25,  40, 240 };
+    yesColors.disabled = {  60,  20,  30, 120 };
+    yesColors.text     = sakura::core::Color::White;
+
+    sakura::ui::ButtonColors noColors;
+    noColors.normal   = {  40,  40,  80, 220 };
+    noColors.hover    = {  70,  60, 120, 235 };
+    noColors.pressed  = {  25,  25,  55, 240 };
+    noColors.disabled = {  30,  30,  50, 120 };
+    noColors.text     = sakura::core::Color::White;
+
+    // 确认框内两个按钮，居中布局
+    // 面板: x=0.32 y=0.35 w=0.36 h=0.26
+    m_btnConfirmYes = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.348f, 0.505f, 0.13f, 0.055f },
+        "确认退出", m_fontButton, 0.026f, 0.010f);
+    m_btnConfirmYes->SetColors(yesColors);
+    m_btnConfirmYes->SetOnClick([]()
+    {
+        LOG_INFO("[SceneMenu] 确认退出");
         SDL_Event quitEvent;
         quitEvent.type = SDL_EVENT_QUIT;
         SDL_PushEvent(&quitEvent);
+    });
+
+    m_btnConfirmNo = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.502f, 0.505f, 0.13f, 0.055f },
+        "取  消", m_fontButton, 0.026f, 0.010f);
+    m_btnConfirmNo->SetColors(noColors);
+    m_btnConfirmNo->SetOnClick([this]()
+    {
+        LOG_INFO("[SceneMenu] 取消退出");
+        m_showExitConfirm = false;
     });
 }
 
@@ -115,6 +160,8 @@ void SceneMenu::OnExit()
 {
     LOG_INFO("[SceneMenu] 退出主菜单");
     for (auto& btn : m_buttons) btn.reset();
+    m_btnConfirmYes.reset();
+    m_btnConfirmNo.reset();
 }
 
 // ── UpdateEnterAnimation ──────────────────────────────────────────────────────
@@ -177,6 +224,13 @@ void SceneMenu::OnUpdate(float dt)
             m_buttons[i]->SetBounds(origBounds);
         }
     }
+
+    // 确认框按钮更新
+    if (m_showExitConfirm)
+    {
+        if (m_btnConfirmYes) m_btnConfirmYes->Update(dt);
+        if (m_btnConfirmNo)  m_btnConfirmNo ->Update(dt);
+    }
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
@@ -226,12 +280,59 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         0.5f, 0.95f, 0.018f,
         sakura::core::Color{ 140, 130, 160, 120 },
         sakura::core::TextAlign::Center);
+
+    // ── 退出确认对话框 ────────────────────────────────────────────────────────
+    if (m_showExitConfirm)
+    {
+        // 半透明遮罩
+        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
+            sakura::core::Color{ 0, 0, 0, 140 });
+
+        // 对话框面板: x=0.32 y=0.35 w=0.36 h=0.26
+        renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
+            0.012f, sakura::core::Color{ 28, 24, 52, 245 }, true);
+        renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
+            0.012f, sakura::core::Color{ 140, 100, 180, 200 }, false);
+
+        // 提示文字
+        renderer.DrawText(m_fontSub, "确定要退出游戏吗？",
+            0.50f, 0.425f, 0.032f,
+            sakura::core::Color{ 240, 230, 255, 240 },
+            sakura::core::TextAlign::Center);
+
+        // 确认 / 取消 按钮
+        if (m_btnConfirmYes) m_btnConfirmYes->Render(renderer);
+        if (m_btnConfirmNo)  m_btnConfirmNo ->Render(renderer);
+    }
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
 
 void SceneMenu::OnEvent(const SDL_Event& event)
 {
+    // 若退出确认框可见，ESC/事件只路由给确认框按钮
+    if (m_showExitConfirm)
+    {
+        if (event.type == SDL_EVENT_KEY_DOWN &&
+            event.key.scancode == SDL_SCANCODE_ESCAPE)
+        {
+            // ESC 取消退出确认框
+            m_showExitConfirm = false;
+            return;
+        }
+        if (m_btnConfirmYes) m_btnConfirmYes->HandleEvent(event);
+        if (m_btnConfirmNo)  m_btnConfirmNo ->HandleEvent(event);
+        return;
+    }
+
+    // ESC → 显示退出确认框
+    if (event.type == SDL_EVENT_KEY_DOWN &&
+        event.key.scancode == SDL_SCANCODE_ESCAPE)
+    {
+        m_showExitConfirm = true;
+        return;
+    }
+
     // 分发给按钮（需要用带有当前 X 偏移的坐标）
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {

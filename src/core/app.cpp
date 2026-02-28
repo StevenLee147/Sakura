@@ -182,12 +182,7 @@ void App::ProcessEvents()
             case SDL_EVENT_QUIT:
                 m_running = false;
                 break;
-            case SDL_EVENT_KEY_DOWN:
-                if (event.key.scancode == SDL_SCANCODE_ESCAPE)
-                {
-                    m_running = false;
-                }
-                break;
+            // ESC 键由各场景自行处理（主菜单弹确认框，游戏中暂停，其他场景返回上级）
             default:
                 break;
         }

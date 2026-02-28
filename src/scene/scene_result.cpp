@@ -347,6 +347,16 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
 
 void SceneResult::OnEvent(const SDL_Event& event)
 {
+    // ESC → 返回选歌（与"返回"按钮相同行为）
+    if (event.type == SDL_EVENT_KEY_DOWN &&
+        event.key.scancode == SDL_SCANCODE_ESCAPE)
+    {
+        m_manager.SwitchScene(
+            std::make_unique<SceneSelect>(m_manager),
+            sakura::scene::TransitionType::Fade, 0.4f);
+        return;
+    }
+
     if (m_btnRetry) m_btnRetry->HandleEvent(event);
     if (m_btnBack)  m_btnBack ->HandleEvent(event);
 }

@@ -535,6 +535,17 @@ void SceneSelect::OnRender(sakura::core::Renderer& renderer)
 
 void SceneSelect::OnEvent(const SDL_Event& event)
 {
+    // ESC → 返回主菜单（与"返回"按钮相同行为）
+    if (event.type == SDL_EVENT_KEY_DOWN &&
+        event.key.scancode == SDL_SCANCODE_ESCAPE)
+    {
+        StopPreview();
+        m_manager.SwitchScene(
+            std::make_unique<SceneMenu>(m_manager),
+            TransitionType::SlideRight, 0.4f);
+        return;
+    }
+
     if (m_songList)  m_songList->HandleEvent(event);
     if (m_btnBack)   m_btnBack->HandleEvent(event);
     if (m_btnStart)  m_btnStart->HandleEvent(event);
