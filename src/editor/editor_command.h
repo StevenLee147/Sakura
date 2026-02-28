@@ -139,6 +139,40 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PlaceMouseNoteCommand — 放置鼠标端音符（Circle/Slider）
+// ─────────────────────────────────────────────────────────────────────────────
+class PlaceMouseNoteCommand final : public EditorCommand
+{
+public:
+    explicit PlaceMouseNoteCommand(const sakura::game::MouseNote& note);
+
+    void Execute(EditorCore& core) override;
+    void Undo   (EditorCore& core) override;
+    std::string GetDescription() const override;
+
+private:
+    sakura::game::MouseNote m_note;
+    int m_insertedIndex = -1;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeleteMouseNoteCommand — 删除鼠标端音符
+// ─────────────────────────────────────────────────────────────────────────────
+class DeleteMouseNoteCommand final : public EditorCommand
+{
+public:
+    DeleteMouseNoteCommand(int index, const sakura::game::MouseNote& savedNote);
+
+    void Execute(EditorCore& core) override;
+    void Undo   (EditorCore& core) override;
+    std::string GetDescription() const override;
+
+private:
+    int                     m_originalIndex;
+    sakura::game::MouseNote m_savedNote;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CommandHistory — 双端队列式撤销/重做历史（最大 200 步）
 // ─────────────────────────────────────────────────────────────────────────────
 class CommandHistory

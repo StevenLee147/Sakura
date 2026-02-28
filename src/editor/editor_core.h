@@ -92,8 +92,9 @@ public:
     NoteToolType GetNoteTool()         const { return m_noteTool; }
 
     // 放置一个键盘音符（timeMs 已量化）；若在相同位置(±1ms)的同 lane 有音符则忽略
+    // durationMs=-1 时使用默认 1 拍时长（Hold），Tap 忽略此参数
     // 返回 true = 成功放置；false = 重复或越界
-    bool PlaceKeyboardNote(int timeMs, int lane);
+    bool PlaceKeyboardNote(int timeMs, int lane, int durationMs = -1);
 
     // 删除指定索引的键盘音符；成功返回 true
     bool DeleteKeyboardNote(int index);
@@ -104,8 +105,43 @@ public:
 
     // 选中/取消选中键盘音符
     void SelectKeyboardNote(int index) { m_selectedKbNote = index; }
-    void ClearSelection()              { m_selectedKbNote = -1; }
+    void ClearSelection()              { m_selectedKbNote = -1; m_selectedMouseNote = -1; }
     int  GetSelectedKbNote()    const  { return m_selectedKbNote; }
+
+    // ── 鼠标音符工具 ─────────────────────────────────────────────────────────
+
+    // 在鼠标编辑区放置 Circle 音符
+    // nx, ny：相对于鼠标编辑区的归一化坐标（0.0~1.0）
+    bool PlaceMouseNote(int timeMs, float nx, float ny,
+                        sakura::game::NoteType type = sakura::game::NoteType::Circle);
+
+    // 删除鼠标音符
+    bool DeleteMouseNote(int index);
+
+    // 查找最近的鼠标音符（时间偏差 ≤ toleranceMs，位置偏差 ≤ toleranceXY 归一化）
+    int FindMouseNote(int timeMs, float nx, float ny,
+                      int toleranceMs = 80, float toleranceXY = 0.05f) const;
+
+    void SelectMouseNote(int index) { m_selectedMouseNote = index; }
+    int  GetSelectedMouseNote() const { return m_selectedMouseNote; }
+
+    // ── Slider 构建 ───────────────────────────────────────────────────────────
+
+    // 开始构建 Slider（放置第一个路径点，返回 true=成功）
+    bool StartSlider(int timeMs, float nx, float ny);
+
+    // 追加路径点到当前进行中的 Slider
+    void AddSliderPoint(float nx, float ny);
+
+    // 完成 Slider（将 WIP Slider 提交为正常音符）
+    void FinalizeSlider();
+
+    // 放弃 WIP Slider
+    void CancelSlider();
+
+    bool HasWipSlider()     const { return m_wipSliderActive; }
+    int  GetWipSliderIndex() const { return m_wipSliderIndex; }
+    const sakura::game::MouseNote* GetWipSlider() const;
 
     // ── 播放控制 ──────────────────────────────────────────────────────────────
 
@@ -126,6 +162,9 @@ public:
 
     void Undo();
     void Redo();
+
+    // 执行并记录任意命令（供批量操作使用，如 Ctrl+M 镜像）
+    void ExecuteCommand(std::unique_ptr<EditorCommand> cmd);
     bool CanUndo() const { return m_history.CanUndo(); }
     bool CanRedo() const { return m_history.CanRedo(); }
     std::string GetUndoDescription() const { return m_history.GetUndoDescription(); }
@@ -143,6 +182,12 @@ public:
     // 直接覆盖指定索引处的音符数据（用于 ModifyNoteCommand）
     void RawModifyNote(int index, const sakura::game::KeyboardNote& note);
 
+    // 鼠标音符 raw 操作
+    int  RawAddMouseNote(const sakura::game::MouseNote& note);
+    void RawInsertMouseNoteAt(int index, const sakura::game::MouseNote& note);
+    void RawRemoveMouseNote(int index);
+    void RawModifyMouseNote(int index, const sakura::game::MouseNote& note);
+
 private:
     sakura::game::ChartInfo m_chartInfo;
     sakura::game::ChartData m_chartData;
@@ -151,9 +196,15 @@ private:
     std::string m_diffFile = "normal.json";
     bool        m_dirty    = false;
 
-    int          m_beatSnap       = 4;
-    NoteToolType m_noteTool       = NoteToolType::Tap;
-    int          m_selectedKbNote = -1;
+    int          m_beatSnap         = 4;
+    NoteToolType m_noteTool         = NoteToolType::Tap;
+    int          m_selectedKbNote   = -1;
+    int          m_selectedMouseNote = -1;
+
+    // Slider 构建状态
+    bool m_wipSliderActive = false;
+    int  m_wipSliderIndex  = -1;  // 进行中的 slider 在 mouseNotes 中的临时索引
+    sakura::game::MouseNote m_wipSlider;  // 临时存储; FinalizeSlider 后移入 mouseNotes
 
     int  m_currentTimeMs = 0;
     bool m_playing       = false;

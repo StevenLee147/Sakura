@@ -4,6 +4,7 @@
 #include "utils/logger.h"
 
 #include <SDL3/SDL.h>
+#include <miniaudio.h>
 
 #include <algorithm>
 #include <cmath>
@@ -108,25 +109,17 @@ void EditorTimeline::Update(float /*dt*/)
 
 bool EditorTimeline::HandleEvent(const SDL_Event& event)
 {
-    // 更新 hover 信息（鼠标移动）
+    // ── 鼠标移动 ─────────────────────────────────────────────────────────────
     if (event.type == SDL_EVENT_MOUSE_MOTION)
     {
-        float mx = event.motion.x;
-        float my = event.motion.y;
-
-        // 获取窗口尺寸（需要归一化）
-        // 使用 event 中的窗口 ID 获取，但简便起见用静态缓存
-        // 此处直接从 SDL_GetWindowFromID 路径较复杂，
-        // 考虑到项目其他场景都通过 ResourceManager 获取窗口，
-        // 这里通过获取当前 SDL 渲染器窗口来归一化
         SDL_Window* win = SDL_GetWindowFromID(event.motion.windowID);
         if (!win) return false;
         int ww, wh;
         SDL_GetWindowSize(win, &ww, &wh);
         if (ww <= 0 || wh <= 0) return false;
 
-        float nx = mx / static_cast<float>(ww);
-        float ny = my / static_cast<float>(wh);
+        float nx = event.motion.x / static_cast<float>(ww);
+        float ny = event.motion.y / static_cast<float>(wh);
 
         if (IsInArea(nx, ny))
         {
@@ -135,7 +128,7 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
             m_hoverLane  = XToLane(nx);
             if (m_hoverLane >= 0)
             {
-                int rawTime  = static_cast<int>(YToTimeRaw(ny));
+                int rawTime   = static_cast<int>(YToTimeRaw(ny));
                 m_hoverTimeMs = m_core.QuantizeTime(rawTime);
             }
             else
@@ -148,10 +141,15 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
             m_hoverLane   = -1;
             m_hoverTimeMs = -1;
         }
-        return false;  // 移动事件不消费（继续传递给 SceneEditor）
+
+        // Hold 拖拽：追踪当前 Y
+        if (m_holdDragging)
+            m_holdDragCurrentY = ny;
+
+        return false;
     }
 
-    // 鼠标按下：点击放置或选择/删除
+    // ── 鼠标按下 ─────────────────────────────────────────────────────────────
     if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
     {
         SDL_Window* win = SDL_GetWindowFromID(event.button.windowID);
@@ -168,29 +166,57 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
         int lane = XToLane(nx);
         if (lane < 0) return false;
 
-        int rawTime = static_cast<int>(YToTimeRaw(ny));
+        int rawTime  = static_cast<int>(YToTimeRaw(ny));
         int snapTime = m_core.QuantizeTime(rawTime);
 
         if (event.button.button == SDL_BUTTON_LEFT)
         {
-            // 先检查是否有已放置音符（±toleranceMs 内）→ 选中
-            int found = m_core.FindKeyboardNote(snapTime, lane);
-            if (found >= 0)
+            NoteToolType tool = m_core.GetNoteTool();
+
+            if (tool == NoteToolType::Hold)
             {
-                m_core.SelectKeyboardNote(found);
+                // Hold 工具：开始拖拽以设置 duration
+                int found = m_core.FindKeyboardNote(snapTime, lane);
+                if (found >= 0)
+                {
+                    // 选中已有 Hold 音符
+                    m_core.SelectKeyboardNote(found);
+                }
+                else
+                {
+                    // 开始 Hold 拖拽
+                    m_holdDragging    = true;
+                    m_holdDragStartMs = snapTime;
+                    m_holdDragLane    = lane;
+                    m_holdDragCurrentY = ny;
+                }
+                return true;
             }
             else
             {
-                // 放置新音符
-                m_core.ClearSelection();
-                m_core.PlaceKeyboardNote(snapTime, lane);
+                // Tap/Drag/Circle/Slider：单击放置或选中
+                int found = m_core.FindKeyboardNote(snapTime, lane);
+                if (found >= 0)
+                {
+                    m_core.SelectKeyboardNote(found);
+                }
+                else
+                {
+                    m_core.ClearSelection();
+                    m_core.PlaceKeyboardNote(snapTime, lane);
+                }
+                return true;
             }
-            return true;
         }
 
         if (event.button.button == SDL_BUTTON_RIGHT)
         {
-            // 右键删除最近音符
+            // 右键：取消 Hold 拖拽，或删除最近音符
+            if (m_holdDragging)
+            {
+                m_holdDragging = false;
+                return true;
+            }
             int found = m_core.FindKeyboardNote(snapTime, lane);
             if (found >= 0)
             {
@@ -202,7 +228,42 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
         }
     }
 
-    // 滚轮：滚动时间轴
+    // ── 鼠标释放 ─────────────────────────────────────────────────────────────
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+    {
+        if (event.button.button == SDL_BUTTON_LEFT && m_holdDragging)
+        {
+            SDL_Window* win = SDL_GetWindowFromID(event.button.windowID);
+            if (win)
+            {
+                int ww, wh;
+                SDL_GetWindowSize(win, &ww, &wh);
+                if (ww > 0 && wh > 0)
+                {
+                    float ny     = event.button.y / static_cast<float>(wh);
+                    int   endMs  = m_core.QuantizeTime(static_cast<int>(YToTimeRaw(ny)));
+                    int   durMs  = endMs - m_holdDragStartMs;
+
+                    if (durMs > 0)
+                    {
+                        // 拖拽上方：duration > 0，放置 Hold 音符
+                        m_core.SetNoteTool(NoteToolType::Hold);
+                        m_core.PlaceKeyboardNote(m_holdDragStartMs, m_holdDragLane, durMs);
+                    }
+                    else
+                    {
+                        // 点击但未拖拽（或向下拖），放置默认 Hold（1拍）
+                        m_core.SetNoteTool(NoteToolType::Hold);
+                        m_core.PlaceKeyboardNote(m_holdDragStartMs, m_holdDragLane);
+                    }
+                }
+            }
+            m_holdDragging = false;
+            return true;
+        }
+    }
+
+    // ── 滚轮 ─────────────────────────────────────────────────────────────────
     if (event.type == SDL_EVENT_MOUSE_WHEEL)
     {
         SDL_Window* win = SDL_GetWindowFromID(event.wheel.windowID);
@@ -210,25 +271,20 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
         int ww, wh;
         SDL_GetWindowSize(win, &ww, &wh);
 
-        // 当前鼠标是否在时间轴区域
         float mx, my;
         SDL_GetMouseState(&mx, &my);
         float nx = mx / static_cast<float>(ww);
         float ny = my / static_cast<float>(wh);
         if (!IsInArea(nx, ny)) return false;
 
-        // Ctrl + 滚轮：缩放（修改 m_viewDurationMs）
         const bool* ks = SDL_GetKeyboardState(nullptr);
         if (ks && (ks[SDL_SCANCODE_LCTRL] || ks[SDL_SCANCODE_RCTRL]))
         {
-            if (event.wheel.y > 0)
-                ZoomIn();
-            else
-                ZoomOut();
+            if (event.wheel.y > 0) ZoomIn();
+            else                   ZoomOut();
         }
         else
         {
-            // 普通滚轮：滚动时间
             float beatMs = m_core.GetBeatIntervalMs(m_core.GetCurrentTimeMs());
             int   step   = static_cast<int>(beatMs / m_core.GetBeatSnap());
             if (step < 10) step = 10;
@@ -246,13 +302,15 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
 
 void EditorTimeline::Render(sakura::core::Renderer& renderer)
 {
-    DrawBackground   (renderer);
-    DrawGrid         (renderer);
-    DrawLaneDividers (renderer);
-    DrawNotes        (renderer);
-    DrawHoverPreview (renderer);
-    DrawPlayhead     (renderer);
-    DrawRuler        (renderer);
+    DrawBackground      (renderer);
+    DrawWaveform        (renderer);  // 标尺区波形（音乐可视化）
+    DrawGrid            (renderer);
+    DrawLaneDividers    (renderer);
+    DrawNotes           (renderer);
+    DrawHoldDragPreview (renderer);  // Hold 拖拽预览
+    DrawHoverPreview    (renderer);
+    DrawPlayhead        (renderer);
+    DrawRuler           (renderer);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -456,6 +514,25 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
               NOTE_H * 2.0f },
             noteColor);
 
+        // Drag 音符：绘制目标道箭头
+        if (n.type == sakura::game::NoteType::Drag && n.dragToLane >= 0 && n.dragToLane != n.lane)
+        {
+            float xTarget = LaneToX(n.dragToLane) + TRACK_LANE_W * 0.5f;
+            float xSrc    = x + TRACK_LANE_W * 0.5f;
+            // 横向箭头线
+            renderer.DrawLine(xSrc, y, xTarget, y,
+                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
+            // 箭头头（三角）
+            float dir = (xTarget > xSrc) ? 1.0f : -1.0f;
+            float ax  = xTarget;
+            renderer.DrawLine(ax, y,
+                              ax - dir * 0.012f, y - 0.008f,
+                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
+            renderer.DrawLine(ax, y,
+                              ax - dir * 0.012f, y + 0.008f,
+                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
+        }
+
         // 选中时加边框
         if (isSelected)
         {
@@ -515,6 +592,111 @@ void EditorTimeline::DrawHoverPreview(sakura::core::Renderer& renderer)
           TRACK_LANE_W * 0.9f,
           NOTE_H * 2.0f },
         previewColor);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DrawHoldDragPreview — Hold 工具拖拽时的实时预览
+// ═════════════════════════════════════════════════════════════════════════════
+
+void EditorTimeline::DrawHoldDragPreview(sakura::core::Renderer& renderer)
+{
+    if (!m_holdDragging || m_holdDragLane < 0) return;
+
+    float startY = TimeToY(m_holdDragStartMs);
+    float endY   = m_holdDragCurrentY;
+
+    // 确保顶部 < 底部（时间轴向上增大）
+    float topY    = std::min(startY, endY);
+    float bottomY = std::max(startY, endY);
+    float holdH   = bottomY - topY;
+
+    if (holdH < 0.002f) return;
+
+    float x = LaneToX(m_holdDragLane);
+
+    // 拖拽预览：半透明绿条
+    renderer.DrawFilledRect(
+        { x + TRACK_LANE_W * 0.15f, topY,
+          TRACK_LANE_W * 0.7f,      holdH },
+        sakura::core::Color{ 80, 220, 120, 100 });
+
+    // 顶端标记线
+    renderer.DrawLine(x + TRACK_LANE_W * 0.1f, topY,
+                      x + TRACK_LANE_W * 0.9f, topY,
+                      sakura::core::Color{ 80, 220, 120, 200 }, 0.002f);
+
+    // 底端（按下位置）标记线
+    renderer.DrawLine(x + TRACK_LANE_W * 0.1f, bottomY,
+                      x + TRACK_LANE_W * 0.9f, bottomY,
+                      sakura::core::Color{ 80, 220, 120, 160 }, 0.001f);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DrawWaveform — 标尺区域的音频波形可视化
+// ═════════════════════════════════════════════════════════════════════════════
+
+void EditorTimeline::DrawWaveform(sakura::core::Renderer& renderer)
+{
+    if (m_waveform.empty()) return;
+
+    for (int i = 0; i < static_cast<int>(m_waveform.size()); ++i)
+    {
+        int   timeMs = i * m_waveformWindowMs;
+        float y      = TimeToY(timeMs);
+        if (y < AREA_Y || y > 1.0f) continue;
+
+        float amplitude = m_waveform[i];  // 0.0 ~ 1.0
+        float barW      = RULER_W * 0.9f * amplitude;
+        if (barW < 0.0005f) continue;
+
+        renderer.DrawFilledRect(
+            { 0.002f, y - 0.003f, barW, 0.006f },
+            sakura::core::Color{ 60, 200, 100, 110 });
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LoadWaveform — 使用 miniaudio 解码音频文件并计算波形数据
+// ═════════════════════════════════════════════════════════════════════════════
+
+void EditorTimeline::LoadWaveform(const std::string& audioPath)
+{
+    m_waveform.clear();
+    if (audioPath.empty()) return;
+
+    ma_decoder_config config = ma_decoder_config_init(ma_format_f32, 1, 44100);
+    ma_decoder decoder;
+    if (ma_decoder_init_file(audioPath.c_str(), &config, &decoder) != MA_SUCCESS)
+    {
+        LOG_WARN("[EditorTimeline] 波形解码失败: {}", audioPath);
+        return;
+    }
+
+    const ma_uint64 windowSamples =
+        static_cast<ma_uint64>(44100) * static_cast<ma_uint64>(m_waveformWindowMs) / 1000;
+
+    std::vector<float> buf(static_cast<size_t>(windowSamples));
+
+    while (true)
+    {
+        ma_uint64 framesRead = 0;
+        ma_result res = ma_decoder_read_pcm_frames(&decoder, buf.data(), windowSamples, &framesRead);
+        if (framesRead == 0) break;
+
+        float peak = 0.0f;
+        for (ma_uint64 s = 0; s < framesRead; ++s)
+        {
+            float v = std::abs(buf[static_cast<size_t>(s)]);
+            if (v > peak) peak = v;
+        }
+        m_waveform.push_back(peak);
+
+        if (res != MA_SUCCESS) break;
+    }
+
+    ma_decoder_uninit(&decoder);
+    LOG_INFO("[EditorTimeline] 波形加载完成: {} 个窗口 ({}ms/窗)",
+             static_cast<int>(m_waveform.size()), m_waveformWindowMs);
 }
 
 } // namespace sakura::editor

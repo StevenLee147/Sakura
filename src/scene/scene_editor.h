@@ -10,6 +10,7 @@
 #include "ui/button.h"
 #include "editor/editor_core.h"
 #include "editor/editor_timeline.h"
+#include "editor/editor_mouse_area.h"
 
 #include <memory>
 #include <array>
@@ -38,8 +39,9 @@ private:
     SceneManager& m_manager;
 
     // ── 核心状态 ──────────────────────────────────────────────────────────────
-    sakura::editor::EditorCore     m_core;
-    sakura::editor::EditorTimeline m_timeline;
+    sakura::editor::EditorCore      m_core;
+    sakura::editor::EditorTimeline  m_timeline;
+    sakura::editor::EditorMouseArea m_mouseArea;
 
     std::string m_initFolderPath;
     std::string m_initDiffFile;
@@ -81,7 +83,7 @@ private:
 
     // ── 渲染分区 ──────────────────────────────────────────────────────────────
     void RenderToolbar       (sakura::core::Renderer& renderer);
-    void RenderMouseArea     (sakura::core::Renderer& renderer);
+    void RenderMouseArea     (sakura::core::Renderer& renderer);  // 现在由 m_mouseArea.Render 代替，保留占位
     void RenderPropertyPanel (sakura::core::Renderer& renderer);
     void RenderOverviewAxis  (sakura::core::Renderer& renderer);
 };

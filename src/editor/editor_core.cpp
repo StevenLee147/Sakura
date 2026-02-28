@@ -114,6 +114,9 @@ bool EditorCore::LoadChart(const std::string& folderPath,
     m_diffFile            = difficultyFile;
     m_dirty               = false;
     m_selectedKbNote      = -1;
+    m_selectedMouseNote   = -1;
+    m_wipSliderActive     = false;
+    m_wipSliderIndex      = -1;
     m_currentTimeMs       = 0;
     m_playing             = false;
     m_history.Clear();
@@ -316,7 +319,7 @@ void EditorCore::SetBeatSnap(int snap)
 // 音符 CRUD
 // ═════════════════════════════════════════════════════════════════════════════
 
-bool EditorCore::PlaceKeyboardNote(int timeMs, int lane)
+bool EditorCore::PlaceKeyboardNote(int timeMs, int lane, int durationMs)
 {
     if (lane < 0 || lane > 3) return false;
 
@@ -336,10 +339,15 @@ bool EditorCore::PlaceKeyboardNote(int timeMs, int lane)
             break;
         case NoteToolType::Hold:
             note.type     = sakura::game::NoteType::Hold;
-            note.duration = static_cast<int>(GetBeatIntervalMs(timeMs));  // 默认 1 拍
+            // 使用传入的 duration，否则默认 1 拍
+            note.duration = (durationMs > 0)
+                ? durationMs
+                : static_cast<int>(GetBeatIntervalMs(timeMs));
             break;
         case NoteToolType::Drag:
             note.type = sakura::game::NoteType::Drag;
+            // dragToLane 默认同轨，用户可通过属性面板修改
+            note.dragToLane = lane;
             break;
         default:
             note.type = sakura::game::NoteType::Tap;
@@ -518,4 +526,168 @@ void EditorCore::Redo()
     LOG_DEBUG("[EditorCore] Redo: {}", desc);
 }
 
+void EditorCore::ExecuteCommand(std::unique_ptr<EditorCommand> cmd)
+{
+    if (!cmd) return;
+    m_history.Execute(std::move(cmd), *this);
+    m_dirty = true;
+    LOG_DEBUG("[EditorCore] ExecuteCommand");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 鼠标音符 CRUD
+// ═════════════════════════════════════════════════════════════════════════════
+
+bool EditorCore::PlaceMouseNote(int timeMs, float nx, float ny, sakura::game::NoteType type)
+{
+    sakura::game::MouseNote note;
+    note.time = timeMs;
+    note.x    = std::clamp(nx, 0.0f, 1.0f);
+    note.y    = std::clamp(ny, 0.0f, 1.0f);
+    note.type = type;
+
+    m_history.Execute(std::make_unique<PlaceMouseNoteCommand>(note), *this);
+    m_dirty = true;
+
+    LOG_DEBUG("[EditorCore] 放置鼠标音符: time={} ({:.2f},{:.2f})", timeMs, nx, ny);
+    return true;
+}
+
+bool EditorCore::DeleteMouseNote(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_chartData.mouseNotes.size()))
+        return false;
+
+    const auto savedNote = m_chartData.mouseNotes[index];
+    m_history.Execute(std::make_unique<DeleteMouseNoteCommand>(index, savedNote), *this);
+    m_dirty = true;
+
+    if (m_selectedMouseNote == index)
+        m_selectedMouseNote = -1;
+    else if (m_selectedMouseNote > index)
+        --m_selectedMouseNote;
+
+    return true;
+}
+
+int EditorCore::FindMouseNote(int timeMs, float nx, float ny, int toleranceMs, float toleranceXY) const
+{
+    const auto& notes = m_chartData.mouseNotes;
+    int bestIdx  = -1;
+    int bestDist = toleranceMs + 1;
+
+    for (int i = 0; i < static_cast<int>(notes.size()); ++i)
+    {
+        const auto& n = notes[i];
+        int timeDist = std::abs(n.time - timeMs);
+        if (timeDist > toleranceMs) continue;
+
+        float dx = n.x - nx;
+        float dy = n.y - ny;
+        float xyDist = std::sqrt(dx * dx + dy * dy);
+        if (xyDist > toleranceXY) continue;
+
+        if (timeDist < bestDist)
+        {
+            bestDist = timeDist;
+            bestIdx  = i;
+        }
+    }
+    return bestIdx;
+}
+
+bool EditorCore::StartSlider(int timeMs, float nx, float ny)
+{
+    if (m_wipSliderActive) return false;  // 已有进行中的 Slider
+
+    m_wipSlider              = sakura::game::MouseNote{};
+    m_wipSlider.time         = timeMs;
+    m_wipSlider.x            = std::clamp(nx, 0.0f, 1.0f);
+    m_wipSlider.y            = std::clamp(ny, 0.0f, 1.0f);
+    m_wipSlider.type         = sakura::game::NoteType::Slider;
+    m_wipSlider.sliderPath.push_back({ nx, ny });  // 第一个路径点
+
+    m_wipSliderActive = true;
+    m_wipSliderIndex  = -1;
+
+    LOG_DEBUG("[EditorCore] 开始构建 Slider @ time={}", timeMs);
+    return true;
+}
+
+void EditorCore::AddSliderPoint(float nx, float ny)
+{
+    if (!m_wipSliderActive) return;
+    m_wipSlider.sliderPath.push_back({ std::clamp(nx, 0.0f, 1.0f),
+                                        std::clamp(ny, 0.0f, 1.0f) });
+    if (m_wipSlider.sliderPath.size() >= 2)
+    {
+        // 计算路径总长来估算 sliderDuration
+        m_wipSlider.sliderDuration = static_cast<int>(m_wipSlider.sliderPath.size()) * 200;
+    }
+    LOG_DEBUG("[EditorCore] 添加 Slider 路径点: ({:.2f},{:.2f})", nx, ny);
+}
+
+void EditorCore::FinalizeSlider()
+{
+    if (!m_wipSliderActive) return;
+    if (m_wipSlider.sliderPath.size() >= 2)
+    {
+        m_history.Execute(std::make_unique<PlaceMouseNoteCommand>(m_wipSlider), *this);
+        m_dirty = true;
+        LOG_DEBUG("[EditorCore] Slider 完成: {} 个路径点", static_cast<int>(m_wipSlider.sliderPath.size()));
+    }
+    m_wipSliderActive = false;
+    m_wipSliderIndex  = -1;
+    m_wipSlider       = {};
+}
+
+void EditorCore::CancelSlider()
+{
+    m_wipSliderActive = false;
+    m_wipSliderIndex  = -1;
+    m_wipSlider       = {};
+    LOG_DEBUG("[EditorCore] 放弃 Slider 构建");
+}
+
+const sakura::game::MouseNote* EditorCore::GetWipSlider() const
+{
+    return m_wipSliderActive ? &m_wipSlider : nullptr;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Raw 鼠标音符操作
+// ═════════════════════════════════════════════════════════════════════════════
+
+int EditorCore::RawAddMouseNote(const sakura::game::MouseNote& note)
+{
+    auto& notes = m_chartData.mouseNotes;
+    auto it = std::lower_bound(notes.begin(), notes.end(), note,
+        [](const sakura::game::MouseNote& a, const sakura::game::MouseNote& b) {
+            return a.time < b.time;
+        });
+    notes.insert(it, note);
+    return static_cast<int>(std::distance(notes.begin(), it));
+}
+
+void EditorCore::RawInsertMouseNoteAt(int index, const sakura::game::MouseNote& note)
+{
+    auto& notes = m_chartData.mouseNotes;
+    if (index < 0) index = 0;
+    if (index > static_cast<int>(notes.size())) index = static_cast<int>(notes.size());
+    notes.insert(notes.begin() + index, note);
+}
+
+void EditorCore::RawRemoveMouseNote(int index)
+{
+    auto& notes = m_chartData.mouseNotes;
+    if (index < 0 || index >= static_cast<int>(notes.size())) return;
+    notes.erase(notes.begin() + index);
+}
+
+void EditorCore::RawModifyMouseNote(int index, const sakura::game::MouseNote& note)
+{
+    auto& notes = m_chartData.mouseNotes;
+    if (index < 0 || index >= static_cast<int>(notes.size())) return;
+    notes[index] = note;
+}
 } // namespace sakura::editor

@@ -8,6 +8,8 @@
 #include "editor_core.h"
 
 #include <SDL3/SDL.h>
+#include <vector>
+#include <string>
 
 namespace sakura::editor
 {
@@ -40,6 +42,9 @@ public:
     void ZoomOut();
 
     int GetScrollTimeMs() const { return m_scrollTimeMs; }
+
+    // 加载并解析音频波形数据（用于时间轴左侧波形可视化）
+    void LoadWaveform(const std::string& audioPath);
 
     // ── 坐标转换 ──────────────────────────────────────────────────────────────
 
@@ -98,16 +103,30 @@ private:
     int   m_hoverTimeMs = -1;
     int   m_hoverLane   = -1;
 
+    // ── Hold 拖拽状态 ─────────────────────────────────────────────────────────
+    // 用 Hold 工具时，按下左键后开始拖拽，松开时确定 duration
+    bool  m_holdDragging      = false;
+    int   m_holdDragStartMs   = 0;    // 按下时量化的时间
+    int   m_holdDragLane      = -1;   // 按下的轨道
+    float m_holdDragCurrentY  = 0.0f; // 当前鼠标 Y（归一化）
+
+    // ── 波形数据 ──────────────────────────────────────────────────────────────
+    // m_waveform[i] = 第 i 个窗口的峰值幅度（归一化到 0~1）
+    std::vector<float> m_waveform;
+    int m_waveformWindowMs = 20;  // 每个窗口覆盖 20ms 音频
+
     sakura::core::FontHandle m_font = sakura::core::INVALID_HANDLE;
 
     // ── 内部渲染 ──────────────────────────────────────────────────────────────
     void DrawBackground   (sakura::core::Renderer& renderer);
+    void DrawWaveform     (sakura::core::Renderer& renderer);
     void DrawGrid         (sakura::core::Renderer& renderer);
     void DrawLaneDividers (sakura::core::Renderer& renderer);
     void DrawRuler        (sakura::core::Renderer& renderer);
     void DrawNotes        (sakura::core::Renderer& renderer);
     void DrawPlayhead     (sakura::core::Renderer& renderer);
     void DrawHoverPreview (sakura::core::Renderer& renderer);
+    void DrawHoldDragPreview(sakura::core::Renderer& renderer);
 };
 
 } // namespace sakura::editor

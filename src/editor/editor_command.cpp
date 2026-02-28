@@ -175,6 +175,68 @@ std::string BatchCommand::GetDescription() const
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// PlaceMouseNoteCommand
+// ═════════════════════════════════════════════════════════════════════════════
+
+PlaceMouseNoteCommand::PlaceMouseNoteCommand(const sakura::game::MouseNote& note)
+    : m_note(note)
+{
+}
+
+void PlaceMouseNoteCommand::Execute(EditorCore& core)
+{
+    m_insertedIndex = core.RawAddMouseNote(m_note);
+    LOG_TRACE("[Cmd] PlaceMouseNote Execute: idx={} time={}", m_insertedIndex, m_note.time);
+}
+
+void PlaceMouseNoteCommand::Undo(EditorCore& core)
+{
+    if (m_insertedIndex >= 0)
+    {
+        core.RawRemoveMouseNote(m_insertedIndex);
+        LOG_TRACE("[Cmd] PlaceMouseNote Undo: removed idx={}", m_insertedIndex);
+        m_insertedIndex = -1;
+    }
+}
+
+std::string PlaceMouseNoteCommand::GetDescription() const
+{
+    const char* typeName = (m_note.type == sakura::game::NoteType::Slider) ? "Slider" : "Circle";
+    return std::string("放置鼠标音符 ") + typeName
+         + " (time=" + std::to_string(m_note.time) + "ms)";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DeleteMouseNoteCommand
+// ═════════════════════════════════════════════════════════════════════════════
+
+DeleteMouseNoteCommand::DeleteMouseNoteCommand(int index,
+                                                const sakura::game::MouseNote& savedNote)
+    : m_originalIndex(index)
+    , m_savedNote(savedNote)
+{
+}
+
+void DeleteMouseNoteCommand::Execute(EditorCore& core)
+{
+    core.RawRemoveMouseNote(m_originalIndex);
+    LOG_TRACE("[Cmd] DeleteMouseNote Execute: idx={}", m_originalIndex);
+}
+
+void DeleteMouseNoteCommand::Undo(EditorCore& core)
+{
+    core.RawInsertMouseNoteAt(m_originalIndex, m_savedNote);
+    LOG_TRACE("[Cmd] DeleteMouseNote Undo: restored idx={}", m_originalIndex);
+}
+
+std::string DeleteMouseNoteCommand::GetDescription() const
+{
+    const char* typeName = (m_savedNote.type == sakura::game::NoteType::Slider) ? "Slider" : "Circle";
+    return std::string("删除鼠标音符 ") + typeName
+         + " (time=" + std::to_string(m_savedNote.time) + "ms)";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // CommandHistory
 // ═════════════════════════════════════════════════════════════════════════════
 

@@ -25,6 +25,7 @@ SceneEditor::SceneEditor(SceneManager& mgr,
                          const std::string& difficultyFile)
     : m_manager(mgr)
     , m_timeline(m_core)
+    , m_mouseArea(m_core)
     , m_initFolderPath(folderPath)
     , m_initDiffFile(difficultyFile)
 {
@@ -61,6 +62,17 @@ void SceneEditor::OnEnter()
 
     // 初始化时间轴字体
     m_timeline.SetFont(m_fontSmall);
+    m_mouseArea.SetFont(m_fontSmall);
+
+    // 加载音频波形（若谱面目录中有音乐文件）
+    {
+        const auto& info = m_core.GetChartInfo();
+        if (!info.musicFile.empty() && !info.folderPath.empty())
+        {
+            std::string musicPath = info.folderPath + "/" + info.musicFile;
+            m_timeline.LoadWaveform(musicPath);
+        }
+    }
 
     // 初始滚动：让 t=0 在时间轴靠下位置
     m_timeline.CenterOnTime(0);
@@ -335,8 +347,8 @@ void SceneEditor::OnRender(sakura::core::Renderer& renderer)
     // 2. 键盘时间轴（EditorTimeline）
     m_timeline.Render(renderer);
 
-    // 3. 右侧鼠标编辑区（占位）
-    RenderMouseArea(renderer);
+    // 3. 右侧鼠标编辑区（EditorMouseArea）
+    m_mouseArea.Render(renderer);
 
     // 4. 属性面板（占位）
     RenderPropertyPanel(renderer);
@@ -657,6 +669,39 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             return;
         }
 
+        // Ctrl+A → 全选键盘音符（显示数量）
+        if (m_ctrlHeld && sc == SDL_SCANCODE_A)
+        {
+            int cnt = static_cast<int>(m_core.GetChartData().keyboardNotes.size());
+            sakura::ui::ToastManager::Instance().Show(
+                "已选中 " + std::to_string(cnt) + " 个键盘音符",
+                sakura::ui::ToastType::Info);
+            return;
+        }
+
+        // Ctrl+M → 水平镜像所有键盘音符（道 0↔3，1↔2）
+        if (m_ctrlHeld && sc == SDL_SCANCODE_M)
+        {
+            const auto& notes = m_core.GetChartData().keyboardNotes;
+            if (!notes.empty())
+            {
+                auto batch = std::make_unique<sakura::editor::BatchCommand>("镜像音符");
+                for (int i = 0; i < static_cast<int>(notes.size()); ++i)
+                {
+                    auto newNote = notes[i];
+                    newNote.lane = 3 - newNote.lane;
+                    if (newNote.dragToLane >= 0)
+                        newNote.dragToLane = 3 - newNote.dragToLane;
+                    batch->Add(std::make_unique<sakura::editor::ModifyNoteCommand>(
+                        i, notes[i], newNote));
+                }
+                m_core.ExecuteCommand(std::move(batch));
+                sakura::ui::ToastManager::Instance().Show(
+                    "所有键盘音符已镜像", sakura::ui::ToastType::Info);
+            }
+            return;
+        }
+
         // 1-5 → 切换音符工具
         if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_5)
         {
@@ -677,6 +722,15 @@ void SceneEditor::OnEvent(const SDL_Event& event)
                 m_core.ClearSelection();
                 sakura::ui::ToastManager::Instance().Show(
                     "已删除选中音符", sakura::ui::ToastType::Info);
+                return;
+            }
+            int msel = m_core.GetSelectedMouseNote();
+            if (msel >= 0)
+            {
+                m_core.DeleteMouseNote(msel);
+                m_core.ClearSelection();
+                sakura::ui::ToastManager::Instance().Show(
+                    "已删除鼠标音符", sakura::ui::ToastType::Info);
             }
             return;
         }
@@ -695,6 +749,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
     if (m_btnSnapInc) m_btnSnapInc->HandleEvent(event);
 
     // ── 时间轴事件（可能消费事件） ───────────────────────────────────────────
+    m_mouseArea.HandleEvent(event);
     m_timeline.HandleEvent(event);
 }
 
