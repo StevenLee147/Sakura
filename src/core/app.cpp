@@ -2,6 +2,7 @@
 #include "config.h"
 #include "utils/logger.h"
 #include "scene/test_scenes.h"
+#include "scene/scene_splash.h"
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
 
@@ -87,7 +88,7 @@ bool App::Initialize()
 
     // ── 初始场景 ──────────────────────────────────────────────────────────────
     m_sceneManager.SwitchScene(
-        std::make_unique<sakura::scene::TestSceneA>(m_sceneManager),
+        std::make_unique<sakura::scene::SceneSplash>(m_sceneManager),
         sakura::scene::TransitionType::None
     );
 
