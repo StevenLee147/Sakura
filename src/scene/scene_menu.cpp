@@ -1,6 +1,7 @@
 // scene_menu.cpp — 主菜单场景
 
 #include "scene_menu.h"
+#include "scene_select.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -81,10 +82,9 @@ void SceneMenu::SetupButtons()
     m_buttons[0]->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：开始游戏");
-        // Step 1.10 完成后替换为 SceneSelect
-        // m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager),
-        //                       TransitionType::SlideLeft);
-        LOG_INFO("[SceneMenu] (选歌场景 Step 1.10 实现后跳转)");
+        m_manager.SwitchScene(
+            std::make_unique<SceneSelect>(m_manager),
+            TransitionType::SlideLeft, 0.4f);
     });
 
     // 编辑器（占位）
