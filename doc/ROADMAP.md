@@ -391,11 +391,13 @@ Sakura/
 > - 加载后按 time 排序所有 notes
 > - 支持版本兼容：v1 格式自动转换为 v2
 >
-> 在 resources/charts/test/ 创建测试谱面：
-> - info.json：BPM 120, title "Test Song"
-> - normal.json：10个 Tap + 2个 Hold + 3个 Circle，覆盖键盘和鼠标端
+> 测试谱面已预先创建于 `resources/charts/test-song/`（含 info.json + normal.json）。
+> 每个谱面必须放在**独立子文件夹**中（文件夹名 = 谱面 id），文件夹内包含：
+> - `info.json` — 元信息（标题、BPM、难度列表、资源文件名）
+> - `{difficulty}.json` — 各难度谱面数据
+> - `music.ogg` / `cover.png` / `bg.png` — 音乐与图片资源（路径相对于谱面文件夹）
 
-**验收：** 加载测试谱面成功，日志输出音符数量正确。
+**验收：** 加载 `resources/charts/test-song/` 测试谱面成功，日志输出音符数量正确（键盘 13 个，鼠标 3 个）。
 
 ---
 

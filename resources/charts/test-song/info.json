@@ -1,0 +1,28 @@
+{
+    "version": 2,
+    "id": "test-song",
+    "title": "Test Song",
+    "artist": "Sakura Dev",
+    "charter": "Dev",
+    "source": "",
+    "tags": ["test"],
+
+    "music_file": "music.ogg",
+    "cover_file": "cover.png",
+    "background_file": "bg.png",
+    "preview_time": 0,
+
+    "bpm": 120.0,
+    "offset": 0,
+
+    "difficulties": [
+        {
+            "name": "Normal",
+            "level": 5,
+            "chart_file": "normal.json",
+            "note_count": 15,
+            "hold_count": 2,
+            "mouse_note_count": 3
+        }
+    ]
+}
