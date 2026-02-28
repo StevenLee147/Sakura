@@ -3,6 +3,7 @@
 #include "scene_menu.h"
 #include "scene_select.h"
 #include "scene_settings.h"
+#include "scene_editor.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -92,10 +93,13 @@ void SceneMenu::SetupButtons()
             TransitionType::SlideLeft, 0.4f);
     });
 
-    // 编辑器（占位）
+    // 编辑器 → 切换到编辑器场景
     m_buttons[1]->SetOnClick([this]()
     {
-        LOG_INFO("[SceneMenu] 点击：编辑器 (Phase 2 实现)");
+        LOG_INFO("[SceneMenu] 点击：编辑器");
+        m_manager.SwitchScene(
+            std::make_unique<SceneEditor>(m_manager),
+            TransitionType::SlideLeft, 0.4f);
     });
 
     // 设置 → 切换到设置场景
