@@ -116,6 +116,7 @@ bool EditorCore::LoadChart(const std::string& folderPath,
     m_selectedKbNote      = -1;
     m_currentTimeMs       = 0;
     m_playing             = false;
+    m_history.Clear();
 
     LOG_INFO("[EditorCore] 已加载谱面: {} / {} ({} 个键盘音符)",
              m_chartInfo.title, difficultyFile,
@@ -320,11 +321,8 @@ bool EditorCore::PlaceKeyboardNote(int timeMs, int lane)
     if (lane < 0 || lane > 3) return false;
 
     // 判断是否与现有音符重叠（同 lane、时间差 ≤ 1ms）
-    for (const auto& n : m_chartData.keyboardNotes)
-    {
-        if (n.lane == lane && std::abs(n.time - timeMs) <= 1)
-            return false;
-    }
+    if (FindKeyboardNote(timeMs, lane, 1) != -1)
+        return false;
 
     sakura::game::KeyboardNote note;
     note.time = timeMs;
@@ -347,7 +345,8 @@ bool EditorCore::PlaceKeyboardNote(int timeMs, int lane)
             note.type = sakura::game::NoteType::Tap;
     }
 
-    m_chartData.keyboardNotes.push_back(note);
+    // 通过命令系统执行（支持撤销）
+    m_history.Execute(std::make_unique<PlaceNoteCommand>(note), *this);
     m_dirty = true;
 
     LOG_DEBUG("[EditorCore] 放置音符: time={} lane={}", timeMs, lane);
@@ -359,7 +358,9 @@ bool EditorCore::DeleteKeyboardNote(int index)
     if (index < 0 || index >= static_cast<int>(m_chartData.keyboardNotes.size()))
         return false;
 
-    m_chartData.keyboardNotes.erase(m_chartData.keyboardNotes.begin() + index);
+    // 保存将被删除的音符数据，通过命令系统执行（支持撤销）
+    const auto savedNote = m_chartData.keyboardNotes[index];
+    m_history.Execute(std::make_unique<DeleteNoteCommand>(index, savedNote), *this);
     m_dirty = true;
 
     if (m_selectedKbNote == index)
@@ -368,6 +369,45 @@ bool EditorCore::DeleteKeyboardNote(int index)
         --m_selectedKbNote;
 
     return true;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Raw 音符操作（供 EditorCommand 子类调用）
+// ═════════════════════════════════════════════════════════════════════════════
+
+int EditorCore::RawAddNote(const sakura::game::KeyboardNote& note)
+{
+    auto& notes = m_chartData.keyboardNotes;
+    // 按时间（次按 lane）升序插入，保持有序
+    auto it = std::lower_bound(notes.begin(), notes.end(), note,
+        [](const sakura::game::KeyboardNote& a, const sakura::game::KeyboardNote& b) {
+            return a.time < b.time || (a.time == b.time && a.lane < b.lane);
+        });
+    notes.insert(it, note);
+    return static_cast<int>(std::distance(notes.begin(), it));
+}
+
+void EditorCore::RawInsertNoteAt(int index, const sakura::game::KeyboardNote& note)
+{
+    auto& notes = m_chartData.keyboardNotes;
+    if (index < 0) index = 0;
+    if (index > static_cast<int>(notes.size()))
+        index = static_cast<int>(notes.size());
+    notes.insert(notes.begin() + index, note);
+}
+
+void EditorCore::RawRemoveNote(int index)
+{
+    auto& notes = m_chartData.keyboardNotes;
+    if (index < 0 || index >= static_cast<int>(notes.size())) return;
+    notes.erase(notes.begin() + index);
+}
+
+void EditorCore::RawModifyNote(int index, const sakura::game::KeyboardNote& note)
+{
+    auto& notes = m_chartData.keyboardNotes;
+    if (index < 0 || index >= static_cast<int>(notes.size())) return;
+    notes[index] = note;
 }
 
 int EditorCore::FindKeyboardNote(int timeMs, int lane, int toleranceMs) const
@@ -452,6 +492,30 @@ void EditorCore::Update(float dt)
         // 音频管理器不可用，手动推进
         m_currentTimeMs += static_cast<int>(dt * 1000.0f);
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 撤销/重做
+// ═════════════════════════════════════════════════════════════════════════════
+
+void EditorCore::Undo()
+{
+    if (!m_history.CanUndo()) return;
+    std::string desc = m_history.GetUndoDescription();
+    m_history.Undo(*this);
+    m_dirty = true;
+    m_selectedKbNote = -1;
+    LOG_DEBUG("[EditorCore] Undo: {}", desc);
+}
+
+void EditorCore::Redo()
+{
+    if (!m_history.CanRedo()) return;
+    std::string desc = m_history.GetRedoDescription();
+    m_history.Redo(*this);
+    m_dirty = true;
+    m_selectedKbNote = -1;
+    LOG_DEBUG("[EditorCore] Redo: {}", desc);
 }
 
 } // namespace sakura::editor

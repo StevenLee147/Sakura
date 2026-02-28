@@ -56,6 +56,10 @@ private:
     // 播放/暂停按钮
     std::unique_ptr<sakura::ui::Button> m_btnPlay;
 
+    // 撤销/重做按钮
+    std::unique_ptr<sakura::ui::Button> m_btnUndo;
+    std::unique_ptr<sakura::ui::Button> m_btnRedo;
+
     // 保存按钮
     std::unique_ptr<sakura::ui::Button> m_btnSave;
 
@@ -71,8 +75,9 @@ private:
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
     void SetupToolbar();
-    void UpdateToolButtons();   // 刷新工具按钮的选中状态颜色
-    void DoSave();              // 保存谱面并显示 Toast
+    void UpdateToolButtons();       // 刷新工具按钮的选中状态颜色
+    void UpdateUndoRedoButtons();   // 刷新撤销/重做按钮状态
+    void DoSave();                  // 保存谱面并显示 Toast
 
     // ── 渲染分区 ──────────────────────────────────────────────────────────────
     void RenderToolbar       (sakura::core::Renderer& renderer);

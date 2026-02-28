@@ -128,6 +128,32 @@ void SceneEditor::SetupToolbar()
         m_btnPlay->SetText(m_core.IsPlaying() ? "⏸ 暂停" : "▶ 播放");
     });
 
+    // 撤销按钮
+    m_btnUndo = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.635f, 0.005f, 0.072f, 0.048f },
+        "↩ 撤销", m_fontUI, 0.020f, 0.008f);
+    m_btnUndo->SetOnClick([this]()
+    {
+        m_core.Undo();
+        UpdateUndoRedoButtons();
+        sakura::ui::ToastManager::Instance().Show(
+            "撤销: " + (m_core.CanRedo() ? m_core.GetRedoDescription() : ""),
+            sakura::ui::ToastType::Info);
+    });
+
+    // 重做按钮
+    m_btnRedo = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.712f, 0.005f, 0.072f, 0.048f },
+        "↪ 重做", m_fontUI, 0.020f, 0.008f);
+    m_btnRedo->SetOnClick([this]()
+    {
+        m_core.Redo();
+        UpdateUndoRedoButtons();
+        sakura::ui::ToastManager::Instance().Show(
+            "重做: " + (m_core.CanUndo() ? m_core.GetUndoDescription() : ""),
+            sakura::ui::ToastType::Info);
+    });
+
     // 保存按钮
     m_btnSave = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.82f, 0.005f, 0.08f, 0.048f },
@@ -204,6 +230,65 @@ void SceneEditor::UpdateToolButtons()
     }
 }
 
+// ── UpdateUndoRedoButtons ─────────────────────────────────────────────────────
+
+void SceneEditor::UpdateUndoRedoButtons()
+{
+    // 撤销按钮：有历史时亮显，否则暗灰
+    if (m_btnUndo)
+    {
+        sakura::ui::ButtonColors c;
+        if (m_core.CanUndo())
+        {
+            c.normal  = { 40, 60, 120, 210 };
+            c.hover   = { 60, 90, 180, 235 };
+            c.pressed = { 30, 45, 90,  245 };
+        }
+        else
+        {
+            c.normal  = { 20, 18, 40, 120 };
+            c.hover   = { 25, 22, 50, 130 };
+            c.pressed = { 15, 12, 30, 120 };
+        }
+        c.text = sakura::core::Color{ 200, 200, 255,
+            static_cast<Uint8>(m_core.CanUndo() ? 230 : 100) };
+        m_btnUndo->SetColors(c);
+
+        int cnt = m_core.GetUndoCount();
+        std::string label = cnt > 0
+            ? "↩ 撤销(" + std::to_string(cnt) + ")"
+            : "↩ 撤销";
+        m_btnUndo->SetText(label);
+    }
+
+    // 重做按钮
+    if (m_btnRedo)
+    {
+        sakura::ui::ButtonColors c;
+        if (m_core.CanRedo())
+        {
+            c.normal  = { 40, 60, 120, 210 };
+            c.hover   = { 60, 90, 180, 235 };
+            c.pressed = { 30, 45, 90,  245 };
+        }
+        else
+        {
+            c.normal  = { 20, 18, 40, 120 };
+            c.hover   = { 25, 22, 50, 130 };
+            c.pressed = { 15, 12, 30, 120 };
+        }
+        c.text = sakura::core::Color{ 200, 200, 255,
+            static_cast<Uint8>(m_core.CanRedo() ? 230 : 100) };
+        m_btnRedo->SetColors(c);
+
+        int cnt = m_core.GetRedoCount();
+        std::string label = cnt > 0
+            ? "↪ 重做(" + std::to_string(cnt) + ")"
+            : "↪ 重做";
+        m_btnRedo->SetText(label);
+    }
+}
+
 // ── DoSave ────────────────────────────────────────────────────────────────────
 
 void SceneEditor::DoSave()
@@ -231,6 +316,9 @@ void SceneEditor::OnUpdate(float dt)
     // 同步播放按钮标签
     if (m_btnPlay)
         m_btnPlay->SetText(m_core.IsPlaying() ? "⏸ 暂停" : "▶ 播放");
+
+    // 同步撤销/重做按钮状态（每帧更新文本和颜色）
+    UpdateUndoRedoButtons();
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
@@ -276,6 +364,10 @@ void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
     // 播放/暂停
     if (m_btnPlay) m_btnPlay->Render(renderer);
 
+    // 撤销/重做
+    if (m_btnUndo) m_btnUndo->Render(renderer);
+    if (m_btnRedo) m_btnRedo->Render(renderer);
+
     // BeatSnap 显示
     if (m_fontUI != sakura::core::INVALID_HANDLE)
     {
@@ -285,33 +377,12 @@ void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
             sakura::core::Color{ 200, 190, 240, 220 },
             sakura::core::TextAlign::Center);
 
-        // BPM 显示
-        float bpm = m_core.GetBpmAt(m_core.GetCurrentTimeMs());
-        std::ostringstream bpmSS;
-        bpmSS << "BPM: " << static_cast<int>(bpm);
-        renderer.DrawText(m_fontUI, bpmSS.str(),
-            0.70f, 0.028f, 0.022f,
-            sakura::core::Color{ 200, 190, 240, 220 },
-            sakura::core::TextAlign::Center);
-
-        // 谱面标题
+        // 谱面标题（中央，包含 dirty 标记）
         std::string titleStr = m_core.GetChartInfo().title;
         if (m_core.IsDirty()) titleStr += " *";
         renderer.DrawText(m_fontUI, titleStr,
-            0.50f, 0.028f, 0.018f,
+            0.503f, 0.028f, 0.018f,
             sakura::core::Color{ 200, 180, 255, 200 },
-            sakura::core::TextAlign::Center);
-
-        // 当前时间
-        int curMs = m_core.GetCurrentTimeMs();
-        float sec = static_cast<float>(curMs) / 1000.0f;
-        std::ostringstream timeSS;
-        timeSS << (curMs < 0 ? "-" : "")
-               << static_cast<int>(std::abs(sec)) << "."
-               << std::setw(3) << std::setfill('0') << (std::abs(curMs) % 1000);
-        renderer.DrawText(m_fontUI, timeSS.str(),
-            0.769f, 0.028f, 0.022f,
-            sakura::core::Color{ 180, 220, 180, 220 },
             sakura::core::TextAlign::Center);
     }
 
@@ -414,15 +485,33 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
             px, 0.789f, 0.018f,
             sakura::core::Color{ 180, 170, 210, 180 },
             sakura::core::TextAlign::Center);
+
+        // 当前时间 & BPM
+        int curMs = m_core.GetCurrentTimeMs();
+        float bpm = m_core.GetBpmAt(curMs);
+        std::ostringstream timeSS;
+        float sec = static_cast<float>(curMs) / 1000.0f;
+        timeSS << (curMs < 0 ? "-" : "")
+               << static_cast<int>(std::abs(sec)) << "."
+               << std::setw(3) << std::setfill('0') << (std::abs(curMs) % 1000)
+               << "s  BPM:" << static_cast<int>(bpm);
+        renderer.DrawText(m_fontSmall, timeSS.str(),
+            px, 0.816f, 0.018f,
+            sakura::core::Color{ 160, 220, 160, 200 },
+            sakura::core::TextAlign::Center);
     }
 
     // 快捷键提示
     renderer.DrawText(m_fontSmall, "1-5: 工具  Space: 播放  Del: 删除",
-        px, 0.890f, 0.016f,
+        px, 0.875f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+S: 保存  Ctrl+滚轮: 缩放  ESC: 退出",
-        px, 0.913f, 0.016f,
+    renderer.DrawText(m_fontSmall, "Ctrl+Z: 撤销  Ctrl+Y: 重做  Ctrl+S: 保存",
+        px, 0.898f, 0.016f,
+        sakura::core::Color{ 120, 110, 160, 150 },
+        sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "Ctrl+滚轮: 缩放  ESC: 退出",
+        px, 0.921f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
 }
@@ -552,6 +641,22 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             return;
         }
 
+        // Ctrl+Z → 撤销
+        if (m_ctrlHeld && sc == SDL_SCANCODE_Z)
+        {
+            m_core.Undo();
+            UpdateUndoRedoButtons();
+            return;
+        }
+
+        // Ctrl+Y → 重做
+        if (m_ctrlHeld && sc == SDL_SCANCODE_Y)
+        {
+            m_core.Redo();
+            UpdateUndoRedoButtons();
+            return;
+        }
+
         // 1-5 → 切换音符工具
         if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_5)
         {
@@ -582,6 +687,8 @@ void SceneEditor::OnEvent(const SDL_Event& event)
     // ── 工具栏事件 ───────────────────────────────────────────────────────────
     for (auto& btn : m_toolBtns) if (btn) btn->HandleEvent(event);
     if (m_btnPlay)    m_btnPlay->HandleEvent(event);
+    if (m_btnUndo)    m_btnUndo->HandleEvent(event);
+    if (m_btnRedo)    m_btnRedo->HandleEvent(event);
     if (m_btnSave)    m_btnSave->HandleEvent(event);
     if (m_btnBack)    m_btnBack->HandleEvent(event);
     if (m_btnSnapDec) m_btnSnapDec->HandleEvent(event);

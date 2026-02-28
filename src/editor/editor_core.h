@@ -2,9 +2,11 @@
 
 // editor_core.h — 谱面编辑器核心状态管理
 // 持有谱面数据、播放状态、BeatSnap、音符 CRUD 操作
+// 所有写操作均通过 CommandHistory 记录，支持 Ctrl+Z/Y 撤销/重做。
 
 #include "game/chart.h"
 #include "game/note.h"
+#include "editor/editor_command.h"
 
 #include <string>
 #include <optional>
@@ -120,6 +122,27 @@ public:
     void TogglePlayback();
     void StopPlayback();
 
+    // ── 撤销/重做 ─────────────────────────────────────────────────────────────
+
+    void Undo();
+    void Redo();
+    bool CanUndo() const { return m_history.CanUndo(); }
+    bool CanRedo() const { return m_history.CanRedo(); }
+    std::string GetUndoDescription() const { return m_history.GetUndoDescription(); }
+    std::string GetRedoDescription() const { return m_history.GetRedoDescription(); }
+    int GetUndoCount() const { return m_history.GetUndoCount(); }
+    int GetRedoCount() const { return m_history.GetRedoCount(); }
+
+    // ── 原始音符操作（供 EditorCommand 子类专用，外部慎用）─────────────────────
+    // 按时间升序插入音符，返回插入后的索引
+    int  RawAddNote(const sakura::game::KeyboardNote& note);
+    // 在指定索引处强制插入（用于 DeleteNoteCommand::Undo 精确恢复）
+    void RawInsertNoteAt(int index, const sakura::game::KeyboardNote& note);
+    // 移除指定索引处的音符（m_dirty 由调用方处理）
+    void RawRemoveNote(int index);
+    // 直接覆盖指定索引处的音符数据（用于 ModifyNoteCommand）
+    void RawModifyNote(int index, const sakura::game::KeyboardNote& note);
+
 private:
     sakura::game::ChartInfo m_chartInfo;
     sakura::game::ChartData m_chartData;
@@ -134,6 +157,9 @@ private:
 
     int  m_currentTimeMs = 0;
     bool m_playing       = false;
+
+    // 命令历史（撤销/重做）
+    CommandHistory m_history;
 
     // NoteType 枚举 → 序列化字符串
     static const char* NoteTypeToStr(sakura::game::NoteType t);
