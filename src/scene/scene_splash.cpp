@@ -2,6 +2,7 @@
 
 #include "scene_splash.h"
 #include "scene_loading.h"
+#include "scene_menu.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -124,13 +125,11 @@ void SceneSplash::GoToNextScene()
         // UI 组件字体/纹理已预加载
     }});
 
-    // 目标场景工厂（Step 1.9 完成后改为 SceneMenu）
+    // 目标场景工厂 → SceneMenu
     auto& mgr = m_manager;
     auto factory = [&mgr]() -> std::unique_ptr<Scene>
     {
-        // 占位：临时回到 Loading（Step 1.9 后将替换为 SceneMenu）
-        // 此处返回 nullptr 让 SceneManager 自行处理（空任务 Loading 直接 goto null）
-        return nullptr;
+        return std::make_unique<SceneMenu>(mgr);
     };
 
     m_manager.SwitchScene(
