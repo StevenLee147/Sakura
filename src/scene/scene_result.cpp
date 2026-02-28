@@ -7,6 +7,7 @@
 #include "audio/audio_manager.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
+#include "data/database.h"
 
 #include <sstream>
 #include <iomanip>
@@ -72,6 +73,9 @@ void SceneResult::OnEnter()
 
     // 停止可能残留的音乐
     sakura::audio::AudioManager::GetInstance().StopMusic();
+
+    // ── 保存成绩到数据库 ──────────────────────────────────────────────────────
+    sakura::data::Database::GetInstance().SaveScore(m_result);
 }
 
 // ── OnExit ────────────────────────────────────────────────────────────────────

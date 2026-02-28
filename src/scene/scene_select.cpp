@@ -8,6 +8,7 @@
 #include "utils/easing.h"
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
+#include "data/database.h"
 
 #include <algorithm>
 #include <sstream>
@@ -492,11 +493,45 @@ void SceneSelect::RenderDetailPanel(sakura::core::Renderer& renderer)
     // 难度标签按钮由 RefreshDifficultyButtons 渲染
     // （难度按钮在 OnRender 中统一渲染）
 
-    // 最佳成绩（占位 —— Phase 3 数据库实现后填入）
-    renderer.DrawText(m_fontSmall, "Best: --",
-        px, 0.720f, 0.022f,
-        sakura::core::Color{ 160, 150, 180, 150 },
-        sakura::core::TextAlign::Center);
+    // 最佳成绩 —— 从数据库查询
+    {
+        int diffIdx = m_selectedDifficulty;
+        if (diffIdx < 0 || diffIdx >= static_cast<int>(chart.difficulties.size()))
+            diffIdx = 0;
+
+        std::string diffName = chart.difficulties.empty()
+            ? "" : chart.difficulties[diffIdx].name;
+
+        auto bestOpt = sakura::data::Database::GetInstance()
+                           .GetBestScore(chart.id, diffName);
+
+        std::string bestText;
+        if (bestOpt.has_value())
+        {
+            const auto& best   = bestOpt.value();
+            // 评级字符串
+            const char* gradeStr[] = { "SS", "S", "A", "B", "C", "D" };
+            int gi = static_cast<int>(best.grade);
+            const char* gs = (gi >= 0 && gi <= 5) ? gradeStr[gi] : "?";
+            // 分数 7 位字符串
+            std::string sc = std::to_string(best.score);
+            while (sc.size() < 7) sc = "0" + sc;
+            std::ostringstream oss;
+            oss << "Best: " << sc << "  " << gs
+                << "  " << std::fixed << std::setprecision(2)
+                << best.accuracy << "%";
+            bestText = oss.str();
+        }
+        else
+        {
+            bestText = "Best: --  (No Record)";
+        }
+
+        renderer.DrawText(m_fontSmall, bestText,
+            px, 0.720f, 0.022f,
+            sakura::core::Color{ 220, 200, 140, 210 },
+            sakura::core::TextAlign::Center);
+    }
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────

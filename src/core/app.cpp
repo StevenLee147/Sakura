@@ -5,6 +5,7 @@
 #include "scene/scene_splash.h"
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
+#include "data/database.h"
 
 namespace sakura::core
 {
@@ -28,6 +29,12 @@ bool App::Initialize()
     LOG_INFO("正在初始化 Sakura-樱...");
     // ── 配置系统 ────────────────────────────────────────────────────────────────
     Config::GetInstance().Load("config/settings.json");
+
+    // ── 数据库 ───────────────────────────────────────────────────────────────────
+    if (!sakura::data::Database::GetInstance().Initialize("data/sakura.db"))
+    {
+        LOG_WARN("Database 初始化失败（非致命）");
+    }
     // ── SDL 初始化 ────────────────────────────────────────────────────────────
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
     {
@@ -152,6 +159,9 @@ void App::Shutdown()
     m_window.Destroy();
 
     SDL_Quit();
+
+    // 关闭数据库
+    sakura::data::Database::GetInstance().Shutdown();
 
     // 保存配置（如果有修改）
     Config::GetInstance().Save();
