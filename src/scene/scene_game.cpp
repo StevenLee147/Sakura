@@ -247,7 +247,10 @@ void SceneGame::HandleMouseClick(float normX, float normY)
     }
 
     m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-    AddJudgeFlash(result, false, 0, note.x, note.y);
+    // 将鼠标区局部坐标转换为屏幕坐标再存入闪现记录
+    float flashSX = MOUSE_X + note.x * MOUSE_W;
+    float flashSY = MOUSE_Y + note.y * MOUSE_H;
+    AddJudgeFlash(result, false, 0, flashSX, flashSY);
 }
 
 // ── AddJudgeFlash ─────────────────────────────────────────────────────────────
@@ -271,6 +274,30 @@ void SceneGame::OnUpdate(float dt)
 {
     // 更新 GameState（倒计时、时间推进）
     m_gameState.Update(dt);
+
+    // ── 游戏结束 → 切换到结算场景（在 IsPlaying 守卫之前检查）─────────────────
+    if (m_gameState.IsFinished())
+    {
+        LOG_INFO("[SceneGame] 游戏完成，切换到结算");
+
+        // 将 CheckFinished 中强制判定的 Miss 计入分数
+        int forcedMisses = m_gameState.TakeForcedMisses();
+        for (int i = 0; i < forcedMisses; ++i)
+            m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
+
+        auto result = m_score.GetResult(
+            m_chartInfo.id,
+            m_chartInfo.title,
+            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
+                ? m_chartInfo.difficulties[m_difficultyIndex].name : "Unknown",
+            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
+                ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f
+        );
+        m_manager.SwitchScene(
+            std::make_unique<SceneResult>(m_manager, result, m_chartInfo),
+            TransitionType::Fade, 0.5f);
+        return;
+    }
 
     if (!m_gameState.IsPlaying()) return;
 
@@ -360,23 +387,6 @@ void SceneGame::OnUpdate(float dt)
             it = m_judgeFlashes.erase(it);
         else
             ++it;
-    }
-
-    // ── 游戏结束 → 切换到结算场景 ────────────────────────────────────────────
-    if (m_gameState.IsFinished())
-    {
-        LOG_INFO("[SceneGame] 游戏完成，切换到结算");
-        auto result = m_score.GetResult(
-            m_chartInfo.id,
-            m_chartInfo.title,
-            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
-                ? m_chartInfo.difficulties[m_difficultyIndex].name : "Unknown",
-            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
-                ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f
-        );
-        m_manager.SwitchScene(
-            std::make_unique<SceneResult>(m_manager, result, m_chartInfo),
-            TransitionType::Fade, 0.5f);
     }
 }
 
@@ -615,35 +625,45 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
         {
         case sakura::game::NoteType::Circle:
         {
+            // 将鼠标区局部坐标转换为屏幕坐标
+            float sx = MOUSE_X + note.x * MOUSE_W;
+            float sy = MOUSE_Y + note.y * MOUSE_H;
             // 接近圈（外圈从大到小）
-            renderer.DrawCircleOutline(note.x, note.y, 0.028f * scale,
+            renderer.DrawCircleOutline(sx, sy, 0.028f * scale,
                 sakura::core::Color{ 220, 170, 255, static_cast<uint8_t>(alpha * 0.7f) },
                 0.002f, 48);
             // 核心圆
-            renderer.DrawCircleFilled(note.x, note.y, 0.025f,
+            renderer.DrawCircleFilled(sx, sy, 0.025f,
                 sakura::core::Color{ 200, 150, 255, alpha });
             // 边缘
-            renderer.DrawCircleOutline(note.x, note.y, 0.025f,
+            renderer.DrawCircleOutline(sx, sy, 0.025f,
                 sakura::core::Color{ 255, 220, 255, alpha }, 0.002f, 48);
             break;
         }
         case sakura::game::NoteType::Slider:
         {
+            // 将鼠标区局部坐标转换为屏幕坐标
+            float sx = MOUSE_X + note.x * MOUSE_W;
+            float sy = MOUSE_Y + note.y * MOUSE_H;
             // 头部
-            renderer.DrawCircleOutline(note.x, note.y, 0.030f * scale,
+            renderer.DrawCircleOutline(sx, sy, 0.030f * scale,
                 sakura::core::Color{ 180, 255, 200, static_cast<uint8_t>(alpha * 0.6f) },
                 0.002f, 48);
-            renderer.DrawCircleFilled(note.x, note.y, 0.025f,
+            renderer.DrawCircleFilled(sx, sy, 0.025f,
                 sakura::core::Color{ 100, 220, 140, alpha });
 
-            // 路径线
+            // 路径线（路径点同样需要坐标转换）
             if (note.sliderPath.size() >= 2)
             {
-                for (size_t i = 1; i < note.sliderPath.size(); ++i)
+                for (size_t pi = 1; pi < note.sliderPath.size(); ++pi)
                 {
-                    auto [x1, y1] = note.sliderPath[i - 1];
-                    auto [x2, y2] = note.sliderPath[i];
-                    renderer.DrawLine(x1, y1, x2, y2,
+                    auto [x1, y1] = note.sliderPath[pi - 1];
+                    auto [x2, y2] = note.sliderPath[pi];
+                    float sx1 = MOUSE_X + x1 * MOUSE_W;
+                    float sy1 = MOUSE_Y + y1 * MOUSE_H;
+                    float sx2 = MOUSE_X + x2 * MOUSE_W;
+                    float sy2 = MOUSE_Y + y2 * MOUSE_H;
+                    renderer.DrawLine(sx1, sy1, sx2, sy2,
                         sakura::core::Color{ 80, 200, 120,
                             static_cast<uint8_t>(alpha * 0.5f) },
                         0.003f);
