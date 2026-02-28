@@ -41,15 +41,16 @@ find_package(SDL3_ttf CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+# miniaudio 是 header-only, 通过 vcpkg 安装后直接 include
 
 # ============================================================================
 # 源文件收集
 # ============================================================================
-file(GLOB_RECURSE SAKURA_SOURCES
+file(GLOB_RECURSE SAKURA_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-file(GLOB_RECURSE SAKURA_HEADERS
+file(GLOB_RECURSE SAKURA_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
 )
 

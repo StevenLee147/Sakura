@@ -8,7 +8,8 @@
         "sdl3-ttf",
         "nlohmann-json",
         "sqlite3",
-        "spdlog"
+        "spdlog",
+        "miniaudio"
     ],
     "builtin-baseline": "ffc071e0c08432c60c9b64f00334c0227667931b"
 }

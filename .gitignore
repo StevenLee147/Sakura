@@ -36,6 +36,9 @@ vcpkg_installed/
 logs/
 *.log
 
+# Runtime-generated config (default values are baked into code)
+config/settings.json
+
 # OS files
 Thumbs.db
 .DS_Store
