@@ -220,6 +220,7 @@ void GameState::Reset()
     m_kbActiveEnd    = 0;
     m_msActiveBegin  = 0;
     m_msActiveEnd    = 0;
+    m_forcedMissCount = 0;
 }
 
 // ── GetProgress ───────────────────────────────────────────────────────────────
@@ -380,7 +381,41 @@ void GameState::UpdateActiveWindows()
 
 void GameState::CheckFinished()
 {
-    // 检查所有音符是否已判定
+    // 音乐已结束（或无音乐模式）
+    auto& audio = sakura::audio::AudioManager::GetInstance();
+    bool musicEnded = !m_musicStarted
+                   || (!audio.IsPlaying() && !audio.IsPaused());
+
+    // 若音乐已结束，将所有仍未判定的音符强制判为 Miss
+    // （防止末尾 miss 窗口内的音符阻塞游戏结束流程）
+    if (musicEnded)
+    {
+        m_forcedMissCount = 0;
+        for (auto& n : m_chartData.keyboardNotes)
+        {
+            if (!n.isJudged)
+            {
+                n.isJudged = true;
+                n.result   = JudgeResult::Miss;
+                ++m_forcedMissCount;
+            }
+        }
+        for (auto& n : m_chartData.mouseNotes)
+        {
+            if (!n.isJudged)
+            {
+                n.isJudged = true;
+                n.result   = JudgeResult::Miss;
+                ++m_forcedMissCount;
+            }
+        }
+
+        m_phase = GamePhase::Finished;
+        LOG_INFO("游戏结束！");
+        return;
+    }
+
+    // 音乐仍在播放，检查是否所有音符都已判定
     for (const auto& n : m_chartData.keyboardNotes)
     {
         if (!n.isJudged) return;
@@ -390,16 +425,8 @@ void GameState::CheckFinished()
         if (!n.isJudged) return;
     }
 
-    // 音乐已结束（或无音乐模式下超过总时长）
-    auto& audio = sakura::audio::AudioManager::GetInstance();
-    bool musicEnded = !m_musicStarted
-                   || (!audio.IsPlaying() && !audio.IsPaused());
-
-    if (musicEnded)
-    {
-        m_phase = GamePhase::Finished;
-        LOG_INFO("游戏结束！");
-    }
+    // 所有音符已判定，等待音乐结束（通常是 AP 跑完）
+    // 实际上这里 musicEnded 已经是 false，留空让下帧再判断
 }
 
 } // namespace sakura::game

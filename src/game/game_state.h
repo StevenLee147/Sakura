@@ -99,6 +99,14 @@ public:
     // 当前难度总音符数（键盘 + 鼠标）
     int GetTotalNoteCount() const;
 
+    // 取走并清零 CheckFinished 强制 miss 的数量（供 SceneGame 同步计分）
+    int TakeForcedMisses()
+    {
+        int n = m_forcedMissCount;
+        m_forcedMissCount = 0;
+        return n;
+    }
+
 private:
     // 更新活跃音符窗口（二分查找）
     void UpdateActiveWindows();
@@ -112,6 +120,7 @@ private:
     int         m_globalOffset     = 0;       // Config 中的全局偏移（毫秒）
     float       m_countdownTimer   = 3.0f;    // 倒计时剩余（秒）
     bool        m_musicStarted     = false;   // 音乐是否已开始
+    int         m_forcedMissCount  = 0;       // CheckFinished 强制 miss 的音符数
 
     // ── 谱面数据 ──────────────────────────────────────────────────────────────
     ChartInfo   m_chartInfo;
