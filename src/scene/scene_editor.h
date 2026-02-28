@@ -11,6 +11,7 @@
 #include "editor/editor_core.h"
 #include "editor/editor_timeline.h"
 #include "editor/editor_mouse_area.h"
+#include "editor/editor_preview.h"
 
 #include <memory>
 #include <array>
@@ -42,6 +43,7 @@ private:
     sakura::editor::EditorCore      m_core;
     sakura::editor::EditorTimeline  m_timeline;
     sakura::editor::EditorMouseArea m_mouseArea;
+    sakura::editor::EditorPreview   m_preview;
 
     std::string m_initFolderPath;
     std::string m_initDiffFile;

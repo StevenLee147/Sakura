@@ -26,6 +26,7 @@ SceneEditor::SceneEditor(SceneManager& mgr,
     : m_manager(mgr)
     , m_timeline(m_core)
     , m_mouseArea(m_core)
+    , m_preview(m_core)
     , m_initFolderPath(folderPath)
     , m_initDiffFile(difficultyFile)
 {
@@ -63,6 +64,7 @@ void SceneEditor::OnEnter()
     // 初始化时间轴字体
     m_timeline.SetFont(m_fontSmall);
     m_mouseArea.SetFont(m_fontSmall);
+    m_preview.SetFont(m_fontSmall);
 
     // 加载音频波形（若谱面目录中有音乐文件）
     {
@@ -322,6 +324,15 @@ void SceneEditor::DoSave()
 
 void SceneEditor::OnUpdate(float dt)
 {
+    // 预览模式下只更新预览
+    if (m_preview.IsActive())
+    {
+        m_preview.Update(dt);
+        // 保持时间轴跟随预览时间位置
+        m_timeline.CenterOnTime(m_preview.GetCurrentMs());
+        return;
+    }
+
     m_core.Update(dt);
     m_timeline.Update(dt);
 
@@ -341,14 +352,17 @@ void SceneEditor::OnRender(sakura::core::Renderer& renderer)
     renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
         sakura::core::Color{ 8, 6, 18, 255 });
 
-    // 1. 工具栏
+    // 1. 工具栏（预览中也显示，但用红色边框区分状态）
     RenderToolbar(renderer);
 
     // 2. 键盘时间轴（EditorTimeline）
     m_timeline.Render(renderer);
 
-    // 3. 右侧鼠标编辑区（EditorMouseArea）
-    m_mouseArea.Render(renderer);
+    // 3. 右侧区域：预览模式时渲染预览，否则渲染鼠标编辑区
+    if (m_preview.IsActive())
+        m_preview.Render(renderer);
+    else
+        m_mouseArea.Render(renderer);
 
     // 4. 属性面板（占位）
     RenderPropertyPanel(renderer);
@@ -623,10 +637,45 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         }
     }
 
+    // ── 预览模式事件（优先处理） ─────────────────────────────────────────────
+    if (m_preview.IsActive())
+    {
+        m_preview.HandleEvent(event);
+        return;  // 预览中不处理编辑器事件
+    }
+
     // ── 键盘快捷键 ───────────────────────────────────────────────────────────
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
     {
         const SDL_Scancode sc = event.key.scancode;
+
+        // F5 → 从当前时间开始试玩
+        if (sc == SDL_SCANCODE_F5)
+        {
+            m_core.StopPlayback();  // 停止编辑器播放
+            m_preview.Start(m_core.GetCurrentTimeMs());
+            sakura::ui::ToastManager::Instance().Show(
+                "▶ 开始试玩 (ESC 退出)", sakura::ui::ToastType::Info);
+            return;
+        }
+
+        // F6 → 从选中音符 -2s 处开始试玩
+        if (sc == SDL_SCANCODE_F6)
+        {
+            int startMs = m_core.GetCurrentTimeMs();
+            int sel = m_core.GetSelectedKbNote();
+            if (sel >= 0 && sel < static_cast<int>(
+                    m_core.GetChartData().keyboardNotes.size()))
+            {
+                startMs = m_core.GetChartData().keyboardNotes[sel].time - 2000;
+            }
+            startMs = std::max(0, startMs);
+            m_core.StopPlayback();
+            m_preview.Start(startMs);
+            sakura::ui::ToastManager::Instance().Show(
+                "▶ 试玩 (从 -2s 处) (ESC 退出)", sakura::ui::ToastType::Info);
+            return;
+        }
 
         // ESC → 返回主菜单
         if (sc == SDL_SCANCODE_ESCAPE)
