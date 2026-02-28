@@ -2,6 +2,7 @@
 #include "config.h"
 #include "utils/logger.h"
 #include "scene/test_scenes.h"
+#include "audio/audio_manager.h"
 
 namespace sakura::core
 {
@@ -51,6 +52,12 @@ bool App::Initialize()
     }
     // ── 计时器 ────────────────────────────────────────────────────────────────
     m_timer.Reset();
+
+    // ── 音频管理器 ────────────────────────────────────────────────────────────
+    if (!sakura::audio::AudioManager::GetInstance().Initialize())
+    {
+        LOG_WARN("AudioManager 初始化失败（非致命）");
+    }
 
     // ── 初始场景 ──────────────────────────────────────────────────────────────
     m_sceneManager.SwitchScene(
@@ -108,7 +115,10 @@ void App::Shutdown()
 {
     LOG_INFO("正在关闭 Sakura-樱...");
 
-    // 先释放所有资源（渲染器销毁前）
+    // 先关闭音频（避免资源释放竞争）
+    sakura::audio::AudioManager::GetInstance().Shutdown();
+
+    // 释放所有资源（渲染器销毁前）
     ResourceManager::GetInstance().ReleaseAll();
 
     m_renderer.Destroy();
