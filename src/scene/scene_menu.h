@@ -108,9 +108,18 @@ private:
 
     // ── 视觉特效 ─────────────────────────────────────────────────────────────
     sakura::effects::ParticleSystem m_particles;
-    int   m_sakuraPetalEmitter = -1;   // 持续发射器 ID
+    int   m_sakuraPetalEmitterFG = -1; // 前景樱花
+    int   m_sakuraPetalEmitterMG = -1; // 中景樱花
+    int   m_sakuraPetalEmitterBG = -1; // 远景樱花
     int   m_bgFloatEmitter     = -1;   // 背景微粒发射器 ID
     float m_glowPhase          = 0.0f; // 标题发光脉冲相位（随时间递增）
+
+    // 鼠标点击光环特效（多个光环支持）
+    struct ClickRing { 
+        float x, y; 
+        float timer; // 存活时间
+    };
+    std::vector<ClickRing> m_clickRings;
 };
 
 } // namespace sakura::scene

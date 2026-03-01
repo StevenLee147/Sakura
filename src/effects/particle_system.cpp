@@ -25,26 +25,101 @@ static float RandFloat(float lo, float hi)
 namespace ParticlePresets
 {
 
-ParticleConfig SakuraPetal()
+ParticleConfig SakuraPetalForeground()
 {
     ParticleConfig cfg;
-    cfg.spreadX      =  0.40f;  // 横向随机散布整个屏幕宽度
+    cfg.spreadX      =  0.50f;
+    cfg.spreadY      =  0.0f;
+    cfg.vxMin        = -0.05f;
+    cfg.vxMax        =  0.05f;
+    cfg.vyMin        =  0.15f;  // 快速落下
+    cfg.vyMax        =  0.25f;
+    cfg.ax           =  0.01f;
+    cfg.ay           =  0.03f;
+    cfg.sizeMin      =  0.025f; // 大花瓣
+    cfg.sizeMax      =  0.040f;
+    cfg.sizeEndMult  =  0.9f;
+    cfg.rotSpeedMin  = -180.0f;
+    cfg.rotSpeedMax  =  180.0f;
+    cfg.lifeMin      =  2.0f;
+    cfg.lifeMax      =  3.5f;
+    // 前景高斯模糊，这里用较低透明度和更深/明亮的颜色近似
+    cfg.colorStart   = { 255, 160, 190, 160 };
+    cfg.colorEnd     = { 255, 130, 160,   0 };
+    return cfg;
+}
+
+ParticleConfig SakuraPetalMidground()
+{
+    ParticleConfig cfg;
+    cfg.spreadX      =  0.50f;
     cfg.spreadY      =  0.0f;
     cfg.vxMin        = -0.02f;
     cfg.vxMax        =  0.02f;
-    cfg.vyMin        =  0.04f;  // 向下飘落
+    cfg.vyMin        =  0.05f;  // 正常速度
     cfg.vyMax        =  0.10f;
-    cfg.ax           =  0.01f;
-    cfg.ay           =  0.02f;
+    cfg.ax           =  0.005f;
+    cfg.ay           =  0.015f;
     cfg.sizeMin      =  0.010f;
-    cfg.sizeMax      =  0.020f;
+    cfg.sizeMax      =  0.018f;
     cfg.sizeEndMult  =  0.8f;
     cfg.rotSpeedMin  = -90.0f;
     cfg.rotSpeedMax  =  90.0f;
-    cfg.lifeMin      =  3.0f;
-    cfg.lifeMax      =  5.0f;
-    cfg.colorStart   = { 255, 180, 200, 200 };
+    cfg.lifeMin      =  4.0f;
+    cfg.lifeMax      =  6.0f;
+    cfg.colorStart   = { 255, 180, 200, 220 };
     cfg.colorEnd     = { 255, 150, 180,   0 };
+    return cfg;
+}
+
+ParticleConfig SakuraPetalBackground()
+{
+    ParticleConfig cfg;
+    cfg.spreadX      =  0.50f;
+    cfg.spreadY      =  0.0f;
+    cfg.vxMin        = -0.01f;
+    cfg.vxMax        =  0.01f;
+    cfg.vyMin        =  0.01f;  // 慢速漂浮
+    cfg.vyMax        =  0.03f;
+    cfg.ax           =  0.002f;
+    cfg.ay           =  0.005f;
+    cfg.sizeMin      =  0.003f; // 极小花瓣
+    cfg.sizeMax      =  0.008f;
+    cfg.sizeEndMult  =  0.7f;
+    cfg.rotSpeedMin  = -45.0f;
+    cfg.rotSpeedMax  =  45.0f;
+    cfg.lifeMin      =  8.0f;
+    cfg.lifeMax      =  12.0f;
+    cfg.colorStart   = { 255, 190, 210, 100 };
+    cfg.colorEnd     = { 255, 170, 190,   0 };
+    return cfg;
+}
+
+ParticleConfig SakuraPetal()
+{
+    return SakuraPetalMidground();
+}
+
+ParticleConfig ClickSpark()
+{
+    ParticleConfig cfg;
+    cfg.spreadX      =  0.0f;
+    cfg.spreadY      =  0.0f;
+    cfg.vxMin        = -0.15f;
+    cfg.vxMax        =  0.15f;
+    cfg.vyMin        = -0.15f;
+    cfg.vyMax        =  0.15f;
+    cfg.ax           =  0.0f;
+    cfg.ay           =  0.0f;  
+    cfg.sizeMin      =  0.003f;
+    cfg.sizeMax      =  0.008f;
+    cfg.sizeEndMult  =  0.1f;
+    cfg.rotSpeedMin  = -180.0f;
+    cfg.rotSpeedMax  =  180.0f;
+    cfg.lifeMin      =  0.15f;
+    cfg.lifeMax      =  0.3f;
+    cfg.colorStart   = { 255, 255, 255, 255 };
+    cfg.colorEnd     = { 255, 200, 255,   0 };
     return cfg;
 }
 

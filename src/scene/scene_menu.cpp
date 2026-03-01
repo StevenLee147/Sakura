@@ -66,10 +66,17 @@ void SceneMenu::OnEnter()
     // ── 特效初始化 ────────────────────────────────────────────────────────────
     m_particles.Clear();
     m_glowPhase = 0.0f;
+    m_clickRings.clear();
 
-    // 樱花飘落：从屏幕顶部均匀发射（5~8 个/s）
-    auto sakuraCfg = sakura::effects::ParticlePresets::SakuraPetal();
-    m_sakuraPetalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 6.0f, sakuraCfg);
+    // 樱花飘落（伪3D三层）
+    auto cfgFG = sakura::effects::ParticlePresets::SakuraPetalForeground();
+    m_sakuraPetalEmitterFG = m_particles.EmitContinuous(0.5f, -0.05f, 2.0f, cfgFG);
+
+    auto cfgMG = sakura::effects::ParticlePresets::SakuraPetalMidground();
+    m_sakuraPetalEmitterMG = m_particles.EmitContinuous(0.5f, -0.05f, 5.0f, cfgMG);
+
+    auto cfgBG = sakura::effects::ParticlePresets::SakuraPetalBackground();
+    m_sakuraPetalEmitterBG = m_particles.EmitContinuous(0.5f, -0.05f, 10.0f, cfgBG);
 
     // 背景微粒：全屏随机漂浮（3/s，低透明度）
     auto bgCfg = sakura::effects::ParticlePresets::BackgroundFloat();
@@ -299,9 +306,13 @@ void SceneMenu::SetupConfirmButtons()
 void SceneMenu::OnExit()
 {
     LOG_INFO("[SceneMenu] 退出主菜单");
-    m_particles.StopEmitter(m_sakuraPetalEmitter);
+    m_particles.StopEmitter(m_sakuraPetalEmitterFG);
+    m_particles.StopEmitter(m_sakuraPetalEmitterMG);
+    m_particles.StopEmitter(m_sakuraPetalEmitterBG);
     m_particles.StopEmitter(m_bgFloatEmitter);
-    m_sakuraPetalEmitter = -1;
+    m_sakuraPetalEmitterFG = -1;
+    m_sakuraPetalEmitterMG = -1;
+    m_sakuraPetalEmitterBG = -1;
     m_bgFloatEmitter     = -1;
     m_particles.Clear();
     for (auto& btn : m_buttons) btn.reset();
@@ -355,9 +366,19 @@ void SceneMenu::OnUpdate(float dt)
 {
     UpdateEnterAnimation(dt);
 
-    // ── 粒子更新 ─────────────────────────────────────────────────────────────
+    // ── 粒子与特效更新 ───────────────────────────────────────────────────────
     m_particles.Update(dt);
     m_glowPhase += dt;  // 标题脉冲相位
+
+    for (auto it = m_clickRings.begin(); it != m_clickRings.end(); )
+    {
+        it->timer += dt;
+        if (it->timer > 0.4f) { // 存活0.4秒
+            it = m_clickRings.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     // 更新按钮（按带 Update 处理悬停动画）
     for (int i = 0; i < BUTTON_COUNT; ++i)
@@ -414,6 +435,15 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
     // ── 背景微粒 + 樱花飘落 ────────────────────────────────────────────────────
     m_particles.Render(renderer);
+
+    // ── 鼠标点击光环特效 ────────────────────────────────────────────────────────
+    for (const auto& ring : m_clickRings)
+    {
+        float t = ring.timer / 0.4f; // 0~1
+        float radius = sakura::utils::EaseOutCubic(t) * 0.05f; // 最大半径 5% 屏幕短边
+        uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - t));
+        renderer.DrawCircleOutline(ring.x, ring.y, radius, sakura::core::Color{ 255, 255, 255, alpha }, 0.002f, 32);
+    }
 
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
 
@@ -557,6 +587,15 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
 void SceneMenu::OnEvent(const SDL_Event& event)
 {
+    // 鼠标点击全局特效
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+    {
+        auto [mx, my] = sakura::core::Input::GetMousePosition();
+        m_clickRings.push_back({mx, my, 0.0f});
+        auto cfg = sakura::effects::ParticlePresets::ClickSpark();
+        m_particles.Emit(mx, my, 5, cfg);
+    }
+
     // 编辑器子菜单优先
     if (m_showEditorMenu)
     {

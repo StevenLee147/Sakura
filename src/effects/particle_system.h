@@ -75,8 +75,16 @@ struct ParticleConfig
 
 namespace ParticlePresets
 {
-    // 樱花飘落（背景装饰）
+    // 樱花飘落（背景装饰，分层：前景/中景/远景）
+    ParticleConfig SakuraPetalForeground();
+    ParticleConfig SakuraPetalMidground();
+    ParticleConfig SakuraPetalBackground();
+
+    // 遗留兼容，底层调用 Midground
     ParticleConfig SakuraPetal();
+
+    // 鼠标点击爆炸光点
+    ParticleConfig ClickSpark();
 
     // 命中爆发（判定时短暂火花）
     ParticleConfig HitBurst(sakura::core::Color color);
