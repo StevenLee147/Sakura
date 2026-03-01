@@ -4,8 +4,11 @@
 // 单例，管理背景音乐和音效播放
 
 #include "core/resource_manager.h"
+#include "game/note.h"
 #include <string>
 #include <string_view>
+#include <array>
+#include <unordered_map>
 
 // 前向声明 miniaudio 类型（避免在头文件中包含大型单文件库）
 struct ma_engine;
@@ -13,6 +16,29 @@ struct ma_sound;
 
 namespace sakura::audio
 {
+
+// ── UI 音效类型 ────────────────────────────────────────────────────────────────
+
+enum class UISFXType
+{
+    ButtonHover,    // 鼠标悬停
+    ButtonClick,    // 按钮点击
+    Transition,     // 场景切换
+    ResultScore,    // 分数滚动 tick
+    ResultGrade,    // 评级出现
+    Toast,          // Toast 通知
+};
+
+// ── Hitsound 类型 ─────────────────────────────────────────────────────────────
+
+enum class HitsoundType
+{
+    Tap,
+    HoldStart,
+    HoldTick,
+    Circle,
+    SliderStart,
+};
 
 // AudioManager — 单例音频管理器
 class AudioManager
@@ -83,6 +109,27 @@ public:
     void SetPlaybackSpeed(float speed);
     float GetPlaybackSpeed() const { return m_playbackSpeed; }
 
+    // ── Hitsound 系统 ─────────────────────────────────────────────────────────
+
+    // 加载 hitsound 集（从 resources/sound/sfx/{name}/ 读取）
+    // 若文件不存在，先调用 SfxGenerator 生成占位文件
+    bool LoadHitsoundSet(std::string_view name);
+
+    // 播放 hitsound（直接指定 HitsoundType）
+    void PlayHitsound(HitsoundType type);
+
+    // 根据 NoteType 自动推断并播放 hitsound
+    void PlayHitsoundForNote(sakura::game::NoteType noteType);
+
+    // 播放判定音效（JudgeResult → perfect/great/good/bad/miss.wav）
+    void PlayJudgeSFX(sakura::game::JudgeResult result);
+
+    // 播放 UI 音效
+    void PlayUISFX(UISFXType type);
+
+    // 当前 hitsound set 名称
+    const std::string& GetHitsoundSetName() const { return m_hitsoundSetName; }
+
     // ── 引擎访问 ──────────────────────────────────────────────────────────────
 
     ma_engine* GetEngine() const { return m_engine; }
@@ -111,6 +158,12 @@ private:
     float m_fadeTimer      = 0.0f;
     float m_fadeDuration   = 0.0f;
     float m_fadeStartVol   = 0.0f;
+
+    // Hitsound 文件路径缓存（按类型索引）
+    std::string m_hitsoundSetName;
+    std::array<std::string, 5>  m_hitsoundPaths;   // indexed by HitsoundType
+    std::array<std::string, 5>  m_judgeSFXPaths;   // Perfect/Great/Good/Bad/Miss
+    std::array<std::string, 6>  m_uiSFXPaths;      // indexed by UISFXType
 };
 
 } // namespace sakura::audio

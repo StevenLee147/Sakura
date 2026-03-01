@@ -10,6 +10,11 @@
 namespace sakura::ui
 {
 
+// ── 静态成员定义 ──────────────────────────────────────────────────────────────
+
+std::function<void()> Button::s_hoverSFX;
+std::function<void()> Button::s_clickSFX;
+
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
 Button::Button(sakura::core::NormRect bounds,
@@ -145,7 +150,8 @@ bool Button::HandleEvent(const SDL_Event& event)
         m_isHovered = HitTest(mx, my);
         if (!wasHovered && m_isHovered)
         {
-            // 鼠标进入
+            // 鼠标进入 — 播放 hover 音效
+            if (s_hoverSFX) s_hoverSFX();
         }
         break;
     }
@@ -167,6 +173,8 @@ bool Button::HandleEvent(const SDL_Event& event)
             m_isPressed = false;
             if (HitTest(mx, my) && m_onClick)
             {
+                // 播放 click 音效
+                if (s_clickSFX) s_clickSFX();
                 m_onClick();
             }
             return true;

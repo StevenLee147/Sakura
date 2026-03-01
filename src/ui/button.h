@@ -40,6 +40,10 @@ public:
     void SetCornerRadius(float radius)              { m_cornerRadius = radius; }
     void SetOnClick(std::function<void()> onClick) { m_onClick = std::move(onClick); }
 
+    // ── 全局 UI 音效回调（由 AudioManager 注册，无需逐按钮设置）────────────
+    static void SetGlobalHoverSFX(std::function<void()> cb) { s_hoverSFX = std::move(cb); }
+    static void SetGlobalClickSFX(std::function<void()> cb) { s_clickSFX = std::move(cb); }
+
     // ── 生명周期 ──────────────────────────────────────────────────────────────
 
     void Update(float dt) override;
@@ -71,6 +75,10 @@ private:
     // 混色辅助
     static sakura::core::Color LerpColor(sakura::core::Color a,
                                           sakura::core::Color b, float t);
+
+    // 全局音效回调
+    static std::function<void()> s_hoverSFX;
+    static std::function<void()> s_clickSFX;
 };
 
 } // namespace sakura::ui

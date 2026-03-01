@@ -6,6 +6,7 @@
 #include <miniaudio.h>
 
 #include "audio_manager.h"
+#include "sfx_generator.h"
 #include "core/config.h"
 #include "utils/logger.h"
 
@@ -342,6 +343,85 @@ void AudioManager::SetPlaybackSpeed(float speed)
         ma_sound_set_pitch(m_music, m_playbackSpeed);
     }
     LOG_DEBUG("播放速度设置为 {:.2f}x", m_playbackSpeed);
+}
+
+// ── Hitsound 系统 ─────────────────────────────────────────────────────────────
+
+bool AudioManager::LoadHitsoundSet(std::string_view name)
+{
+    // 先生成占位音效（若不存在）
+    SfxGenerator::GenerateDefaults("resources/sound/sfx");
+
+    m_hitsoundSetName = std::string(name);
+    std::string base = "resources/sound/sfx/" + m_hitsoundSetName + "/";
+
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = base + "tap.wav";
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = base + "hold_start.wav";
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldTick)]    = base + "hold_tick.wav";
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Circle)]      = base + "circle.wav";
+    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderStart)] = base + "slider_start.wav";
+
+    m_judgeSFXPaths[0] = base + "perfect.wav";
+    m_judgeSFXPaths[1] = base + "great.wav";
+    m_judgeSFXPaths[2] = base + "good.wav";
+    m_judgeSFXPaths[3] = base + "bad.wav";
+    m_judgeSFXPaths[4] = base + "miss.wav";
+
+    // UI 音效统一放 ui/
+    std::string ui = "resources/sound/sfx/ui/";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]   = ui + "button_hover.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]   = ui + "button_click.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]    = ui + "transition.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ResultScore)]   = ui + "result_score.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ResultGrade)]   = ui + "result_grade.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::Toast)]         = ui + "toast.wav";
+
+    LOG_INFO("[AudioManager] 已加载 hitsound set: {}", name);
+    return true;
+}
+
+void AudioManager::PlayHitsound(HitsoundType type)
+{
+    if (!m_initialized) return;
+    int idx = static_cast<int>(type);
+    if (idx < 0 || idx >= static_cast<int>(m_hitsoundPaths.size())) return;
+    const auto& path = m_hitsoundPaths[idx];
+    if (!path.empty() && std::filesystem::exists(path))
+        PlaySFX(path);
+}
+
+void AudioManager::PlayHitsoundForNote(sakura::game::NoteType noteType)
+{
+    HitsoundType ht;
+    switch (noteType)
+    {
+        case sakura::game::NoteType::Hold:   ht = HitsoundType::HoldStart;   break;
+        case sakura::game::NoteType::Drag:   ht = HitsoundType::Tap;          break;
+        case sakura::game::NoteType::Circle: ht = HitsoundType::Circle;       break;
+        case sakura::game::NoteType::Slider: ht = HitsoundType::SliderStart;  break;
+        default:                             ht = HitsoundType::Tap;          break;
+    }
+    PlayHitsound(ht);
+}
+
+void AudioManager::PlayJudgeSFX(sakura::game::JudgeResult result)
+{
+    if (!m_initialized) return;
+    int idx = static_cast<int>(result);
+    if (idx < 0 || idx >= static_cast<int>(m_judgeSFXPaths.size())) return;
+    const auto& path = m_judgeSFXPaths[idx];
+    if (!path.empty() && std::filesystem::exists(path))
+        PlaySFX(path);
+}
+
+void AudioManager::PlayUISFX(UISFXType type)
+{
+    if (!m_initialized) return;
+    int idx = static_cast<int>(type);
+    if (idx < 0 || idx >= static_cast<int>(m_uiSFXPaths.size())) return;
+    const auto& path = m_uiSFXPaths[idx];
+    if (!path.empty() && std::filesystem::exists(path))
+        PlaySFX(path);
 }
 
 } // namespace sakura::audio

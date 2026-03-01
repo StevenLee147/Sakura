@@ -9,6 +9,7 @@
 #include "data/database.h"
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
+#include "ui/button.h"
 
 namespace sakura::core
 {
@@ -82,6 +83,21 @@ bool App::Initialize()
     if (!sakura::audio::AudioManager::GetInstance().Initialize())
     {
         LOG_WARN("AudioManager 初始化失败（非致命）");
+    }
+
+    // 加载默认 hitsound 集并注册 Button 全局 UI 音效
+    {
+        auto& am = sakura::audio::AudioManager::GetInstance();
+        am.LoadHitsoundSet("default");
+
+        sakura::ui::Button::SetGlobalHoverSFX([&am]()
+        {
+            am.PlayUISFX(sakura::audio::UISFXType::ButtonHover);
+        });
+        sakura::ui::Button::SetGlobalClickSFX([&am]()
+        {
+            am.PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+        });
     }
 
     // ── 谱面加载器验证（Step 1.3 验收）──────────────────────────────────────────

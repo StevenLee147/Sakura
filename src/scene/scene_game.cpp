@@ -313,6 +313,16 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
         m_particles.Emit(emitX, emitY, 12,
             sakura::effects::ParticlePresets::HitBurst(judgeColor));
     }
+
+    // ── 判定音效 ──────────────────────────────────────────────────────────────
+    sakura::audio::AudioManager::GetInstance().PlayJudgeSFX(r);
+
+    // ── Hitsound（按音符类型）────────────────────────────────────────────────
+    auto hsType = isKb
+        ? sakura::audio::HitsoundType::Tap
+        : sakura::audio::HitsoundType::Circle;
+    if (r != sakura::game::JudgeResult::Miss)
+        sakura::audio::AudioManager::GetInstance().PlayHitsound(hsType);
 }
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
