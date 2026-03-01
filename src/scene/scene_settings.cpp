@@ -357,24 +357,6 @@ void SceneSettings::SetupDisplayTab()
         m_isDirty = true;
     });
 
-    // 主题 Dropdown
-    auto& theme = sakura::core::Theme::GetInstance();
-    int themeIdx = 0;
-    if (theme.Preset() == sakura::core::ThemePreset::Midnight)  themeIdx = 1;
-    else if (theme.Preset() == sakura::core::ThemePreset::Daylight) themeIdx = 2;
-    m_dropTheme = std::make_unique<sakura::ui::Dropdown>(
-        sakura::core::NormRect{ CONTENT_X + CONTENT_W * 0.3f, SlotY(4), CONTENT_W * 0.4f, 0.055f },
-        std::vector<std::string>{ "Sakura（深蓝+粉色）", "Midnight（黑+霓虹紫）", "Daylight（浅灰+柔蓝）" },
-        themeIdx,
-        m_font, 0.024f);
-    m_dropTheme->SetOnChange([this](int idx, const std::string&)
-    {
-        auto& t = sakura::core::Theme::GetInstance();
-        if      (idx == 1) t.SetPreset(sakura::core::ThemePreset::Midnight);
-        else if (idx == 2) t.SetPreset(sakura::core::ThemePreset::Daylight);
-        else               t.SetPreset(sakura::core::ThemePreset::Sakura);
-        // 主题写入 Config 由 Theme::SetPreset 负责，无需额外设 dirty
-    });
 }
 
 // ── SetupBackButton ───────────────────────────────────────────────────────────
@@ -617,7 +599,6 @@ void SceneSettings::OnUpdate(float dt)
     m_toggleFullscreen->Update(dt);
     m_dropFpsLimit->Update(dt);
     m_toggleVSync->Update(dt);
-    if (m_dropTheme) m_dropTheme->Update(dt);
 
     m_btnBack->Update(dt);
     if (m_isDirty && m_btnSave) m_btnSave->Update(dt);
@@ -720,7 +701,6 @@ void SceneSettings::OnEvent(const SDL_Event& event)
             m_toggleFullscreen->HandleEvent(event);
             m_dropFpsLimit->HandleEvent(event);
             m_toggleVSync->HandleEvent(event);
-            if (m_dropTheme) m_dropTheme->HandleEvent(event);
             break;
     }
 
@@ -824,13 +804,9 @@ void SceneSettings::RenderDisplayTab(sakura::core::Renderer& renderer)
         CONTENT_X, SlotY(2), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
     renderer.DrawText(m_font, "垂直同步",
         CONTENT_X, SlotY(3), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
-    renderer.DrawText(m_font, "界面主题",
-        CONTENT_X, SlotY(4), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
-
     m_toggleFullscreen->Render(renderer);
     m_dropFpsLimit->Render(renderer);
     m_toggleVSync->Render(renderer);
-    if (m_dropTheme) m_dropTheme->Render(renderer);
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────

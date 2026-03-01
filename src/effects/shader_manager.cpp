@@ -297,12 +297,8 @@ bool ShaderManager::IsEffectEnabled(EffectType type) const
 
 void ShaderManager::ApplyPostProcess()
 {
-    // 默认后处理链（游戏运行状态）：
-    // 暗角叠加（始终开启，如 Config 允许）
-    if (IsEffectEnabled(EffectType::Vignette))
-    {
-        DrawVignette(0.55f);
-    }
+    // 后处理链：目前不在全局层级叠加暗角
+    // 暗角仅在明确需要的场景（如暂停）中由各场景主动调用 DrawVignette
 }
 
 } // namespace sakura::effects
