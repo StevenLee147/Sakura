@@ -391,8 +391,10 @@ int EditorCore::RawAddNote(const sakura::game::KeyboardNote& note)
         [](const sakura::game::KeyboardNote& a, const sakura::game::KeyboardNote& b) {
             return a.time < b.time || (a.time == b.time && a.lane < b.lane);
         });
-    notes.insert(it, note);
-    return static_cast<int>(std::distance(notes.begin(), it));
+    // 在 insert 之前计算索引，因为 insert 会使迭代器失效
+    int index = static_cast<int>(it - notes.begin());
+    notes.insert(notes.begin() + index, note);
+    return index;
 }
 
 void EditorCore::RawInsertNoteAt(int index, const sakura::game::KeyboardNote& note)
@@ -665,8 +667,10 @@ int EditorCore::RawAddMouseNote(const sakura::game::MouseNote& note)
         [](const sakura::game::MouseNote& a, const sakura::game::MouseNote& b) {
             return a.time < b.time;
         });
-    notes.insert(it, note);
-    return static_cast<int>(std::distance(notes.begin(), it));
+    // 在 insert 之前计算索引，因为 insert 会使迭代器失效
+    int index = static_cast<int>(it - notes.begin());
+    notes.insert(notes.begin() + index, note);
+    return index;
 }
 
 void EditorCore::RawInsertMouseNoteAt(int index, const sakura::game::MouseNote& note)
