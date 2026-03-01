@@ -6,6 +6,7 @@
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
 #include "data/database.h"
+#include "effects/screen_shake.h"
 
 namespace sakura::core
 {
@@ -214,6 +215,14 @@ void App::Update(float dt)
 
     // 场景更新
     m_sceneManager.Update(dt);
+
+    // 屏幕震动更新：将偏移量（归一化）转为像素写入渲染器
+    {
+        auto [sdx, sdy] = sakura::effects::ScreenShake::GetInstance().Update(dt);
+        int pixDx = static_cast<int>(sdx * static_cast<float>(m_renderer.GetScreenWidth()));
+        int pixDy = static_cast<int>(sdy * static_cast<float>(m_renderer.GetScreenHeight()));
+        m_renderer.SetViewportShake(pixDx, pixDy);
+    }
 
     OnUpdate(dt);
 

@@ -86,13 +86,43 @@ void Renderer::BeginFrame()
 
 void Renderer::EndFrame()
 {
+    // 渲染结束：重置 viewport 再提交
+    SDL_SetRenderViewport(m_renderer, nullptr);
     SDL_RenderPresent(m_renderer);
+}
+
+void Renderer::SetViewportShake(int pixelDx, int pixelDy)
+{
+    m_shakeOffsetX = pixelDx;
+    m_shakeOffsetY = pixelDy;
+}
+
+void Renderer::ResetViewportShake()
+{
+    m_shakeOffsetX = 0;
+    m_shakeOffsetY = 0;
 }
 
 void Renderer::Clear(Color color)
 {
+    // 先重置 viewport 填充全屏背景
+    SDL_SetRenderViewport(m_renderer, nullptr);
     SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
     SDL_RenderClear(m_renderer);
+
+    // 若有震动偏移，设置 viewport 使后续绘制产生位移
+    if (m_shakeOffsetX != 0 || m_shakeOffsetY != 0)
+    {
+        int sw = GetScreenWidth();
+        int sh = GetScreenHeight();
+        SDL_Rect vp = {
+            m_shakeOffsetX,
+            m_shakeOffsetY,
+            sw,
+            sh
+        };
+        SDL_SetRenderViewport(m_renderer, &vp);
+    }
 }
 
 // ── 归一化坐标转换 ────────────────────────────────────────────────────────────

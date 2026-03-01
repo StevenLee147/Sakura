@@ -194,6 +194,14 @@ public:
     // ── 混合模式 ──────────────────────────────────────────────────────────────
     void SetBlendMode(BlendMode mode);
 
+    // ── 屏幕震动 viewport 偏移 ────────────────────────────────────────────────
+    // 每帧在 Clear() 之前调用，设置渲染偏移（单位：像素）
+    // 正值 => 内容向右/下移；负值 => 向左/上移
+    void SetViewportShake(int pixelDx, int pixelDy);
+
+    // 重置震动偏移（恢复全屏 viewport）
+    void ResetViewportShake();
+
     // ── 屏幕信息 ──────────────────────────────────────────────────────────────
     int GetScreenWidth()  const;
     int GetScreenHeight() const;
@@ -209,6 +217,10 @@ public:
 private:
     SDL_Renderer* m_renderer = nullptr;
     SDL_Window*   m_window   = nullptr;
+
+    // 屏幕震动用 viewport 偏移（像素）
+    int m_shakeOffsetX = 0;
+    int m_shakeOffsetY = 0;
 };
 
 } // namespace sakura::core
