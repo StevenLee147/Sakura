@@ -6,6 +6,7 @@
 #include "scene_manager.h"
 #include "core/renderer.h"
 #include "core/resource_manager.h"
+#include "core/theme.h"
 #include "ui/button.h"
 #include "ui/slider.h"
 #include "ui/toggle.h"
@@ -83,6 +84,7 @@ private:
     std::unique_ptr<sakura::ui::Toggle>   m_toggleFullscreen;
     std::unique_ptr<sakura::ui::Dropdown> m_dropFpsLimit;
     std::unique_ptr<sakura::ui::Toggle>   m_toggleVSync;
+    std::unique_ptr<sakura::ui::Dropdown> m_dropTheme;   // 主题切换
 
     // ── 底部返回按钮 ──────────────────────────────────────────────────────────
     std::unique_ptr<sakura::ui::Button> m_btnBack;
