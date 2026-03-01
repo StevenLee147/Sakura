@@ -166,15 +166,19 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
         if (result != sakura::game::JudgeResult::Miss &&
             result != sakura::game::JudgeResult::None)
         {
+            // 立即标记 isJudged=true（防 CheckMisses 误判），result 留 None 等 Hold 结束
+            note.isJudged = true;
+            note.result   = sakura::game::JudgeResult::None;
+
             // 开始 Hold 状态追踪
             sakura::game::HoldState hs;
             hs.noteIndex  = bestIdx;
             hs.isHeld     = true;
             hs.headJudged = true;
             hs.headResult = result;
-            hs.nextTickMs = now + sakura::game::HoldState::TICK_INTERVAL_MS;
             m_holdStates.push_back(hs);
         }
+        // 头部判定结果反馈（闪光 + 计入头 Hit / Miss）
         m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
         AddJudgeFlash(result, true, lane);
     }
@@ -314,7 +318,7 @@ void SceneGame::OnUpdate(float dt)
             m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
     }
 
-    // ── Hold 持续 tick ────────────────────────────────────────────────────────
+    // ── Hold 持续判定 ────────────────────────────────────────────────────────
     auto& kbNotes = m_gameState.GetKeyboardNotes();
     for (auto it = m_holdStates.begin(); it != m_holdStates.end(); )
     {
@@ -326,18 +330,17 @@ void SceneGame::OnUpdate(float dt)
         }
         auto& note = kbNotes[hs.noteIndex];
 
-        // 检查对应按键是否还按住
-        bool isDown = sakura::core::Input::IsKeyHeld(m_laneKeys[note.lane]);
-        hs.isHeld   = isDown;
-
-        auto tickResult = m_judge.UpdateHoldTick(hs, note, now, isDown);
+        auto tickResult = m_judge.UpdateHoldTick(hs, note, now);
         if (tickResult != sakura::game::JudgeResult::None)
         {
+            // 写入终判结果（覆盖占位的 None）
+            note.result = tickResult;
             m_score.OnJudge(tickResult, 0);
+            AddJudgeFlash(tickResult, true, note.lane);
         }
 
-        // Hold 结束或全部判定完成
-        if (note.isJudged)
+        // finalized 置位后移除（由 UpdateHoldTick 内部设置）
+        if (hs.finalized)
         {
             it = m_holdStates.erase(it);
         }
@@ -412,7 +415,7 @@ void SceneGame::OnEvent(const SDL_Event& event)
         break;
 
     case SDL_EVENT_KEY_UP:
-        // 检测 Hold 松开
+        // 检测 Hold 松开 → 记录松开时刻
         for (auto& hs : m_holdStates)
         {
             if (hs.noteIndex < 0) continue;
@@ -420,8 +423,11 @@ void SceneGame::OnEvent(const SDL_Event& event)
             if (hs.noteIndex < static_cast<int>(kbNotes.size()))
             {
                 int lane = kbNotes[hs.noteIndex].lane;
-                if (event.key.scancode == m_laneKeys[lane])
-                    hs.isHeld = false;
+                if (event.key.scancode == m_laneKeys[lane] && hs.isHeld)
+                {
+                    hs.isHeld       = false;
+                    hs.releaseTimeMs = m_gameState.GetCurrentTime();
+                }
             }
         }
         break;
@@ -539,12 +545,28 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 
         float sv   = m_gameState.GetCurrentSVSpeed(now);
         float ry   = CalcNoteRenderY(note.time, now, sv);
-
-        // 剔除完全不可见的音符
-        if (ry < -0.05f || ry > 1.05f) continue;
-
         float lx   = GetLaneX(note.lane);
         float alpha = note.alpha;
+
+        // Hold：预先计算尾部 Y，用于精确可见性判断
+        float tailY = -999.0f;
+        if (note.type == sakura::game::NoteType::Hold)
+            tailY = CalcNoteRenderY(note.time + note.duration, now, sv);
+
+        // ── 可见性剔除 ─────────────────────────────────────────────────────────
+        // Hold 头部可能已过判定线（ry > 1.05），但尾部仍在屏幕内，不可跳过
+        if (note.type == sakura::game::NoteType::Hold)
+        {
+            // tailY 始终 ≤ ry（尾比头更晚到达，屏幕位置在头之上）
+            // 当 tailY > 1.05 时头尾均已超出底部（Hold 已完全结束）→ 跳过
+            if (tailY > 1.05f) continue;
+            // 头尾均在屏幕上方（音符尚未进入视野）→ 跳过
+            if (ry < -0.05f && tailY < -0.05f) continue;
+        }
+        else
+        {
+            if (ry < -0.05f || ry > 1.05f) continue;
+        }
 
         switch (note.type)
         {
@@ -567,12 +589,15 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
         }
         case sakura::game::NoteType::Hold:
         {
-            // 计算尾部 Y
-            float tailY = CalcNoteRenderY(note.time + note.duration, now, sv);
-            float topY  = std::min(ry - NOTE_H * 0.5f, tailY);
-            float botY  = std::max(ry + NOTE_H * 0.5f, tailY + NOTE_H * 0.5f);
+            // 持按中：头部钳制到判定线，保持视觉稳定
+            bool isHolding = note.isJudged &&
+                             (note.result == sakura::game::JudgeResult::None);
+            float headY = (isHolding && ry > JUDGE_LINE_Y) ? JUDGE_LINE_Y : ry;
 
-            // 长条
+            float topY = std::min(headY - NOTE_H * 0.5f, tailY);
+            float botY = std::max(headY + NOTE_H * 0.5f, tailY + NOTE_H * 0.5f);
+
+            // 长条（尾→头）
             sakura::core::Color holdColor = {
                 140, 100, 200, static_cast<uint8_t>(160 * alpha) };
             renderer.DrawFilledRect(
@@ -582,7 +607,7 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
             sakura::core::Color headColor = {
                 210, 170, 255, static_cast<uint8_t>(220 * alpha) };
             renderer.DrawRoundedRect(
-                { lx + 0.003f, ry - NOTE_H * 0.5f,
+                { lx + 0.003f, headY - NOTE_H * 0.5f,
                   LANE_W - 0.006f, NOTE_H },
                 0.004f, headColor, true);
             break;

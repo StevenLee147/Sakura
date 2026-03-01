@@ -6,6 +6,7 @@
 #include "scene_editor.h"
 #include "scene_chart_wizard.h"
 #include "core/input.h"
+#include "game/chart_loader.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <filesystem>
 
 namespace sakura::scene
 {
@@ -49,16 +51,20 @@ void SceneMenu::OnEnter()
     m_anim.done             = false;
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
-        m_anim.btnOffsetX[i] = 0.4f;
+        m_anim.btnOffsetY[i] = 0.25f;
         m_anim.btnTimers[i]  = 0.0f;
     }
 
-    // 重置退出确认状态
-    m_showExitConfirm = false;
+    // 重置状态
+    m_showExitConfirm  = false;
+    m_showEditorMenu   = false;
+    m_selectedChartIdx = -1;
+    m_customCharts.clear();
 
     // 创建按钮
     SetupButtons();
     SetupConfirmButtons();
+    SetupEditorMenuButtons();
 }
 
 // ── SetupButtons ──────────────────────────────────────────────────────────────
@@ -66,7 +72,7 @@ void SceneMenu::OnEnter()
 void SceneMenu::SetupButtons()
 {
     const char* labels[BUTTON_COUNT] = {
-        "开始游戏", "编辑器", "新建谱面", "设置", "退出"
+        "开始游戏", "谱面编辑器", "设置", "退出"
     };
 
     sakura::ui::ButtonColors colors;
@@ -94,17 +100,16 @@ void SceneMenu::SetupButtons()
             TransitionType::SlideLeft, 0.4f);
     });
 
-    // 编辑器 → 切换到编辑器场景
+    // 谱面编辑器 → 显示编辑器子菜单
     m_buttons[1]->SetOnClick([this]()
     {
-        LOG_INFO("[SceneMenu] 点击：编辑器");
-        m_manager.SwitchScene(
-            std::make_unique<SceneEditor>(m_manager),
-            TransitionType::SlideLeft, 0.4f);
+        LOG_INFO("[SceneMenu] 点击：谱面编辑器");
+        ScanCustomCharts();
+        m_showEditorMenu = true;
     });
 
-    // 设置→切换到设置场景
-    m_buttons[3]->SetOnClick([this]()
+    // 设置 → 切换到设置场景
+    m_buttons[2]->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：设置");
         m_manager.SwitchScene(
@@ -112,21 +117,120 @@ void SceneMenu::SetupButtons()
             TransitionType::SlideLeft, 0.4f);
     });
 
-    // 新建谱面 → 切换到新建向导场景
-    m_buttons[2]->SetOnClick([this]()
+    // 退出 → 弹出确认对话框
+    m_buttons[3]->SetOnClick([this]()
+    {
+        LOG_INFO("[SceneMenu] 点击：退出（显示确认框）");
+        m_showExitConfirm = true;
+    });
+}
+
+// ── SetupEditorMenuButtons ────────────────────────────────────────────────────
+
+void SceneMenu::SetupEditorMenuButtons()
+{
+    sakura::ui::ButtonColors openColors;
+    openColors.normal   = { 40, 70, 110, 220 };
+    openColors.hover    = { 60, 100, 150, 235 };
+    openColors.pressed  = { 25,  50,  80, 240 };
+    openColors.disabled = { 30,  45,  60, 120 };
+    openColors.text     = sakura::core::Color::White;
+
+    sakura::ui::ButtonColors newColors;
+    newColors.normal   = { 50, 80,  50, 220 };
+    newColors.hover    = { 70, 110,  70, 235 };
+    newColors.pressed  = { 30,  55,  30, 240 };
+    newColors.disabled = { 30,  45,  30, 120 };
+    newColors.text     = sakura::core::Color::White;
+
+    sakura::ui::ButtonColors cancelColors;
+    cancelColors.normal   = { 45, 45, 70, 220 };
+    cancelColors.hover    = { 70, 65, 105, 235 };
+    cancelColors.pressed  = { 25, 25,  50, 240 };
+    cancelColors.disabled = { 30, 30,  50, 120 };
+    cancelColors.text     = sakura::core::Color::White;
+
+    // 面板区域：x=0.30, y=0.28, w=0.40, h=0.44；按钮居中布局
+    m_btnEditorOpen = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.355f, 0.455f, 0.29f, 0.055f },
+        "打开已有谱面", m_fontButton, 0.026f, 0.010f);
+    m_btnEditorOpen->SetColors(openColors);
+    m_btnEditorOpen->SetOnClick([this]()
+    {
+        if (m_customCharts.empty())
+        {
+            LOG_INFO("[SceneMenu] 暂无自制谱面，无法打开");
+        }
+        else
+        {
+            int idx = (m_selectedChartIdx >= 0 &&
+                       m_selectedChartIdx < static_cast<int>(m_customCharts.size()))
+                      ? m_selectedChartIdx : 0;
+            OpenEditorForChart(idx);
+        }
+    });
+
+    m_btnEditorNew = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.355f, 0.525f, 0.29f, 0.055f },
+        "新建谱面", m_fontButton, 0.026f, 0.010f);
+    m_btnEditorNew->SetColors(newColors);
+    m_btnEditorNew->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：新建谱面向导");
+        m_showEditorMenu = false;
         m_manager.SwitchScene(
             std::make_unique<SceneChartWizard>(m_manager),
             TransitionType::SlideLeft, 0.4f);
     });
 
-    // 退出 → 弹出确认对话框
-    m_buttons[4]->SetOnClick([this]()
+    m_btnEditorCancel = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.355f, 0.600f, 0.29f, 0.050f },
+        "关 闭", m_fontButton, 0.024f, 0.010f);
+    m_btnEditorCancel->SetColors(cancelColors);
+    m_btnEditorCancel->SetOnClick([this]()
     {
-        LOG_INFO("[SceneMenu] 点击：退出（显示确认框）");
-        m_showExitConfirm = true;
+        m_showEditorMenu = false;
     });
+}
+
+// ── ScanCustomCharts ──────────────────────────────────────────────────────────
+
+void SceneMenu::ScanCustomCharts()
+{
+    m_customCharts.clear();
+    m_selectedChartIdx = -1;
+
+    // 确保自制谱目录存在
+    std::error_code ec;
+    std::filesystem::create_directories(CUSTOM_CHARTS_PATH, ec);
+
+    sakura::game::ChartLoader loader;
+    auto charts = loader.ScanCharts(CUSTOM_CHARTS_PATH);
+    for (auto& ci : charts)
+    {
+        ChartEntry entry;
+        entry.folderPath = ci.folderPath;
+        entry.title      = ci.title.empty() ? ci.id : ci.title;
+        m_customCharts.push_back(std::move(entry));
+    }
+
+    LOG_INFO("[SceneMenu] 扫描自制谱: {} 首", m_customCharts.size());
+}
+
+// ── OpenEditorForChart ────────────────────────────────────────────────────────
+
+void SceneMenu::OpenEditorForChart(int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(m_customCharts.size())) return;
+
+    const auto& entry = m_customCharts[idx];
+    LOG_INFO("[SceneMenu] 打开自制谱编辑器: {}", entry.folderPath);
+    m_showEditorMenu = false;
+    m_manager.SwitchScene(
+        std::make_unique<SceneEditor>(m_manager,
+                                      entry.folderPath,
+                                      "normal.json"),
+        TransitionType::SlideLeft, 0.4f);
 }
 
 // ── SetupConfirmButtons ───────────────────────────────────────────────────────
@@ -163,7 +267,7 @@ void SceneMenu::SetupConfirmButtons()
 
     m_btnConfirmNo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.502f, 0.505f, 0.13f, 0.055f },
-        "取  消", m_fontButton, 0.026f, 0.010f);
+        "取 消", m_fontButton, 0.026f, 0.010f);
     m_btnConfirmNo->SetColors(noColors);
     m_btnConfirmNo->SetOnClick([this]()
     {
@@ -180,6 +284,9 @@ void SceneMenu::OnExit()
     for (auto& btn : m_buttons) btn.reset();
     m_btnConfirmYes.reset();
     m_btnConfirmNo.reset();
+    m_btnEditorOpen.reset();
+    m_btnEditorNew.reset();
+    m_btnEditorCancel.reset();
 }
 
 // ── UpdateEnterAnimation ──────────────────────────────────────────────────────
@@ -195,7 +302,7 @@ void SceneMenu::UpdateEnterAnimation(float dt)
     float t = std::min(1.0f, m_anim.titleTimer / EnterAnim::TITLE_DURATION);
     m_anim.titleOffsetY = -0.15f * (1.0f - sakura::utils::EaseOutBack(t));
 
-    // 按钮依次滑入（间隔 0.1s）
+    // 按钮依次从下往上滑入（间隔 0.08s，EaseOutCubic）
     bool allDone = (t >= 1.0f);
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
@@ -205,13 +312,13 @@ void SceneMenu::UpdateEnterAnimation(float dt)
 
         if (elapsed <= 0.0f)
         {
-            m_anim.btnOffsetX[i] = 0.4f;
+            m_anim.btnOffsetY[i] = 0.25f;
             allDone = false;
         }
         else
         {
             float bt = std::min(1.0f, elapsed / EnterAnim::BTN_DURATION);
-            m_anim.btnOffsetX[i] = 0.4f * (1.0f - sakura::utils::EaseOutCubic(bt));
+            m_anim.btnOffsetY[i] = 0.25f * (1.0f - sakura::utils::EaseOutCubic(bt));
             if (bt < 1.0f) allDone = false;
         }
     }
@@ -225,22 +332,30 @@ void SceneMenu::OnUpdate(float dt)
 {
     UpdateEnterAnimation(dt);
 
-    // 更新按钮（按钮 Update 处理悬停动画）
+    // 更新按钮（按带 Update 处理悬停动画）
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (m_buttons[i])
         {
-            // 临时移动按钮 bounds 到动画偏移位置
+            // 临时移动按钮 bounds 到动画偏移位置（Y轴偏移）
             auto origBounds = m_buttons[i]->GetBounds();
             sakura::core::NormRect animBounds = origBounds;
-            animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
+            animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
             m_buttons[i]->SetBounds(animBounds);
 
             m_buttons[i]->Update(dt);
 
-            // 恢复原始 bounds（渲染时再次应用偏移）
+            // 恢复原始 bounds
             m_buttons[i]->SetBounds(origBounds);
         }
+    }
+
+    // 编辑器子菜单按钮更新
+    if (m_showEditorMenu)
+    {
+        if (m_btnEditorOpen)   m_btnEditorOpen->Update(dt);
+        if (m_btnEditorNew)    m_btnEditorNew->Update(dt);
+        if (m_btnEditorCancel) m_btnEditorCancel->Update(dt);
     }
 
     // 确认框按钮更新
@@ -255,7 +370,7 @@ void SceneMenu::OnUpdate(float dt)
 
 void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 {
-    // ── 背景渐变（深蓝/紫渐变近似：画两个叠加矩形）────────────────────────────
+    // ── 背景渐变（深紫渐变近似：画两个叠加矩形）──────────────────────────────
     renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
         sakura::core::Color{ 12, 10, 28, 255 });
     // 中央光晕
@@ -267,7 +382,7 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     float titleY = TITLE_Y + m_anim.titleOffsetY;
 
     // ── 标题 ──────────────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontTitle, "Sakura-樱",
+    renderer.DrawText(m_fontTitle, "Sakura-\xe6\xa8\xb1",
         0.5f, titleY, 0.08f,
         sakura::core::Color{ 255, 200, 220, 240 },
         sakura::core::TextAlign::Center);
@@ -278,18 +393,20 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         sakura::core::Color{ 200, 180, 210, 160 },
         sakura::core::TextAlign::Center);
 
-    // ── 按钮（应用 X 动画偏移） ───────────────────────────────────────────────
+    // ── 按钮（应用 Y 动画偏移，同时做溢出裁剪）──────────────────────────────
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (!m_buttons[i]) continue;
 
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
+        animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
+
+        // 若完全在屏幕外则跳过渲染
+        if (animBounds.y > 1.05f) continue;
+
         m_buttons[i]->SetBounds(animBounds);
-
         m_buttons[i]->Render(renderer);
-
         m_buttons[i]->SetBounds(origBounds);   // 还原
     }
 
@@ -299,6 +416,73 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         sakura::core::Color{ 140, 130, 160, 120 },
         sakura::core::TextAlign::Center);
 
+    // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
+    if (m_showEditorMenu)
+    {
+        // 半透明遮罩
+        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
+            sakura::core::Color{ 0, 0, 0, 140 });
+
+        // 子菜单面板 x=0.30, y=0.28, w=0.40, h=0.44
+        renderer.DrawRoundedRect({ 0.30f, 0.28f, 0.40f, 0.44f },
+            0.012f, sakura::core::Color{ 22, 18, 45, 248 }, true);
+        renderer.DrawRoundedRect({ 0.30f, 0.28f, 0.40f, 0.44f },
+            0.012f, sakura::core::Color{ 120, 90, 180, 200 }, false);
+
+        // 标题
+        renderer.DrawText(m_fontSub, "谱面编辑器",
+            0.50f, 0.325f, 0.038f,
+            sakura::core::Color{ 230, 210, 255, 240 },
+            sakura::core::TextAlign::Center);
+
+        // 分隔线
+        renderer.DrawLine(0.32f, 0.375f, 0.68f, 0.375f,
+            sakura::core::Color{ 100, 80, 150, 120 }, 0.001f);
+
+        // 自制谱列表信息
+        if (m_customCharts.empty())
+        {
+            renderer.DrawText(m_fontSub, "（暂无自制谱面）",
+                0.50f, 0.422f, 0.022f,
+                sakura::core::Color{ 160, 150, 190, 160 },
+                sakura::core::TextAlign::Center);
+        }
+        else
+        {
+            // 显示最多 3 条自制谱名称供参考
+            int showCount = std::min(static_cast<int>(m_customCharts.size()), 3);
+            for (int i = 0; i < showCount; ++i)
+            {
+                bool selected = (m_selectedChartIdx == i);
+                renderer.DrawText(m_fontSub,
+                    (selected ? "> " : "  ") + m_customCharts[i].title,
+                    0.36f, 0.398f + i * 0.028f, 0.022f,
+                    sakura::core::Color{ selected ? 255u : 200u,
+                                        selected ? 220u : 195u,
+                                        selected ? 255u : 230u,
+                                        selected ? 240u : 180u },
+                    sakura::core::TextAlign::Left);
+            }
+            if (static_cast<int>(m_customCharts.size()) > 3)
+            {
+                renderer.DrawText(m_fontSub,
+                    "  ...（共" + std::to_string(m_customCharts.size()) + "首）",
+                    0.36f, 0.398f + 3 * 0.028f, 0.020f,
+                    sakura::core::Color{ 160, 155, 185, 140 },
+                    sakura::core::TextAlign::Left);
+            }
+        }
+
+        // 动作按钮（若无自制谱，"打开已有谱面"按钮禁用）
+        if (m_btnEditorOpen)
+        {
+            m_btnEditorOpen->SetEnabled(!m_customCharts.empty());
+            m_btnEditorOpen->Render(renderer);
+        }
+        if (m_btnEditorNew)    m_btnEditorNew->Render(renderer);
+        if (m_btnEditorCancel) m_btnEditorCancel->Render(renderer);
+    }
+
     // ── 退出确认对话框 ────────────────────────────────────────────────────────
     if (m_showExitConfirm)
     {
@@ -306,7 +490,7 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
             sakura::core::Color{ 0, 0, 0, 140 });
 
-        // 对话框面板: x=0.32 y=0.35 w=0.36 h=0.26
+        // 对话框面板 x=0.32, y=0.35, w=0.36, h=0.26
         renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
             0.012f, sakura::core::Color{ 28, 24, 52, 245 }, true);
         renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
@@ -328,7 +512,45 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
 void SceneMenu::OnEvent(const SDL_Event& event)
 {
-    // 若退出确认框可见，ESC/事件只路由给确认框按钮
+    // 编辑器子菜单优先
+    if (m_showEditorMenu)
+    {
+        if (event.type == SDL_EVENT_KEY_DOWN &&
+            event.key.scancode == SDL_SCANCODE_ESCAPE)
+        {
+            m_showEditorMenu = false;
+            return;
+        }
+
+        // 方向键上下选择自制谱
+        if (event.type == SDL_EVENT_KEY_DOWN && !m_customCharts.empty())
+        {
+            if (event.key.scancode == SDL_SCANCODE_UP)
+            {
+                int maxIdx = static_cast<int>(m_customCharts.size()) - 1;
+                m_selectedChartIdx = (m_selectedChartIdx <= 0) ? maxIdx : m_selectedChartIdx - 1;
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_DOWN)
+            {
+                int maxIdx = static_cast<int>(m_customCharts.size()) - 1;
+                m_selectedChartIdx = (m_selectedChartIdx >= maxIdx) ? 0 : m_selectedChartIdx + 1;
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_RETURN && m_selectedChartIdx >= 0)
+            {
+                OpenEditorForChart(m_selectedChartIdx);
+                return;
+            }
+        }
+
+        if (m_btnEditorOpen)   m_btnEditorOpen->HandleEvent(event);
+        if (m_btnEditorNew)    m_btnEditorNew->HandleEvent(event);
+        if (m_btnEditorCancel) m_btnEditorCancel->HandleEvent(event);
+        return;
+    }
+
+    // 若退出确认框可见，事件只路由给确认框按钮
     if (m_showExitConfirm)
     {
         if (event.type == SDL_EVENT_KEY_DOWN &&
@@ -351,7 +573,7 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         return;
     }
 
-    // 分发给按钮（需要用带有当前 X 偏移的坐标）
+    // 分发给按钮（带当前 Y 偏移做命中测试）
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (!m_buttons[i]) continue;
@@ -359,7 +581,7 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         // 临时应用偏移，让按钮能正确做命中测试
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
+        animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
         m_buttons[i]->SetBounds(animBounds);
 
         m_buttons[i]->HandleEvent(event);

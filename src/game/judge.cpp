@@ -158,35 +158,44 @@ int Judge::CheckMouseMisses(std::vector<MouseNote>& notes, int currentTimeMs)
 }
 
 // ── UpdateHoldTick ────────────────────────────────────────────────────────────
-
+//
+// 新逻辑（无 tick）：
+//   - 头部尚未判定 → None
+//   - 已松开 (releaseTimeMs >= 0)，且松开时间在 holdEnd - miss_window 之前
+//     → 立即返回 Miss（提前松开）
+//   - currentTimeMs > holdEnd → hold 结束，返回 headResult 或 Miss
+//   - 其他 → None（hold 仍在进行中）
+//
 JudgeResult Judge::UpdateHoldTick(HoldState& state,
                                   const KeyboardNote& note,
-                                  int currentTimeMs,
-                                  bool isKeyDown)
+                                  int currentTimeMs)
 {
     if (!state.headJudged) return JudgeResult::None;
 
-    // 计算 Hold 结束时间
     int holdEnd = note.time + note.duration;
 
-    // Hold 已经结束
-    if (currentTimeMs > holdEnd + m_windows.good)
+    // ── 提前松开检测 ──────────────────────────────────────────────────────────
+    if (state.releaseTimeMs >= 0)
     {
-        return JudgeResult::None;
+        // 如果松开时间在 holdEnd - miss_window 之前，视为提前松开 → Miss
+        if (state.releaseTimeMs < holdEnd - m_windows.miss)
+        {
+            state.finalized = true;
+            return JudgeResult::Miss;
+        }
+        // 在容忍窗口内松开，等 hold 结束后再最终判定
     }
 
-    // 是否到了下一个 tick
-    if (currentTimeMs < state.nextTickMs) return JudgeResult::None;
+    // ── Hold 结束判定 ─────────────────────────────────────────────────────────
+    if (currentTimeMs > holdEnd + m_windows.good)
+    {
+        // 已持续到 hold 末端（或在容忍窗口内）→ 使用头部结果
+        state.finalized = true;
+        return state.headResult;
+    }
 
-    // 前进到下一个 tick
-    state.nextTickMs += HoldState::TICK_INTERVAL_MS;
-    ++state.tickCount;
-
-    // 根据是否按住判断
-    JudgeResult tickResult = isKeyDown ? JudgeResult::Perfect : JudgeResult::Miss;
-    if (isKeyDown) ++state.hitTickCount;
-
-    return tickResult;
+    // hold 仍在进行中
+    return JudgeResult::None;
 }
 
 // ── JudgeDragEnd ──────────────────────────────────────────────────────────────

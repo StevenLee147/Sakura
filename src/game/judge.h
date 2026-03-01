@@ -26,14 +26,13 @@ struct JudgeWindows
 // 每个 Hold 音符的持续判定状态（由游戏场景维护）
 struct HoldState
 {
-    int   noteIndex       = -1;     // 对应 keyboardNotes 的索引
-    bool  isHeld          = false;  // 当前是否被按住
-    bool  headJudged      = false;  // 头部是否已判定
+    int   noteIndex      = -1;     // 对应 keyboardNotes 的索引
+    bool  isHeld         = false;  // 当前是否被按住
+    bool  headJudged     = false;  // 头部是否已判定
     JudgeResult headResult = JudgeResult::None;
-    int   nextTickMs      = 0;      // 下一个 tick 判定时间（ms）
-    int   tickCount       = 0;      // 已经过的 tick 数
-    int   hitTickCount    = 0;      // 成功的 tick 数
-    static constexpr int TICK_INTERVAL_MS = 100;
+    int   releaseTimeMs  = -1;     // 松开时刻（-1=仍按住）
+    bool  finalized      = false;  // UpdateHoldTick 返回终判后置 true，场景据此移除
+    // 注意：无 tick 系统，UpdateHoldTick 负责最终判定
 };
 
 // ── Slider 判定状态 ───────────────────────────────────────────────────────────
@@ -83,13 +82,14 @@ public:
 
     // ── Hold 持续判定 ─────────────────────────────────────────────────────────
 
-    // 每帧更新 Hold 判定状态（传入当前 Hold 状态List）
-    // isKeyDown: 当前 Hold 对应轨道键是否被按住
-    // 返回本 tick 的判定结果（None=无新判定，Perfect/Great/Good/Bad/Miss=有新 tick）
+    // 每帧检查 Hold 状态：
+    //   - 提前松开（松开位置在 holdEnd - miss_window 之前）→ 立即返回 Miss
+    //   - hold 结束后 → 返回 headResult（正常）或 Miss（松开过早）
+    //   - 其他：返回 None
+    // currentTimeMs: 当前游戏时间
     JudgeResult UpdateHoldTick(HoldState& state,
                                const KeyboardNote& note,
-                               int currentTimeMs,
-                               bool isKeyDown);
+                               int currentTimeMs);
 
     // ── Drag 判定 ─────────────────────────────────────────────────────────────
 
