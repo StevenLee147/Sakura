@@ -130,6 +130,7 @@ public:
 
     void DrawFilledRect(NormRect rect, Color color);
     void DrawRectOutline(NormRect rect, Color color, float normThickness = 0.002f);
+    void DrawGradientRect(NormRect rect, Color colorTopLeft, Color colorTopRight, Color colorBottomLeft, Color colorBottomRight);
 
     // ── 文字渲染 ──────────────────────────────────────────────────────────────
 

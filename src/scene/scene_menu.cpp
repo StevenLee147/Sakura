@@ -48,12 +48,12 @@ void SceneMenu::OnEnter()
 
     // 初始化入场动画
     m_enterTimer            = 0.0f;
-    m_anim.titleOffsetY     = -0.15f;
+    m_anim.titleOffsetX     = -0.15f;
     m_anim.titleTimer       = 0.0f;
     m_anim.done             = false;
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
-        m_anim.btnOffsetY[i] = 0.25f;
+        m_anim.btnOffsetX[i] = -0.25f;
         m_anim.btnTimers[i]  = 0.0f;
     }
 
@@ -90,11 +90,13 @@ void SceneMenu::SetupButtons()
     };
 
     sakura::ui::ButtonColors colors;
-    colors.normal   = { 40, 35, 70, 210 };
-    colors.hover    = { 75, 60, 120, 235 };
-    colors.pressed  = { 25, 20, 50, 240 };
-    colors.disabled = { 30, 30, 50, 120 };
+    // 使用玻璃质感
+    colors.normal   = { 255, 240, 245, 20 };
+    colors.hover    = { 255, 255, 255, 45 };
+    colors.pressed  = { 255, 255, 255, 15 };
+    colors.disabled = { 100, 100, 100, 30 };
     colors.text     = sakura::core::Color::White;
+    // 边框留默认的高亮
 
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
@@ -103,6 +105,8 @@ void SceneMenu::SetupButtons()
         m_buttons[i] = std::make_unique<sakura::ui::Button>(
             bounds, labels[i], m_fontButton, 0.028f, 0.012f);
         m_buttons[i]->SetColors(colors);
+        m_buttons[i]->SetTextAlign(sakura::core::TextAlign::Left);
+        m_buttons[i]->SetTextPadding(0.02f);
     }
 
     // 开始游戏 → 切换到选歌场景
@@ -319,9 +323,9 @@ void SceneMenu::UpdateEnterAnimation(float dt)
     // 标题滑入（0.3s EaseOutBack）
     m_anim.titleTimer += dt;
     float t = std::min(1.0f, m_anim.titleTimer / EnterAnim::TITLE_DURATION);
-    m_anim.titleOffsetY = -0.15f * (1.0f - sakura::utils::EaseOutBack(t));
+    m_anim.titleOffsetX = -0.15f * (1.0f - sakura::utils::EaseOutBack(t));
 
-    // 按钮依次从下往上滑入（间隔 0.08s，EaseOutCubic）
+    // 按钮依次从左往右滑入（间隔 0.08s，EaseOutCubic）
     bool allDone = (t >= 1.0f);
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
@@ -331,13 +335,13 @@ void SceneMenu::UpdateEnterAnimation(float dt)
 
         if (elapsed <= 0.0f)
         {
-            m_anim.btnOffsetY[i] = 0.25f;
+            m_anim.btnOffsetX[i] = -0.25f;
             allDone = false;
         }
         else
         {
             float bt = std::min(1.0f, elapsed / EnterAnim::BTN_DURATION);
-            m_anim.btnOffsetY[i] = 0.25f * (1.0f - sakura::utils::EaseOutCubic(bt));
+            m_anim.btnOffsetX[i] = -0.25f * (1.0f - sakura::utils::EaseOutCubic(bt));
             if (bt < 1.0f) allDone = false;
         }
     }
@@ -360,10 +364,10 @@ void SceneMenu::OnUpdate(float dt)
     {
         if (m_buttons[i])
         {
-            // 临时移动按钮 bounds 到动画偏移位置（Y轴偏移）
+            // 临时移动按钮 bounds 到动画偏移位置（X轴偏移）
             auto origBounds = m_buttons[i]->GetBounds();
             sakura::core::NormRect animBounds = origBounds;
-            animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
+            animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
             m_buttons[i]->SetBounds(animBounds);
 
             m_buttons[i]->Update(dt);
@@ -393,50 +397,58 @@ void SceneMenu::OnUpdate(float dt)
 
 void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 {
-    // ── 背景渐变（深紫渐变近似：画两个叠加矩形）──────────────────────────────
+    // ── 背景图案 ──────────────────────────────────────────────────────────────
+    // 假定有全屏背景底图，先绘制底层颜色
     renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 12, 10, 28, 255 });
-    // 中央光晕
-    renderer.DrawCircleFilled(0.5f, 0.4f, 0.45f,
-        sakura::core::Color{ 30, 15, 55, 80 });
+        sakura::core::Color{ 15, 12, 35, 255 });
+    
+    // (此处应有插画渲染...) 略
+
+    // ── 半透明渐变遮罩 (保证左边文字可读性) ───────────────────────────────────
+    // 渐变占据 x: 0 ~ 0.5
+    renderer.DrawGradientRect({ 0.0f, 0.0f, 0.6f, 1.0f },
+        sakura::core::Color{ 10, 10, 20, 240 },   // TopLeft
+        sakura::core::Color{ 10, 10, 20, 0 },     // TopRight
+        sakura::core::Color{ 10, 10, 20, 240 },   // BottomLeft
+        sakura::core::Color{ 10, 10, 20, 0 });    // BottomRight
 
     // ── 背景微粒 + 樱花飘落 ────────────────────────────────────────────────────
     m_particles.Render(renderer);
 
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
 
-    float titleY = TITLE_Y + m_anim.titleOffsetY;
+    float titleX = TITLE_X + m_anim.titleOffsetX;
 
     // ── 标题发光脉冲效果（在文字后面画glow） ───────────────────────────────────
     sakura::effects::GlowEffect::PulseGlow(renderer,
-        0.5f, titleY + 0.04f,           // 中心（标题垂直中心）
+        titleX + 0.15f, TITLE_Y + 0.04f,           // 中心（左右对齐）
         0.04f, 0.07f,                    // 大小 min~max
         sakura::core::Color{ 255, 140, 180, 120 },  // 粉色发光
         m_glowPhase, 0.8f, 5);           // 频率 0.8Hz
 
     // ── 标题 ──────────────────────────────────────────────────────────────────
     renderer.DrawText(m_fontTitle, "Sakura-\xe6\xa8\xb1",
-        0.5f, titleY, 0.08f,
-        sakura::core::Color{ 255, 200, 220, 240 },
-        sakura::core::TextAlign::Center);
+        titleX, TITLE_Y, 0.08f,
+        sakura::core::Color{ 255, 255, 255, 255 },
+        sakura::core::TextAlign::Left);
 
     // ── 副标题 ────────────────────────────────────────────────────────────────
     renderer.DrawText(m_fontSub, "Mixed-Mode Rhythm Game",
-        0.5f, titleY + 0.10f, 0.025f,
-        sakura::core::Color{ 200, 180, 210, 160 },
-        sakura::core::TextAlign::Center);
+        titleX, TITLE_Y + 0.09f, 0.025f,
+        sakura::core::Color{ 220, 220, 230, 200 },
+        sakura::core::TextAlign::Left);
 
-    // ── 按钮（应用 Y 动画偏移，同时做溢出裁剪）──────────────────────────────
+    // ── 按钮（应用 X 动画偏移，同时做溢出裁剪）──────────────────────────────
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (!m_buttons[i]) continue;
 
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
+        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
 
-        // 若完全在屏幕外则跳过渲染
-        if (animBounds.y > 1.05f) continue;
+        // 若完全在左侧屏幕外则跳过渲染
+        if (animBounds.x + animBounds.width < 0.0f) continue;
 
         m_buttons[i]->SetBounds(animBounds);
         m_buttons[i]->Render(renderer);
@@ -445,9 +457,9 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
     // ── 版本号 ────────────────────────────────────────────────────────────────
     renderer.DrawText(m_fontSub, "v" SAKURA_VERSION_STRING,
-        0.5f, 0.95f, 0.018f,
-        sakura::core::Color{ 140, 130, 160, 120 },
-        sakura::core::TextAlign::Center);
+        0.02f, 0.96f, 0.018f,
+        sakura::core::Color{ 200, 200, 200, 160 },
+        sakura::core::TextAlign::Left);
 
     // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
     if (m_showEditorMenu)
@@ -606,15 +618,15 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         return;
     }
 
-    // 分发给按钮（带当前 Y 偏移做命中测试）
+    // 分发给按钮（带当前 X 偏移做命中测试）
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (!m_buttons[i]) continue;
 
-        // 临时应用偏移，让按钮能正确做命中测试
+        // 临时应用偏移
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.y = origBounds.y + m_anim.btnOffsetY[i];
+        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
         m_buttons[i]->SetBounds(animBounds);
 
         m_buttons[i]->HandleEvent(event);

@@ -19,13 +19,13 @@ namespace sakura::scene
 {
 
 // SceneMenu — 主菜单
-// 布局（归一化）：
-//   标题  "Sakura-樱"           (0.5, 0.22, size=0.08, 居中)
-//   副标题 "Mixed-Mode Rhythm…" (0.5, 0.31, size=0.025)
-//   按钮区：宽0.22, 高0.055, 从 y=0.48 开始依次排列
-//   版本号 (0.5, 0.95)
+// 布局（归一化，不对称排布）：
+//   标题  "Sakura-樱"           (0.1, 0.15, size=0.08, 左对齐)
+//   副标题 "Mixed-Mode Rhythm…" (0.1, 0.24, size=0.025)
+//   按钮区：宽0.25, 高0.050, X=0.1, 从 y=0.35 开始依次排列
+//   版本号 (0.1, 0.95)
 //
-// 入场动画：标题从上滑入(0.3s), 按钮依次从下往上滑入(间隔0.1s)
+// 入场动画：标题从左侧滑入(0.3s), 按钮依次从左往右滑入(间隔0.1s)
 class SceneMenu final : public Scene
 {
 public:
@@ -49,23 +49,23 @@ private:
     static constexpr int BUTTON_COUNT = 4;
     std::array<std::unique_ptr<sakura::ui::Button>, BUTTON_COUNT> m_buttons;
 
-    // 按钮中心 X（居中）
-    static constexpr float BTN_X     = 0.5f - 0.11f;   // (center - half-width)
-    static constexpr float BTN_W     = 0.22f;
+    // 按钮位置
+    static constexpr float BTN_X     = 0.1f;
+    static constexpr float BTN_W     = 0.25f;
     static constexpr float BTN_H     = 0.050f;
     static constexpr float BTN_GAP   = 0.075f;          // 每个按钮的 Y 间距
-    static constexpr float BTN_Y0    = 0.43f;           // 第一个按钮 Y（4个按钮居中）
+    static constexpr float BTN_Y0    = 0.35f;           // 第一个按钮 Y
 
     // ── 入场动画 ──────────────────────────────────────────────────────────────
     struct EnterAnim
     {
-        // 标题从上方 -0.15 滑到目标 Y（0.22）
-        float titleOffsetY = -0.15f;   // 当前偏移（0 = 到位）
+        // 标题从左侧 -0.15 滑到目标 X（0.10）
+        float titleOffsetX = -0.15f;   // 当前偏移（0 = 到位）
         float titleTimer   = 0.0f;     // 到达时间计时器
         static constexpr float TITLE_DURATION = 0.3f;
 
-        // 每个按钮从下方滑入（初始 Y 偏移 +0.25，向上滑到目标）
-        std::array<float, 4> btnOffsetY = { 0.25f, 0.25f, 0.25f, 0.25f };
+        // 每个按钮从左侧滑入（初始 X 偏移 -0.25，向右滑到目标）
+        std::array<float, 4> btnOffsetX = { -0.25f, -0.25f, -0.25f, -0.25f };
         std::array<float, 4> btnTimers  = { 0.0f,  0.0f,  0.0f,  0.0f  };
         static constexpr float BTN_DURATION = 0.32f;   // 每个按钮动画时长
         static constexpr float BTN_STAGGER  = 0.08f;   // 按钮启动间隔
@@ -75,8 +75,9 @@ private:
 
     float m_enterTimer = 0.0f;   // 进场总计时
 
-    // 目标 Y 坐标（动画完成后的稳定位置）
-    static constexpr float TITLE_Y = 0.22f;
+    // 目标 X/Y 坐标
+    static constexpr float TITLE_X = 0.1f;
+    static constexpr float TITLE_Y = 0.15f;
 
     // ── 谱面编辑器子菜单 ───────────────────────────────────────────────────────
     bool m_showEditorMenu = false;

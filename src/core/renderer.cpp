@@ -185,6 +185,34 @@ void Renderer::DrawRectOutline(NormRect rect, Color color, float normThickness)
     SDL_RenderFillRect(m_renderer, &right);
 }
 
+void Renderer::DrawGradientRect(NormRect rect, Color colorTopLeft, Color colorTopRight, Color colorBottomLeft, Color colorBottomRight)
+{
+    if (!m_renderer) return;
+
+    SDL_FRect dstRect = rect.ToPixel(GetScreenWidth(), GetScreenHeight());
+
+    SDL_Vertex verts[4];
+    verts[0].position = { dstRect.x, dstRect.y };
+    verts[0].color = colorTopLeft.ToSDLFColor();
+    verts[0].tex_coord = {0.0f, 0.0f};
+
+    verts[1].position = { dstRect.x + dstRect.w, dstRect.y };
+    verts[1].color = colorTopRight.ToSDLFColor();
+    verts[1].tex_coord = {1.0f, 0.0f};
+
+    verts[2].position = { dstRect.x + dstRect.w, dstRect.y + dstRect.h };
+    verts[2].color = colorBottomRight.ToSDLFColor();
+    verts[2].tex_coord = {1.0f, 1.0f};
+
+    verts[3].position = { dstRect.x, dstRect.y + dstRect.h };
+    verts[3].color = colorBottomLeft.ToSDLFColor();
+    verts[3].tex_coord = {0.0f, 1.0f};
+
+    int indices[6] = {0, 1, 2, 0, 2, 3};
+
+    SDL_RenderGeometry(m_renderer, nullptr, verts, 4, indices, 6);
+}
+
 // ── 混合模式 ──────────────────────────────────────────────────────────────────
 
 void Renderer::SetBlendMode(BlendMode mode)
