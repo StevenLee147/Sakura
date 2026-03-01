@@ -52,20 +52,24 @@ void SceneSettings::OnEnter()
     SetupKeysTab();
     SetupDisplayTab();
     SetupBackButton();
+    SetupSaveButton();
+    SetupUnsavedDialog();
 
     // 从 Config 加载当前值
     LoadFromConfig();
 
-    m_listeningKeyIndex = -1;
-    m_listenTimer       = 0.0f;
+    m_listeningKeyIndex  = -1;
+    m_listenTimer        = 0.0f;
+    m_isDirty            = false;
+    m_showUnsavedDialog  = false;
 }
 
 // ── OnExit ────────────────────────────────────────────────────────────────────
 
 void SceneSettings::OnExit()
 {
-    LOG_INFO("[SceneSettings] 退出设置，保存配置");
-    sakura::core::Config::GetInstance().Save();
+    // 不再自动保存；保存需通过"保存"按钮或对话框"保存并退出"显式触发
+    LOG_INFO("[SceneSettings] 退出设置（isDirty={}）", m_isDirty);
 }
 
 // ── SetupGeneralTab ───────────────────────────────────────────────────────────
@@ -82,10 +86,11 @@ void SceneSettings::SetupGeneralTab()
         0.1f, m_font, 0.026f);
     m_sliderNoteSpeed->SetLabel("流速");
     m_sliderNoteSpeed->SetShowValue(true);
-    m_sliderNoteSpeed->SetOnChange([](float v)
+    m_sliderNoteSpeed->SetOnChange([this](float v)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kNoteSpeed), v);
+        m_isDirty = true;
     });
 
     // 判定偏移 Slider (-100 ~ +100 ms)
@@ -100,11 +105,12 @@ void SceneSettings::SetupGeneralTab()
     {
         return (v >= 0 ? "+" : "") + std::to_string(static_cast<int>(v)) + "ms";
     });
-    m_sliderOffset->SetOnChange([](float v)
+    m_sliderOffset->SetOnChange([this](float v)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kAudioOffset),
             static_cast<int>(v));
+        m_isDirty = true;
     });
 
     // 延迟校准按钮
@@ -151,11 +157,12 @@ void SceneSettings::SetupAudioTab()
     {
         return std::to_string(static_cast<int>(v * 100.0f)) + "%";
     });
-    m_sliderMaster->SetOnChange([](float v)
+    m_sliderMaster->SetOnChange([this](float v)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kMasterVolume), v);
         sakura::audio::AudioManager::GetInstance().SetMasterVolume(v);
+        m_isDirty = true;
     });
 
     // 音乐音量
@@ -169,11 +176,12 @@ void SceneSettings::SetupAudioTab()
     {
         return std::to_string(static_cast<int>(v * 100.0f)) + "%";
     });
-    m_sliderMusic->SetOnChange([](float v)
+    m_sliderMusic->SetOnChange([this](float v)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kMusicVolume), v);
         sakura::audio::AudioManager::GetInstance().SetMusicVolume(v);
+        m_isDirty = true;
     });
 
     // 音效音量
@@ -187,11 +195,12 @@ void SceneSettings::SetupAudioTab()
     {
         return std::to_string(static_cast<int>(v * 100.0f)) + "%";
     });
-    m_sliderSFX->SetOnChange([](float v)
+    m_sliderSFX->SetOnChange([this](float v)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kSfxVolume), v);
         sakura::audio::AudioManager::GetInstance().SetSFXVolume(v);
+        m_isDirty = true;
     });
 
     (void)audio;
@@ -210,10 +219,11 @@ void SceneSettings::SetupAudioTab()
             if (opts[i] == cur) { m_dropHitsound->SetSelectedIndex(i); break; }
         }
     }
-    m_dropHitsound->SetOnChange([](int, const std::string& val)
+    m_dropHitsound->SetOnChange([this](int, const std::string& val)
     {
         sakura::core::Config::GetInstance().Set(
             std::string("audio.hitsound"), val);
+        m_isDirty = true;
     });
 }
 
@@ -301,11 +311,12 @@ void SceneSettings::SetupDisplayTab()
         cfg.Get<bool>(std::string(sakura::core::ConfigKeys::kFullscreen), false),
         m_font, 0.026f);
     m_toggleFullscreen->SetLabel("全屏模式");
-    m_toggleFullscreen->SetOnChange([](bool on)
+    m_toggleFullscreen->SetOnChange([this](bool on)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kFullscreen), on);
         // 实际切换由 App/Window 在下帧检测并处理
+        m_isDirty = true;
     });
 
     // 帧率 Dropdown
@@ -322,7 +333,7 @@ void SceneSettings::SetupDisplayTab()
             if (fpsOpts[i] == fps) { m_dropFpsLimit->SetSelectedIndex(i); break; }
         }
     }
-    m_dropFpsLimit->SetOnChange([](int idx, const std::string&)
+    m_dropFpsLimit->SetOnChange([this](int idx, const std::string&)
     {
         std::vector<int> fpsOpts = { 60, 120, 144, 240, 0 };
         if (idx >= 0 && idx < static_cast<int>(fpsOpts.size()))
@@ -330,6 +341,7 @@ void SceneSettings::SetupDisplayTab()
             sakura::core::Config::GetInstance().Set(
                 std::string(sakura::core::ConfigKeys::kFpsLimit), fpsOpts[idx]);
         }
+        m_isDirty = true;
     });
 
     // VSync Toggle
@@ -338,10 +350,11 @@ void SceneSettings::SetupDisplayTab()
         cfg.Get<bool>(std::string(sakura::core::ConfigKeys::kVSync), true),
         m_font, 0.026f);
     m_toggleVSync->SetLabel("垂直同步");
-    m_toggleVSync->SetOnChange([](bool on)
+    m_toggleVSync->SetOnChange([this](bool on)
     {
         sakura::core::Config::GetInstance().Set(
             std::string(sakura::core::ConfigKeys::kVSync), on);
+        m_isDirty = true;
     });
 }
 
@@ -361,10 +374,122 @@ void SceneSettings::SetupBackButton()
     m_btnBack->SetColors(backColors);
     m_btnBack->SetOnClick([this]()
     {
+        TrySwitchBack();
+    });
+}
+
+// ── SetupSaveButton ───────────────────────────────────────────────────────────
+
+void SceneSettings::SetupSaveButton()
+{
+    sakura::ui::ButtonColors saveColors;
+    saveColors.normal  = { 40, 90, 50, 220 };
+    saveColors.hover   = { 60, 130, 70, 235 };
+    saveColors.pressed = { 25,  60, 30, 240 };
+    saveColors.text    = sakura::core::Color::White;
+
+    m_btnSave = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.64f, 0.93f - 0.027f, 0.22f, 0.055f },
+        "保 存", m_font, 0.026f, 0.012f);
+    m_btnSave->SetColors(saveColors);
+    m_btnSave->SetOnClick([this]()
+    {
+        SaveSettings();
+    });
+}
+
+// ── SetupUnsavedDialog ────────────────────────────────────────────────────────
+
+void SceneSettings::SetupUnsavedDialog()
+{
+    sakura::ui::ButtonColors saveExitColors;
+    saveExitColors.normal  = { 40, 90, 50, 220 };
+    saveExitColors.hover   = { 60, 130, 70, 235 };
+    saveExitColors.pressed = { 25,  60, 30, 240 };
+    saveExitColors.text    = sakura::core::Color::White;
+
+    sakura::ui::ButtonColors backColors;
+    backColors.normal  = { 45, 45, 70, 220 };
+    backColors.hover   = { 70, 65, 105, 235 };
+    backColors.pressed = { 25, 25,  50, 240 };
+    backColors.text    = sakura::core::Color::White;
+
+    sakura::ui::ButtonColors discardColors;
+    discardColors.normal  = { 110, 35, 45, 220 };
+    discardColors.hover   = { 150, 50, 60, 235 };
+    discardColors.pressed = {  70, 20, 28, 240 };
+    discardColors.text    = sakura::core::Color::White;
+
+    // 对话框内三个按钮（竖排）
+    m_btnDialogSaveExit = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.36f, 0.455f, 0.28f, 0.055f },
+        "保存并退出", m_font, 0.026f, 0.010f);
+    m_btnDialogSaveExit->SetColors(saveExitColors);
+    m_btnDialogSaveExit->SetOnClick([this]()
+    {
+        m_showUnsavedDialog = false;
+        SaveSettings();
+    });
+
+    m_btnDialogBack = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.36f, 0.525f, 0.28f, 0.055f },
+        "返回设置", m_font, 0.026f, 0.010f);
+    m_btnDialogBack->SetColors(backColors);
+    m_btnDialogBack->SetOnClick([this]()
+    {
+        m_showUnsavedDialog = false;
+    });
+
+    m_btnDialogDiscard = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.36f, 0.600f, 0.28f, 0.055f },
+        "不保存直接退出", m_font, 0.024f, 0.010f);
+    m_btnDialogDiscard->SetColors(discardColors);
+    m_btnDialogDiscard->SetOnClick([this]()
+    {
+        m_showUnsavedDialog = false;
+        DiscardSettings();
+    });
+}
+
+// ── TrySwitchBack ─────────────────────────────────────────────────────────────
+
+void SceneSettings::TrySwitchBack()
+{
+    if (m_isDirty)
+    {
+        m_showUnsavedDialog = true;
+    }
+    else
+    {
         m_manager.SwitchScene(
             std::make_unique<SceneMenu>(m_manager),
             TransitionType::SlideRight, 0.4f);
-    });
+    }
+}
+
+// ── SaveSettings ──────────────────────────────────────────────────────────────
+
+void SceneSettings::SaveSettings()
+{
+    sakura::core::Config::GetInstance().Save();
+    m_isDirty = false;
+    LOG_INFO("[SceneSettings] 设置已保存");
+    m_manager.SwitchScene(
+        std::make_unique<SceneMenu>(m_manager),
+        TransitionType::SlideRight, 0.4f);
+}
+
+// ── DiscardSettings ───────────────────────────────────────────────────────────
+
+void SceneSettings::DiscardSettings()
+{
+    // 从文件重新加载，丢弃内存中的修改
+    sakura::core::Config::GetInstance().Load();
+    m_isDirty = false;
+    LOG_INFO("[SceneSettings] 丢弃修改，已从文件重新加载配置");
+    m_manager.SwitchScene(
+        std::make_unique<SceneMenu>(m_manager),
+        TransitionType::SlideRight, 0.4f);
 }
 
 // ── LoadFromConfig ────────────────────────────────────────────────────────────
@@ -385,6 +510,7 @@ void SceneSettings::SaveKeyBindings()
     cfg.Set(std::string("input.key_lane_3"), static_cast<int>(m_keyCodes[3]));
     cfg.Set(std::string(sakura::core::ConfigKeys::kKeyPause), static_cast<int>(m_keyCodes[4]));
     cfg.Set(std::string(sakura::core::ConfigKeys::kKeyRetry),  static_cast<int>(m_keyCodes[5]));
+    m_isDirty = true;
 }
 
 // ── UpdateKeyButtonLabels ─────────────────────────────────────────────────────
@@ -443,6 +569,16 @@ void SceneSettings::OnUpdate(float dt)
         }
     }
 
+    // 若弹出未保存对话框，只更新对话框按钮
+    if (m_showUnsavedDialog)
+    {
+        if (m_btnDialogSaveExit) m_btnDialogSaveExit->Update(dt);
+        if (m_btnDialogBack)     m_btnDialogBack->Update(dt);
+        if (m_btnDialogDiscard)  m_btnDialogDiscard->Update(dt);
+        sakura::ui::ToastManager::Instance().Update(dt);
+        return;
+    }
+
     // 更新 TabBar
     m_tabBar->Update(dt);
 
@@ -464,6 +600,7 @@ void SceneSettings::OnUpdate(float dt)
     m_toggleVSync->Update(dt);
 
     m_btnBack->Update(dt);
+    if (m_isDirty && m_btnSave) m_btnSave->Update(dt);
 
     // 更新 Toast
     sakura::ui::ToastManager::Instance().Update(dt);
@@ -473,6 +610,24 @@ void SceneSettings::OnUpdate(float dt)
 
 void SceneSettings::OnEvent(const SDL_Event& event)
 {
+    // 未保存对话框优先
+    if (m_showUnsavedDialog)
+    {
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
+        {
+            if (event.key.scancode == SDL_SCANCODE_ESCAPE)
+            {
+                // ESC 关闭对话框，返回设置
+                m_showUnsavedDialog = false;
+                return;
+            }
+        }
+        if (m_btnDialogSaveExit) m_btnDialogSaveExit->HandleEvent(event);
+        if (m_btnDialogBack)     m_btnDialogBack->HandleEvent(event);
+        if (m_btnDialogDiscard)  m_btnDialogDiscard->HandleEvent(event);
+        return;
+    }
+
     // 按键绑定监听模式
     if (m_listeningKeyIndex >= 0)
     {
@@ -510,14 +665,12 @@ void SceneSettings::OnEvent(const SDL_Event& event)
         return;
     }
 
-    // 返回键
+    // ESC → 检查 dirty 状态再决定是否直接返回
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
     {
         if (event.key.scancode == SDL_SCANCODE_ESCAPE)
         {
-            m_manager.SwitchScene(
-                std::make_unique<SceneMenu>(m_manager),
-                TransitionType::SlideRight, 0.4f);
+            TrySwitchBack();
             return;
         }
     }
@@ -551,6 +704,7 @@ void SceneSettings::OnEvent(const SDL_Event& event)
     }
 
     m_btnBack->HandleEvent(event);
+    if (m_isDirty && m_btnSave) m_btnSave->HandleEvent(event);
 }
 
 // ── DrawSectionTitle ──────────────────────────────────────────────────────────
@@ -689,6 +843,47 @@ void SceneSettings::OnRender(sakura::core::Renderer& renderer)
 
     // 返回按钮
     m_btnBack->Render(renderer);
+
+    // 保存按钮（有未保存修改时显示）
+    if (m_isDirty && m_btnSave)
+    {
+        m_btnSave->Render(renderer);
+
+        // 提示标记
+        renderer.DrawText(m_fontSmall, "● 有未保存的更改",
+            0.64f + 0.11f, 0.93f - 0.027f - 0.022f, 0.018f,
+            sakura::core::Color{ 255, 200, 80, 200 },
+            sakura::core::TextAlign::Center);
+    }
+
+    // 未保存修改对话框
+    if (m_showUnsavedDialog)
+    {
+        // 半透明遮罩
+        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
+            sakura::core::Color{ 0, 0, 0, 150 });
+
+        // 对话框面板
+        renderer.DrawRoundedRect({ 0.32f, 0.36f, 0.36f, 0.31f },
+            0.012f, sakura::core::Color{ 25, 20, 48, 248 }, true);
+        renderer.DrawRoundedRect({ 0.32f, 0.36f, 0.36f, 0.31f },
+            0.012f, sakura::core::Color{ 140, 100, 180, 200 }, false);
+
+        // 提示文字
+        renderer.DrawText(m_font, "有未保存的更改",
+            0.50f, 0.400f, 0.034f,
+            sakura::core::Color{ 240, 220, 255, 240 },
+            sakura::core::TextAlign::Center);
+        renderer.DrawText(m_fontSmall, "是否要保存设置后退出？",
+            0.50f, 0.440f, 0.022f,
+            sakura::core::Color{ 190, 175, 220, 190 },
+            sakura::core::TextAlign::Center);
+
+        // 三个选项按钮
+        if (m_btnDialogSaveExit) m_btnDialogSaveExit->Render(renderer);
+        if (m_btnDialogBack)     m_btnDialogBack->Render(renderer);
+        if (m_btnDialogDiscard)  m_btnDialogDiscard->Render(renderer);
+    }
 
     // Toast 通知（最顶层）
     sakura::ui::ToastManager::Instance().Render(renderer, m_font, 0.024f);

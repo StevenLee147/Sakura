@@ -128,6 +128,24 @@ private:
     {
         return CONTENT_Y + 0.05f + static_cast<float>(row) * 0.085f;
     }
+
+    // ── 未保存修改状态 ─────────────────────────────────────────────────────────
+    bool m_isDirty           = false;  // 是否有未保存更改
+    bool m_showUnsavedDialog = false;  // 是否显示"未保存"提示对话框
+
+    // 保存按钮（有修改时出现）
+    std::unique_ptr<sakura::ui::Button> m_btnSave;
+
+    // 未保存对话框按钮
+    std::unique_ptr<sakura::ui::Button> m_btnDialogSaveExit;
+    std::unique_ptr<sakura::ui::Button> m_btnDialogBack;
+    std::unique_ptr<sakura::ui::Button> m_btnDialogDiscard;
+
+    void SetupSaveButton();
+    void SetupUnsavedDialog();
+    void TrySwitchBack();    // 若 dirty → 弹框；否则直接返回
+    void SaveSettings();     // 保存到文件，清除 dirty
+    void DiscardSettings();  // 重新从文件加载，清除 dirty
 };
 
 } // namespace sakura::scene

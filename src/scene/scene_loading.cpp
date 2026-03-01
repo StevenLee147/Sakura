@@ -172,8 +172,8 @@ void SceneLoading::RenderSpinner(sakura::core::Renderer& renderer,
                      sakura::core::Color{ 200, 150, 230, 220 },
                      0.004f, 48);
 
-    // 弧头的亮点
-    float headRad = (m_spinAngle * 3.14159265f / 180.0f);
+    // 弧头的亮点（位于弧末端，即 m_spinAngle + 270°）
+    float headRad = ((m_spinAngle + 270.0f) * 3.14159265f / 180.0f);
     float dotX = cx + radius * std::cos(headRad);
     float dotY = cy + radius * std::sin(headRad);
     renderer.DrawCircleFilled(dotX, dotY, 0.008f,
@@ -188,8 +188,8 @@ void SceneLoading::OnRender(sakura::core::Renderer& renderer)
     renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
         sakura::core::Color{ 10, 8, 20, 255 });
 
-    // 旋转动画（居中，进度条上方）
-    RenderSpinner(renderer, 0.5f, 0.45f, 0.04f);
+    // 旋转动画（居中，进度条上方，垂直居中偏上）
+    RenderSpinner(renderer, 0.5f, 0.42f, 0.04f);
 
     // 进度条 (0.3, 0.55, 0.4, 0.03)
     {
