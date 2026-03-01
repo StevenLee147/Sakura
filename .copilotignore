@@ -1,0 +1,47 @@
+# ======== Sakura Project .copilotignore ========
+
+# Build and IDE directories
+build/
+out/
+bin/
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Dependencies and Downloads
+download/
+vcpkg_installed/
+
+# Logs
+logs/
+*.log
+
+# Old / Reference Documents (To prevent confusing the agent with outdated info)
+doc/old_reference/
+
+# Media and Binary Resources
+# (Agent doesn't need to read binary media files, skipping them speeds up indexing)
+resources/fonts/
+resources/images/
+resources/sound/
+*.mp3
+*.wav
+*.ogg
+*.png
+*.jpg
+*.jpeg
+*.ttf
+*.otf
+*.woff
+
+# Other potentially large binary files
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.lib
+*.exp
+*.db
