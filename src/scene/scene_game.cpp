@@ -44,12 +44,23 @@ void SceneGame::OnEnter()
     m_fontHUD   = rm.GetDefaultFontHandle();
     m_fontSmall = rm.GetDefaultFontHandle();
 
-    // 加载背景图
-    if (!m_chartInfo.backgroundFile.empty())
+    // 背景系统初始化
     {
-        std::string bgPath = m_chartInfo.folderPath + "/" + m_chartInfo.backgroundFile;
-        auto hOpt = rm.LoadTexture(bgPath);
-        m_bgTexture = hOpt.value_or(sakura::core::INVALID_HANDLE);
+        float bgDim = sakura::core::Config::GetInstance().Get("background_dimming", 0.5f);
+        m_useDefaultBg = true;
+        if (!m_chartInfo.backgroundFile.empty())
+        {
+            std::string bgPath = m_chartInfo.folderPath + "/" + m_chartInfo.backgroundFile;
+            if (m_bgRenderer.LoadImage(bgPath))
+            {
+                m_bgRenderer.SetDimming(bgDim);
+                m_useDefaultBg = false;
+            }
+        }
+        if (m_useDefaultBg)
+        {
+            m_defaultBg.Initialize(bgDim * 0.5f);
+        }
     }
 
     // 从 Config 读取键位绑定
@@ -105,6 +116,7 @@ void SceneGame::OnExit()
     m_sliderStates.clear();
     m_judgeFlashes.clear();
     m_particles.Clear();
+    m_bgRenderer.UnloadImage();
 }
 
 // ── CalcNoteRenderY ───────────────────────────────────────────────────────────
@@ -446,6 +458,10 @@ void SceneGame::OnUpdate(float dt)
     }
 
     // ── 粒子 + 特效更新 ───────────────────────────────────────────────────────
+    if (m_useDefaultBg)
+        m_defaultBg.Update(dt);
+    else
+        m_bgRenderer.Update(dt);
     m_particles.Update(dt);
     m_judgePulsePhase += dt;
 
@@ -564,17 +580,10 @@ sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 
 void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 {
-    // 深色底层
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 8, 6, 18, 255 });
-
-    // 背景图（透明度 30%）
-    if (m_bgTexture != sakura::core::INVALID_HANDLE)
-    {
-        renderer.DrawSprite(m_bgTexture,
-            { 0.0f, 0.0f, 1.0f, 1.0f },
-            0.0f, sakura::core::Color::White, 0.30f);
-    }
+    if (m_useDefaultBg)
+        m_defaultBg.Render(renderer);
+    else
+        m_bgRenderer.Render(renderer);
 }
 
 // ── RenderTrack ───────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
 #include "effects/glow.h"
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
+#include "effects/background.h"
 
 #include <array>
 #include <memory>
@@ -68,9 +69,6 @@ private:
     // 判定闪现
     std::vector<JudgeFlash> m_judgeFlashes;
 
-    // 背景纹理
-    sakura::core::TextureHandle m_bgTexture = sakura::core::INVALID_HANDLE;
-
     // 字体
     sakura::core::FontHandle m_fontHUD   = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
@@ -104,6 +102,11 @@ private:
 
     // 轨道按键状态（用于轨道按下发光效果）
     std::array<bool, LANE_COUNT> m_lanePressed = {};
+
+    // ── 背景渲染 ─────────────────────────────────────────────────────────────
+    sakura::effects::BackgroundRenderer m_bgRenderer;   // 图片背景
+    sakura::effects::DefaultBackground  m_defaultBg;    // 默认渐变背景
+    bool m_useDefaultBg = true;                         // 是否使用默认背景
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
 
