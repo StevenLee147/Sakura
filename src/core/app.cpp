@@ -7,6 +7,7 @@
 #include "game/chart_loader.h"
 #include "data/database.h"
 #include "effects/screen_shake.h"
+#include "effects/shader_manager.h"
 
 namespace sakura::core
 {
@@ -59,6 +60,16 @@ bool App::Initialize()
     if (!ResourceManager::GetInstance().Initialize(m_renderer.GetSDLRenderer()))
     {
         LOG_WARN("ResourceManager 初始化失败（非致命）");
+    }
+    // ── ShaderManager（后处理特效）────────────────────────────────────────────
+    {
+        int sw = m_renderer.GetScreenWidth();
+        int sh = m_renderer.GetScreenHeight();
+        if (!sakura::effects::ShaderManager::GetInstance().Initialize(
+                m_renderer.GetSDLRenderer(), sw, sh))
+        {
+            LOG_WARN("ShaderManager 初始化失败（非致命）");
+        }
     }
     // ── 计时器 ────────────────────────────────────────────────────────────────
     m_timer.Reset();
@@ -153,6 +164,9 @@ void App::Shutdown()
     // 先关闭音频（避免资源释放竞争）
     sakura::audio::AudioManager::GetInstance().Shutdown();
 
+    // 关闭后处理特效
+    sakura::effects::ShaderManager::GetInstance().Shutdown();
+
     // 释放所有资源（渲染器销毁前）
     ResourceManager::GetInstance().ReleaseAll();
 
@@ -192,6 +206,12 @@ void App::ProcessEvents()
         {
             case SDL_EVENT_QUIT:
                 m_running = false;
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                // 通知 ShaderManager 屏幕尺寸变化
+                sakura::effects::ShaderManager::GetInstance().OnResize(
+                    m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
                 break;
             // ESC 键由各场景自行处理（主菜单弹确认框，游戏中暂停，其他场景返回上级）
             default:
@@ -237,6 +257,9 @@ void App::Render()
 
     // 场景渲染
     m_sceneManager.Render(m_renderer);
+
+    // 后处理特效（暗角等覆盖层，在所有场景之上）
+    sakura::effects::ShaderManager::GetInstance().ApplyPostProcess();
 
     // 子类可覆盖附加渲染
     OnRender();
