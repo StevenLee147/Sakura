@@ -607,7 +607,8 @@ void Renderer::DrawArc(float cx, float cy, float normRadius,
 }
 
 void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
-                                Color color, bool filled, int cornerSegments)
+                                Color color, bool filled, int cornerSegments,
+                                float normThickness)
 {
     if (!m_renderer) return;
 
@@ -663,7 +664,7 @@ void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
     else
     {
         // 轮廓：四条直线 + 四段圆弧
-        constexpr float normT = 0.002f;
+        const float normT = normThickness;
 
         // 转换回归一化坐标绘制直线
         auto pxToNX = [sw](float px) { return px / sw; };
@@ -674,7 +675,7 @@ void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
         DrawLine(pxToNX(pxX),          pxToNY(pxY + r),       pxToNX(pxX),           pxToNY(pxY + pxH - r), color, normT);
         DrawLine(pxToNX(pxX + pxW),    pxToNY(pxY + r),       pxToNX(pxX + pxW),     pxToNY(pxY + pxH - r), color, normT);
 
-        const float normR = r / std::min(sw, sh);
+        const float normR = r / std::min(static_cast<float>(sw), static_cast<float>(sh));
         DrawArc(pxToNX(pxX + pxW - r), pxToNY(pxY + r),        normR, -90.0f,   0.0f, color, normT, cornerSegments);
         DrawArc(pxToNX(pxX + r),       pxToNY(pxY + r),         normR, 180.0f, 270.0f, color, normT, cornerSegments);
         DrawArc(pxToNX(pxX + r),       pxToNY(pxY + pxH - r),  normR,  90.0f,  180.0f, color, normT, cornerSegments);

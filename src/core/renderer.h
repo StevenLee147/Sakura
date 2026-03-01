@@ -189,7 +189,8 @@ public:
     // 圆角矩形
     void DrawRoundedRect(NormRect rect, float normCornerRadius,
                          Color color, bool filled = true,
-                         int cornerSegments = 12);
+                         int cornerSegments = 12,
+                         float normThickness = 0.002f);
 
     // ── 混合模式 ──────────────────────────────────────────────────────────────
     void SetBlendMode(BlendMode mode);
