@@ -8,6 +8,8 @@
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "data/database.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
 
 #include <sstream>
 #include <iomanip>
@@ -46,6 +48,11 @@ void SceneResult::OnEnter()
     m_displayScore = 0;
     m_elemTimer    = 0.0f;
 
+    // 评级弹入动画复位
+    m_gradeScale      = 0.0f;
+    m_gradeScaleTimer = 0.0f;
+    m_particlesBurst  = false;
+
     // ── 按钮 ──────────────────────────────────────────────────────────────────
     m_btnRetry = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{0.27f, 0.935f, 0.18f, 0.048f},
@@ -76,6 +83,11 @@ void SceneResult::OnEnter()
 
     // ── 保存成绩到数据库 ──────────────────────────────────────────────────────
     sakura::data::Database::GetInstance().SaveScore(m_result);
+
+    // ── 樱花飘落持续发射器 ────────────────────────────────────────────────────
+    m_particles.Clear();
+    auto petalCfg = sakura::effects::ParticlePresets::SakuraPetal();
+    m_sakuraPetalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 4.0f, petalCfg);
 }
 
 // ── OnExit ────────────────────────────────────────────────────────────────────
@@ -83,6 +95,9 @@ void SceneResult::OnEnter()
 void SceneResult::OnExit()
 {
     LOG_INFO("[SceneResult] 退出结算场景");
+    if (m_sakuraPetalEmitter >= 0)
+        m_particles.StopEmitter(m_sakuraPetalEmitter);
+    m_particles.Clear();
 }
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
@@ -103,6 +118,33 @@ void SceneResult::OnUpdate(float dt)
     {
         m_displayScore = m_result.score;
     }
+
+    // 评级大字弹入（EaseOutElastic，等待元素1淡入后开始）
+    float gradeStartDelay = 1 * FADE_INTERVAL + 0.05f;
+    if (m_elemTimer > gradeStartDelay)
+    {
+        m_gradeScaleTimer += dt;
+        float t = std::min(m_gradeScaleTimer / GRADE_ANIM_DURATION, 1.0f);
+        m_gradeScale = sakura::utils::EaseOutElastic(t);
+    }
+
+    // FC/AP 粒子爆发（首次达到元素2可见时）
+    if (!m_particlesBurst && ElemAlpha(2) > 0.5f)
+    {
+        m_particlesBurst = true;
+        if (m_result.isAllPerfect || m_result.isFullCombo)
+        {
+            // 金色/青色粒子爆发
+            auto preset = m_result.isAllPerfect
+                ? sakura::effects::ParticlePresets::ComboMilestone()
+                : sakura::effects::ParticlePresets::HitBurst(
+                    sakura::core::Color{100, 220, 255, 255});
+            m_particles.Emit(0.5f, 0.27f, 40, preset);
+        }
+    }
+
+    // 粒子更新
+    m_particles.Update(dt);
 
     if (m_btnRetry) m_btnRetry->Update(dt);
     if (m_btnBack)  m_btnBack ->Update(dt);
@@ -167,14 +209,32 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
                           sakura::core::TextAlign::Center);
     }
 
-    // ── 元素 1：评级大字 ───────────────────────────────────────────────────────
+    // ── 元素 1：评级大字（弹入缩放动画）────────────────────────────────────
     {
         float a     = ElemAlpha(1);
         auto  col   = GradeColor(m_result.grade);
         col.a       = static_cast<uint8_t>(a * 255);
+        // 使用 m_gradeScale 使字体大小随动画缩放，最小 0.01 防止 0 崩溃
+        float scaledSize = std::max(0.12f * m_gradeScale, 0.01f);
         renderer.DrawText(m_fontGrade, GradeText(m_result.grade),
-                          0.50f, 0.11f, 0.12f, col,
+                          0.50f, 0.11f, scaledSize, col,
                           sakura::core::TextAlign::Center);
+
+        // 评级字母发光（SS/S 金色，A 绿色，其余白色）
+        if (a > 0.3f && m_gradeScale > 0.3f)
+        {
+            auto glowCol = GradeColor(m_result.grade);
+            glowCol.a = static_cast<uint8_t>(a * 120);
+            sakura::effects::GlowEffect::PulseGlow(
+                renderer,
+                0.50f, 0.175f,
+                0.04f * m_gradeScale,   // sizeMin
+                0.07f * m_gradeScale,   // sizeMax
+                glowCol,                // baseColor
+                m_gradeScaleTimer,      // phase
+                0.5f,                   // frequency
+                3);                     // layers
+        }
     }
 
     // ── 元素 2：FC / AP 标记 ──────────────────────────────────────────────────
@@ -345,6 +405,9 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
         if (m_btnRetry) m_btnRetry->Render(renderer);
         if (m_btnBack)  m_btnBack ->Render(renderer);
     }
+
+    // 粒子层（最上层渲染）
+    m_particles.Render(renderer);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────

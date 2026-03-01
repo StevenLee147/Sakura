@@ -9,6 +9,8 @@
 #include "game/chart_loader.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
 
 // version.h 由 CMake 生成
 #if __has_include("version.h")
@@ -60,6 +62,18 @@ void SceneMenu::OnEnter()
     m_showEditorMenu   = false;
     m_selectedChartIdx = -1;
     m_customCharts.clear();
+
+    // ── 特效初始化 ────────────────────────────────────────────────────────────
+    m_particles.Clear();
+    m_glowPhase = 0.0f;
+
+    // 樱花飘落：从屏幕顶部均匀发射（5~8 个/s）
+    auto sakuraCfg = sakura::effects::ParticlePresets::SakuraPetal();
+    m_sakuraPetalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 6.0f, sakuraCfg);
+
+    // 背景微粒：全屏随机漂浮（3/s，低透明度）
+    auto bgCfg = sakura::effects::ParticlePresets::BackgroundFloat();
+    m_bgFloatEmitter = m_particles.EmitContinuous(0.5f, 0.5f, 3.0f, bgCfg);
 
     // 创建按钮
     SetupButtons();
@@ -281,6 +295,11 @@ void SceneMenu::SetupConfirmButtons()
 void SceneMenu::OnExit()
 {
     LOG_INFO("[SceneMenu] 退出主菜单");
+    m_particles.StopEmitter(m_sakuraPetalEmitter);
+    m_particles.StopEmitter(m_bgFloatEmitter);
+    m_sakuraPetalEmitter = -1;
+    m_bgFloatEmitter     = -1;
+    m_particles.Clear();
     for (auto& btn : m_buttons) btn.reset();
     m_btnConfirmYes.reset();
     m_btnConfirmNo.reset();
@@ -332,6 +351,10 @@ void SceneMenu::OnUpdate(float dt)
 {
     UpdateEnterAnimation(dt);
 
+    // ── 粒子更新 ─────────────────────────────────────────────────────────────
+    m_particles.Update(dt);
+    m_glowPhase += dt;  // 标题脉冲相位
+
     // 更新按钮（按带 Update 处理悬停动画）
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
@@ -377,9 +400,19 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     renderer.DrawCircleFilled(0.5f, 0.4f, 0.45f,
         sakura::core::Color{ 30, 15, 55, 80 });
 
+    // ── 背景微粒 + 樱花飘落 ────────────────────────────────────────────────────
+    m_particles.Render(renderer);
+
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
 
     float titleY = TITLE_Y + m_anim.titleOffsetY;
+
+    // ── 标题发光脉冲效果（在文字后面画glow） ───────────────────────────────────
+    sakura::effects::GlowEffect::PulseGlow(renderer,
+        0.5f, titleY + 0.04f,           // 中心（标题垂直中心）
+        0.04f, 0.07f,                    // 大小 min~max
+        sakura::core::Color{ 255, 140, 180, 120 },  // 粉色发光
+        m_glowPhase, 0.8f, 5);           // 频率 0.8Hz
 
     // ── 标题 ──────────────────────────────────────────────────────────────────
     renderer.DrawText(m_fontTitle, "Sakura-\xe6\xa8\xb1",

@@ -9,6 +9,10 @@
 #include "game/game_state.h"
 #include "game/judge.h"
 #include "game/score.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
+#include "effects/screen_shake.h"
+#include "effects/shader_manager.h"
 
 #include <array>
 #include <memory>
@@ -91,6 +95,15 @@ private:
     // 音符渲染参数
     static constexpr float NOTE_H        = 0.022f;  // Tap 音符高度
     static constexpr float BASE_APPROACH_RANGE = 2000.0f;  // ms, 屏幕高度跨度
+
+    // ── 视觉特效 ─────────────────────────────────────────────────────────────
+    sakura::effects::ParticleSystem m_particles;  // 判定爆发 + 里程碑粒子
+    float m_judgePulsePhase = 0.0f;               // 判定线脉冲相位
+    float m_chromaTimer     = 0.0f;               // 色差计时（>0=激活）
+    int   m_lastCheckedCombo = 0;                 // 上帧连击数（用于里程碑检测）
+
+    // 轨道按键状态（用于轨道按下发光效果）
+    std::array<bool, LANE_COUNT> m_lanePressed = {};
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
 

@@ -7,6 +7,8 @@
 #include "core/renderer.h"
 #include "core/resource_manager.h"
 #include "ui/button.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
 
 #include <array>
 #include <memory>
@@ -102,6 +104,12 @@ private:
     void ScanCustomCharts();
     void OpenEditorForChart(int idx);
     void UpdateEnterAnimation(float dt);
+
+    // ── 视觉特效 ─────────────────────────────────────────────────────────────
+    sakura::effects::ParticleSystem m_particles;
+    int   m_sakuraPetalEmitter = -1;   // 持续发射器 ID
+    int   m_bgFloatEmitter     = -1;   // 背景微粒发射器 ID
+    float m_glowPhase          = 0.0f; // 标题发光脉冲相位（随时间递增）
 };
 
 } // namespace sakura::scene

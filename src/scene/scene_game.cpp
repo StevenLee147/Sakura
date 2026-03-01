@@ -9,6 +9,10 @@
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "audio/audio_manager.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
+#include "effects/screen_shake.h"
+#include "effects/shader_manager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -82,6 +86,13 @@ void SceneGame::OnEnter()
     m_holdStates.clear();
     m_sliderStates.clear();
     m_judgeFlashes.clear();
+
+    // ── 特效初始化 ────────────────────────────────────────────────────────────
+    m_particles.Clear();
+    m_judgePulsePhase = 0.0f;
+    m_chromaTimer     = 0.0f;
+    m_lastCheckedCombo = 0;
+    m_lanePressed.fill(false);
 }
 
 // ── OnExit ─────────────────────────────────────────────────────────────────────
@@ -93,6 +104,7 @@ void SceneGame::OnExit()
     m_holdStates.clear();
     m_sliderStates.clear();
     m_judgeFlashes.clear();
+    m_particles.Clear();
 }
 
 // ── CalcNoteRenderY ───────────────────────────────────────────────────────────
@@ -270,6 +282,37 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
     flash.posX     = px;
     flash.posY     = py;
     m_judgeFlashes.push_back(flash);
+
+    // ── 粒子特效：根据判定结果发射对应颜色粒子 ────────────────────────────────
+    sakura::core::Color judgeColor = JudgeResultColor(r);
+
+    float emitX, emitY;
+    if (isKb)
+    {
+        // 键盘音符：在轨道判定线附近发射
+        emitX = GetLaneX(lane) + LANE_W * 0.5f;
+        emitY = JUDGE_LINE_Y;
+    }
+    else
+    {
+        emitX = px;
+        emitY = py;
+    }
+
+    if (r == sakura::game::JudgeResult::Miss)
+    {
+        // Miss: 触发轻微屏幕震动
+        sakura::effects::ScreenShake::GetInstance().Trigger(0.003f, 0.15f, 8.0f);
+        // 少量红色火花
+        m_particles.Emit(emitX, emitY, 6,
+            sakura::effects::ParticlePresets::JudgeSpark({ 229, 115, 115, 200 }));
+    }
+    else
+    {
+        // 其他判定：发射对应颜色的命中火花
+        m_particles.Emit(emitX, emitY, 12,
+            sakura::effects::ParticlePresets::HitBurst(judgeColor));
+    }
 }
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
@@ -391,6 +434,40 @@ void SceneGame::OnUpdate(float dt)
         else
             ++it;
     }
+
+    // ── 粒子 + 特效更新 ───────────────────────────────────────────────────────
+    m_particles.Update(dt);
+    m_judgePulsePhase += dt;
+
+    // 色差计时倒计
+    if (m_chromaTimer > 0.0f)
+    {
+        m_chromaTimer -= dt;
+        if (m_chromaTimer < 0.0f) m_chromaTimer = 0.0f;
+    }
+
+    // 连击里程碑检测（50/100/200/500/1000）
+    int currCombo = m_score.GetCombo();
+    static constexpr int MILESTONES[] = { 50, 100, 200, 500, 1000 };
+    for (int ms : MILESTONES)
+    {
+        if (m_lastCheckedCombo < ms && currCombo >= ms)
+        {
+            // 触发里程碑特效
+            float cx = TRACK_X + TRACK_W * 0.5f;
+            float cy = JUDGE_LINE_Y;
+            int count = (ms >= 500) ? 50 : 25;
+            m_particles.Emit(cx, cy, count,
+                sakura::effects::ParticlePresets::ComboMilestone());
+            m_chromaTimer = 0.4f;  // 0.4s 色差效果
+            LOG_DEBUG("[SceneGame] 连击里程碑: {}", ms);
+        }
+    }
+    m_lastCheckedCombo = currCombo;
+
+    // 更新轨道按键状态（用于发光）
+    for (int i = 0; i < LANE_COUNT; ++i)
+        m_lanePressed[i] = sakura::core::Input::IsKeyHeld(m_laneKeys[i]);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
@@ -523,6 +600,32 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
     renderer.DrawLine(TRACK_X, JUDGE_LINE_Y,
                       TRACK_X + TRACK_W, JUDGE_LINE_Y,
                       sakura::core::Color{ 200, 200, 255, 80 }, 0.008f);
+
+    // 判定线辉光（脉冲）
+    sakura::effects::GlowEffect::DrawGlowBar(
+        renderer,
+        TRACK_X, JUDGE_LINE_Y - 0.003f,
+        TRACK_W, 0.006f,
+        sakura::core::Color{ 255, 255, 220, 180 },
+        0.008f, 4);
+
+    // 按键按下时的轨道高亮
+    for (int i = 0; i < LANE_COUNT; ++i)
+    {
+        if (m_lanePressed[i])
+        {
+            float lx = GetLaneX(i);
+            renderer.DrawFilledRect(
+                { lx, JUDGE_LINE_Y - 0.06f, LANE_W, 0.06f },
+                sakura::core::Color{ 180, 180, 255, 30 });
+            sakura::effects::GlowEffect::DrawGlow(
+                renderer,
+                lx + LANE_W * 0.5f, JUDGE_LINE_Y,
+                0.018f,
+                sakura::core::Color{ 200, 200, 255, 160 },
+                0.025f, 3);
+        }
+    }
 
     // 鼠标区域边框
     renderer.DrawRectOutline(
@@ -837,6 +940,17 @@ void SceneGame::OnRender(sakura::core::Renderer& renderer)
     RenderHUD(renderer);
     RenderCountdown(renderer);
     RenderJudgeFlashes(renderer);
+
+    // 粒子渲染（最上层）
+    m_particles.Render(renderer);
+
+    // 连击里程碑色差特效
+    if (m_chromaTimer > 0.0f)
+    {
+        float intensity = (m_chromaTimer / 0.4f) * 0.006f;
+        sakura::effects::ShaderManager::GetInstance().DrawChromaticAberration(
+            nullptr, intensity);
+    }
 }
 
 } // namespace sakura::scene

@@ -8,6 +8,8 @@
 #include "core/resource_manager.h"
 #include "ui/button.h"
 #include "game/chart.h"
+#include "effects/particle_system.h"
+#include "effects/glow.h"
 
 #include <memory>
 
@@ -57,6 +59,16 @@ private:
     // 按钮
     std::unique_ptr<sakura::ui::Button> m_btnRetry;
     std::unique_ptr<sakura::ui::Button> m_btnBack;
+
+    // 粒子系统（FC/AP 庆祝 + 樱花飘落）
+    sakura::effects::ParticleSystem m_particles;
+    int   m_sakuraPetalEmitter = -1;
+    bool  m_particlesBurst     = false;
+
+    // 评级大字弹入动画（EaseOutElastic）
+    float m_gradeScale      = 0.0f;
+    float m_gradeScaleTimer = 0.0f;
+    static constexpr float GRADE_ANIM_DURATION = 0.6f;
 
     // 帮助函数 ----------------------------------------------------------------
     static sakura::core::Color GradeColor(sakura::game::Grade grade);

@@ -6,6 +6,7 @@
 #include "core/resource_manager.h"
 #include "audio/audio_manager.h"
 #include "utils/logger.h"
+#include "effects/shader_manager.h"
 
 #include <memory>
 
@@ -103,6 +104,9 @@ void ScenePause::OnRender(sakura::core::Renderer& renderer)
 {
     // ── 半透明黑遮罩 ─────────────────────────────────────────────────────────
     renderer.DrawFilledRect({0.0f, 0.0f, 1.0f, 1.0f}, {0, 0, 0, 160});
+
+    // 暂停时额外晕影强化沉浸感
+    sakura::effects::ShaderManager::GetInstance().DrawVignette(0.35f);
 
     // ── 圆角面板填充 ─────────────────────────────────────────────────────────
     renderer.DrawRoundedRect({0.30f, 0.25f, 0.40f, 0.50f},
