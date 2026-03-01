@@ -204,6 +204,14 @@ void App::Update(float dt)
     // 同步屏幕尺寸给输入系统（用于归一化鼠标坐标）
     Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
 
+    // 全屏配置同步：检测 Config 中设置是否与当前窗口状态一致
+    {
+        bool cfgFullscreen = Config::GetInstance().Get<bool>(
+            std::string(ConfigKeys::kFullscreen), false);
+        if (cfgFullscreen != m_window.IsFullscreen())
+            m_window.SetFullscreen(cfgFullscreen);
+    }
+
     // 场景更新
     m_sceneManager.Update(dt);
 
