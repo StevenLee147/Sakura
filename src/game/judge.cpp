@@ -152,6 +152,9 @@ int Judge::CheckMouseMisses(std::vector<MouseNote>& notes, int currentTimeMs)
             note.isJudged = true;
             note.result   = JudgeResult::Miss;
             ++missCount;
+            // Slider 头部未被点击：拐点同样算作 Miss
+            if (note.type == NoteType::Slider)
+                missCount += static_cast<int>(note.sliderPath.size());
         }
     }
     return missCount;
@@ -219,41 +222,80 @@ JudgeResult Judge::JudgeDragEnd(KeyboardNote& note, int hitTimeMs, int hitLane)
 }
 
 // ── UpdateSliderTracking ──────────────────────────────────────────────────────
-
+//
+// 每帧检查下一个拐点是否到达（currentTimeMs >= 拐点期望时间）：
+//   - 到达且鼠标按住并在容差范围内 → Perfect，继续追踪
+//   - 到达但未按住或超出范围       → Miss，后续拐点全判 Miss（isMissed=true）
+//   - 未到达                       → None，等下一帧
+// 每次调用只判定一个拐点，全部判定后 finalized=true。
+//
 JudgeResult Judge::UpdateSliderTracking(SliderState& state,
-                                        const MouseNote& note,
-                                        int currentTimeMs,
-                                        float mouseX, float mouseY,
-                                        bool isMouseDown)
+                                         const MouseNote& note,
+                                         int currentTimeMs,
+                                         float mouseX, float mouseY,
+                                         bool isMouseDown)
 {
     if (!state.headJudged) return JudgeResult::None;
+    if (state.finalized)   return JudgeResult::None;
 
-    int sliderEnd = note.time + note.sliderDuration;
-    if (currentTimeMs > sliderEnd + 50) return JudgeResult::None;
-
-    // 计算进度 t (0~1)
-    float t = static_cast<float>(currentTimeMs - note.time)
-            / std::max(1, note.sliderDuration);
-    t = std::max(0.0f, std::min(1.0f, t));
-
-    // 获取路径上的期望位置
-    auto [expectedX, expectedY] = GetSliderPosition(note, t);
-
-    ++state.sampleCount;
-
-    // 检查鼠标是否在容差范围内
-    if (isMouseDown)
+    const int numWaypoints = static_cast<int>(note.sliderPath.size());
+    if (numWaypoints == 0)
     {
-        float dx   = mouseX - expectedX;
-        float dy   = mouseY - expectedY;
+        state.finalized = true;
+        return JudgeResult::None;
+    }
+
+    if (state.nextWaypointIndex >= numWaypoints)
+    {
+        state.finalized = true;
+        return JudgeResult::None;
+    }
+
+    // 拐点 k (0-indexed) 的期望到达时间
+    // 路径等分：拐点 k 在路径进度 (k+1)/numWaypoints 处
+    int wpIdx  = state.nextWaypointIndex;
+    int wpTime = note.time + static_cast<int>(
+        static_cast<float>(wpIdx + 1) / static_cast<float>(numWaypoints)
+        * static_cast<float>(note.sliderDuration));
+
+    // 尚未到达拐点时间
+    if (currentTimeMs < wpTime)
+        return JudgeResult::None;
+
+    // 已到达（或超过）拐点时间，进行判定
+    JudgeResult result;
+    if (state.isMissed)
+    {
+        // 已进入 miss 链，后续全 Miss
+        result = JudgeResult::Miss;
+    }
+    else
+    {
+        auto [wx, wy] = note.sliderPath[wpIdx];
+        float dx   = mouseX - wx;
+        float dy   = mouseY - wy;
         float dist = std::sqrt(dx * dx + dy * dy);
-        if (dist <= SliderState::PATH_TOLERANCE)
+
+        if (isMouseDown && dist <= SliderState::PATH_TOLERANCE)
         {
-            ++state.hitSampleCount;
+            // 拐点命中 → Perfect
+            // Slider 拐点判定侧重空间位置的连续跟踪，不再细分时间窗口（Perfect/Great/Good），
+            // 玩家只需在正确位置保持按住即可，每个拐点要么命中（Perfect）要么 Miss。
+            result = JudgeResult::Perfect;
+        }
+        else
+        {
+            // 未命中 → Miss，后续拐点全 Miss
+            state.isMissed = true;
+            result = JudgeResult::Miss;
         }
     }
 
-    return JudgeResult::None;  // 逐帧采样，最终结果由 scene 在 Slider 结束后计算
+    ++state.nextWaypointIndex;
+    if (state.nextWaypointIndex >= numWaypoints)
+        state.finalized = true;
+
+    return result;
 }
 
 // ── GetSliderPosition ─────────────────────────────────────────────────────────
