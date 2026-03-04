@@ -323,8 +323,15 @@ float GameState::GetCurrentBPM(int timeMs) const
 
 int GameState::GetTotalNoteCount() const
 {
-    return static_cast<int>(m_chartData.keyboardNotes.size()
-                           + m_chartData.mouseNotes.size());
+    int count = static_cast<int>(m_chartData.keyboardNotes.size());
+    for (const auto& n : m_chartData.mouseNotes)
+    {
+        ++count;  // 头部判定（Circle 1次点击；Slider 起点点击）
+        // Slider 每个拐点额外算一次独立判定；Circle 只有头部点击这一次
+        if (n.type == NoteType::Slider)
+            count += static_cast<int>(n.sliderPath.size());  // 每个拐点算一次判定
+    }
+    return count;
 }
 
 // ── UpdateActiveWindows ────────────────────────────────────────────────────────
@@ -407,6 +414,9 @@ void GameState::CheckFinished()
                 n.isJudged = true;
                 n.result   = JudgeResult::Miss;
                 ++m_forcedMissCount;
+                // Slider 头部未被点击时，拐点也算强制 Miss
+                if (n.type == NoteType::Slider)
+                    m_forcedMissCount += static_cast<int>(n.sliderPath.size());
             }
         }
 

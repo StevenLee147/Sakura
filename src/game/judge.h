@@ -39,12 +39,13 @@ struct HoldState
 
 struct SliderState
 {
-    int   noteIndex       = -1;
-    bool  headJudged      = false;
-    JudgeResult headResult = JudgeResult::None;
-    int   sampleCount     = 0;     // 总采样次数
-    int   hitSampleCount  = 0;     // 命中采样次数
-    static constexpr float PATH_TOLERANCE = 0.08f;  // 路径跟踪容差（归一化）
+    int   noteIndex          = -1;
+    bool  headJudged         = false;
+    JudgeResult headResult   = JudgeResult::None;
+    int   nextWaypointIndex  = 0;    // 下一个待判定的拐点索引（0-based）
+    bool  isMissed           = false; // 已进入 miss 状态，后续拐点全判 Miss
+    bool  finalized          = false; // 所有拐点判定完毕，可从活跃列表移除
+    static constexpr float PATH_TOLERANCE = 0.08f;  // 拐点命中容差（归一化）
 };
 
 // ── Judge — 判定计算器 ────────────────────────────────────────────────────────
@@ -98,9 +99,11 @@ public:
 
     // ── Slider 路径判定 ───────────────────────────────────────────────────────
 
-    // 每帧采样鼠标位置，更新 Slider 跟踪状态
+    // 每帧检查下一个拐点是否到达，进行拐点判定
     // mouseX, mouseY: 当前鼠标位置（鼠标区域归一化坐标）
     // isMouseDown: 鼠标左键是否按住
+    // 返回：到达拐点时的判定结果；未到达则返回 None
+    // 当所有拐点判定完毕时，state.finalized 置 true
     JudgeResult UpdateSliderTracking(SliderState& state,
                                      const MouseNote& note,
                                      int currentTimeMs,

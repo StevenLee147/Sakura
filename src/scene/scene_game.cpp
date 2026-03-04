@@ -266,6 +266,11 @@ void SceneGame::HandleMouseClick(float normX, float normY)
         result != sakura::game::JudgeResult::Miss &&
         result != sakura::game::JudgeResult::None)
     {
+        // 标记音符已判定（防止 CheckMouseMisses 在 Slider 进行中误判为 Miss）
+        // result 暂置 None，Slider 所有拐点判定完毕后在 OnUpdate 中填入终判结果
+        note.isJudged = true;
+        note.result   = sakura::game::JudgeResult::None;
+
         // 开始 Slider 追踪
         sakura::game::SliderState ss;
         ss.noteIndex   = bestIdx;
@@ -348,6 +353,21 @@ void SceneGame::OnUpdate(float dt)
     if (m_gameState.IsFinished())
     {
         LOG_INFO("[SceneGame] 游戏完成，切换到结算");
+
+        // 将活跃 Slider 中未完成的拐点计为 Miss（音乐结束时 Slider 可能仍在进行中）
+        auto& msNotes = m_gameState.GetMouseNotes();
+        for (auto& ss : m_sliderStates)
+        {
+            if (ss.noteIndex >= 0 && ss.noteIndex < static_cast<int>(msNotes.size()))
+            {
+                const auto& sliderNote = msNotes[ss.noteIndex];
+                int remaining = static_cast<int>(sliderNote.sliderPath.size())
+                                - ss.nextWaypointIndex;
+                for (int i = 0; i < remaining; ++i)
+                    m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
+            }
+        }
+        m_sliderStates.clear();
 
         // 将 CheckFinished 中强制判定的 Miss 计入分数
         int forcedMisses = m_gameState.TakeForcedMisses();
@@ -435,10 +455,28 @@ void SceneGame::OnUpdate(float dt)
         auto sResult = m_judge.UpdateSliderTracking(
             ss, note, now, mouseX, mouseY, mouseDown);
 
-        if (note.isJudged)
+        // 拐点判定结果：计分并发出判定闪现
+        if (sResult != sakura::game::JudgeResult::None)
         {
-            if (sResult != sakura::game::JudgeResult::None)
-                m_score.OnJudge(sResult, 0);
+            m_score.OnJudge(sResult, 0);
+            // 在刚判定的拐点位置显示判定结果
+            // UpdateSliderTracking 在判定后执行了 ++nextWaypointIndex，因此减 1 还原到刚判定的索引
+            // 边界检查确保安全（正常情况下 judgedIdx 恒 ≥ 0）
+            int judgedIdx = ss.nextWaypointIndex - 1;
+            if (judgedIdx >= 0 && judgedIdx < static_cast<int>(note.sliderPath.size()))
+            {
+                float wpSX = MOUSE_X + note.sliderPath[judgedIdx].first  * MOUSE_W;
+                float wpSY = MOUSE_Y + note.sliderPath[judgedIdx].second * MOUSE_H;
+                AddJudgeFlash(sResult, false, 0, wpSX, wpSY);
+            }
+        }
+
+        // 所有拐点判定完毕 → 填入终判结果，移除状态
+        if (ss.finalized)
+        {
+            note.result = ss.isMissed
+                ? sakura::game::JudgeResult::Miss
+                : ss.headResult;
             it = m_sliderStates.erase(it);
         }
         else
@@ -789,32 +827,80 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
         }
         case sakura::game::NoteType::Slider:
         {
-            // 将鼠标区局部坐标转换为屏幕坐标
+            // 将起始坐标转换为屏幕坐标
             float sx = MOUSE_X + note.x * MOUSE_W;
             float sy = MOUSE_Y + note.y * MOUSE_H;
-            // 头部
-            renderer.DrawCircleOutline(sx, sy, 0.030f * scale,
-                sakura::core::Color{ 180, 255, 200, static_cast<uint8_t>(alpha * 0.6f) },
-                0.002f, 48);
-            renderer.DrawCircleFilled(sx, sy, 0.025f,
-                sakura::core::Color{ 100, 220, 140, alpha });
 
-            // 路径线（路径点同样需要坐标转换）
-            if (note.sliderPath.size() >= 2)
+            // 查找对应的活跃 SliderState
+            auto& msNotes = m_gameState.GetMouseNotes();
+            const sakura::game::SliderState* ssPtr = nullptr;
+            for (const auto& s : m_sliderStates)
             {
-                for (size_t pi = 1; pi < note.sliderPath.size(); ++pi)
+                if (s.noteIndex >= 0 &&
+                    s.noteIndex < static_cast<int>(msNotes.size()) &&
+                    &msNotes[s.noteIndex] == &note)
                 {
-                    auto [x1, y1] = note.sliderPath[pi - 1];
-                    auto [x2, y2] = note.sliderPath[pi];
-                    float sx1 = MOUSE_X + x1 * MOUSE_W;
-                    float sy1 = MOUSE_Y + y1 * MOUSE_H;
-                    float sx2 = MOUSE_X + x2 * MOUSE_W;
-                    float sy2 = MOUSE_Y + y2 * MOUSE_H;
-                    renderer.DrawLine(sx1, sy1, sx2, sy2,
+                    ssPtr = &s;
+                    break;
+                }
+            }
+            bool isActive = (ssPtr != nullptr && ssPtr->headJudged);
+
+            // 绘制完整路径：起点 → 拐点0 → 拐点1 → …
+            {
+                float prevPx = sx, prevPy = sy;
+                for (const auto& [wpx, wpy] : note.sliderPath)
+                {
+                    float spx = MOUSE_X + wpx * MOUSE_W;
+                    float spy = MOUSE_Y + wpy * MOUSE_H;
+                    renderer.DrawLine(prevPx, prevPy, spx, spy,
                         sakura::core::Color{ 80, 200, 120,
                             static_cast<uint8_t>(alpha * 0.5f) },
                         0.003f);
+                    prevPx = spx;
+                    prevPy = spy;
                 }
+            }
+
+            // 绘制各拐点标记（已过的暗化）
+            for (int wi = 0; wi < static_cast<int>(note.sliderPath.size()); ++wi)
+            {
+                auto [wpx, wpy] = note.sliderPath[wi];
+                float spx = MOUSE_X + wpx * MOUSE_W;
+                float spy = MOUSE_Y + wpy * MOUSE_H;
+                bool passed = isActive && (wi < ssPtr->nextWaypointIndex);
+                uint8_t wpAlpha = passed
+                    ? static_cast<uint8_t>(alpha * 0.3f)
+                    : static_cast<uint8_t>(alpha * 0.7f);
+                renderer.DrawCircleOutline(spx, spy, 0.018f,
+                    sakura::core::Color{ 150, 255, 180, wpAlpha },
+                    0.002f, 24);
+            }
+
+            if (!isActive)
+            {
+                // 未激活：绘制接近圈（由大缩小）和起点核心圆
+                renderer.DrawCircleOutline(sx, sy, 0.030f * scale,
+                    sakura::core::Color{ 180, 255, 200,
+                        static_cast<uint8_t>(alpha * 0.6f) },
+                    0.002f, 48);
+                renderer.DrawCircleFilled(sx, sy, 0.025f,
+                    sakura::core::Color{ 100, 220, 140, alpha });
+            }
+            else
+            {
+                // 激活中：绘制沿路径移动的头部
+                float t = static_cast<float>(now - note.time)
+                        / static_cast<float>(std::max(1, note.sliderDuration));
+                t = std::max(0.0f, std::min(1.0f, t));
+                auto [hx, hy] = sakura::game::Judge::GetSliderPosition(note, t);
+                float shx = MOUSE_X + hx * MOUSE_W;
+                float shy = MOUSE_Y + hy * MOUSE_H;
+                renderer.DrawCircleFilled(shx, shy, 0.022f,
+                    sakura::core::Color{ 200, 255, 220, alpha });
+                renderer.DrawCircleOutline(shx, shy, 0.022f,
+                    sakura::core::Color{ 255, 255, 255, alpha },
+                    0.002f, 32);
             }
             break;
         }
