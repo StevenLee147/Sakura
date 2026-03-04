@@ -51,7 +51,7 @@ void EditorMouseArea::DrawBackground(sakura::core::Renderer& renderer)
         NoteToolType tool = m_core.GetNoteTool();
         const char* hint =
             (tool == NoteToolType::Circle) ? "左键: 放置 Circle 音符" :
-            (tool == NoteToolType::Slider) ? "左键: 添加路径点  右键: 完成 Slider" :
+            (tool == NoteToolType::Slider) ? "左键: 添加路径点  右键/Enter: 完成 Slider" :
             "切换工具 4/5 使用此区域";
 
         renderer.DrawText(m_font, "鼠标编辑区",
@@ -188,7 +188,7 @@ void EditorMouseArea::DrawWipSlider(sakura::core::Renderer& renderer)
     if (m_font != sakura::core::INVALID_HANDLE)
     {
         std::string hint = "已添加 " + std::to_string(wip->sliderPath.size())
-                         + " 个路径点 (右键完成)";
+                         + " 个路径点 (右键/Enter 完成)";
         renderer.DrawText(m_font, hint.c_str(),
             AREA_X + AREA_W * 0.5f, AREA_Y + AREA_H - 0.025f, 0.015f,
             sakura::core::Color{ 120, 255, 180, 200 },
@@ -280,6 +280,9 @@ bool EditorMouseArea::HandleEvent(const SDL_Event& event)
         {
             if (tool == NoteToolType::Circle)
             {
+                // 如果有进行中的 Slider，先取消它
+                if (m_core.HasWipSlider())
+                    m_core.CancelSlider();
                 // 先检查是否点击了已有音符
                 int found = m_core.FindMouseNote(timeMs, areaNX, areaNY);
                 if (found >= 0)
