@@ -12,6 +12,12 @@
 namespace sakura::effects
 {
 
+enum class ParticleShape : uint8_t
+{
+    Circle,
+    SakuraMix
+};
+
 // ============================================================================
 // Particle — 单个粒子的运行时状态（全归一化，相对屏幕比例）
 // ============================================================================
@@ -29,6 +35,8 @@ struct Particle
     float rotSpeed  = 0.0f;   // 旋转速度（度/s）
     float life      = 1.0f;   // 剩余生命（秒）
     float maxLife   = 1.0f;   // 最大生命（秒）
+    float shapeSeed = 0.0f;   // 形状随机种子（0~1）
+    ParticleShape shape = ParticleShape::Circle;
     sakura::core::Color colorStart   = sakura::core::Color::White;
     sakura::core::Color colorEnd     = sakura::core::Color{255, 255, 255, 0};
     bool  active    = false;
@@ -69,6 +77,9 @@ struct ParticleConfig
     // 颜色（起始 / 结束，alpha 会线性衰减）
     sakura::core::Color colorStart   = { 255, 255, 255, 220 };
     sakura::core::Color colorEnd     = { 255, 255, 255,   0 };
+
+    // 形状
+    ParticleShape shape = ParticleShape::Circle;
 };
 
 // ── 预设配置构建函数 ──────────────────────────────────────────────────────────

@@ -46,6 +46,7 @@ ParticleConfig SakuraPetalForeground()
     // 前景高斯模糊，这里用较低透明度和更深/明亮的颜色近似
     cfg.colorStart   = { 255, 160, 190, 160 };
     cfg.colorEnd     = { 255, 130, 160,   0 };
+    cfg.shape        = ParticleShape::SakuraMix;
     return cfg;
 }
 
@@ -69,6 +70,7 @@ ParticleConfig SakuraPetalMidground()
     cfg.lifeMax      =  6.0f;
     cfg.colorStart   = { 255, 180, 200, 220 };
     cfg.colorEnd     = { 255, 150, 180,   0 };
+    cfg.shape        = ParticleShape::SakuraMix;
     return cfg;
 }
 
@@ -92,6 +94,7 @@ ParticleConfig SakuraPetalBackground()
     cfg.lifeMax      =  12.0f;
     cfg.colorStart   = { 255, 190, 210, 100 };
     cfg.colorEnd     = { 255, 170, 190,   0 };
+    cfg.shape        = ParticleShape::SakuraMix;
     return cfg;
 }
 
@@ -217,6 +220,39 @@ ParticleConfig JudgeSpark(sakura::core::Color color)
 
 } // namespace ParticlePresets
 
+static void DrawSakuraBlossom(sakura::core::Renderer& renderer, const Particle& p,
+                              float sz, const sakura::core::Color& col)
+{
+    const float petalR = sz * 0.58f;
+    const float offset = sz * 0.68f;
+    const float angleStep = 72.0f;
+    const float baseRad = p.rotation * (3.1415926535f / 180.0f);
+    const float stepRad = angleStep * (3.1415926535f / 180.0f);
+    for (int i = 0; i < 5; ++i)
+    {
+        float a = baseRad + stepRad * static_cast<float>(i);
+        renderer.DrawCircleFilled(p.x + std::cos(a) * offset,
+                                  p.y + std::sin(a) * offset * 0.82f,
+                                  petalR, col, 10);
+    }
+    renderer.DrawCircleFilled(p.x, p.y, sz * 0.36f,
+                              { 255, 240, 200, col.a }, 8);
+}
+
+static void DrawSakuraPetal(sakura::core::Renderer& renderer, const Particle& p,
+                            float sz, const sakura::core::Color& col)
+{
+    const float rad = p.rotation * (3.1415926535f / 180.0f);
+    const float dirX = std::cos(rad);
+    const float dirY = std::sin(rad) * 0.82f;
+    renderer.DrawCircleFilled(p.x + dirX * sz * 0.45f,
+                              p.y + dirY * sz * 0.45f,
+                              sz * 0.62f, col, 10);
+    renderer.DrawCircleFilled(p.x - dirX * sz * 0.18f,
+                              p.y - dirY * sz * 0.18f,
+                              sz * 0.46f, col, 10);
+}
+
 // ============================================================================
 // ParticleSystem 实现
 // ============================================================================
@@ -260,6 +296,8 @@ void ParticleSystem::InitParticle(Particle& p, float x, float y,
 
     p.maxLife    = RandFloat(cfg.lifeMin, cfg.lifeMax);
     p.life       = p.maxLife;
+    p.shapeSeed  = RandFloat(0.0f, 1.0f);
+    p.shape      = cfg.shape;
 
     p.colorStart = cfg.colorStart;
     p.colorEnd   = cfg.colorEnd;
@@ -371,7 +409,17 @@ void ParticleSystem::Render(sakura::core::Renderer& renderer)
         sakura::core::Color col = LerpColor(p.colorStart, p.colorEnd, t);
         float sz = p.size + (p.sizeEnd - p.size) * t;
 
-        renderer.DrawCircleFilled(p.x, p.y, sz, col, 8);
+        if (p.shape == ParticleShape::SakuraMix)
+        {
+            if (p.shapeSeed < 0.30f)
+                DrawSakuraBlossom(renderer, p, sz, col);
+            else
+                DrawSakuraPetal(renderer, p, sz, col);
+        }
+        else
+        {
+            renderer.DrawCircleFilled(p.x, p.y, sz, col, 8);
+        }
     }
 
     renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
