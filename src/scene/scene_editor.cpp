@@ -114,6 +114,8 @@ void SceneEditor::SetupToolbar()
         int toolIdx = i;
         m_toolBtns[i]->SetOnClick([this, toolIdx]()
         {
+            if (m_core.HasWipSlider())
+                m_core.CancelSlider();
             m_core.SetNoteTool(static_cast<sakura::editor::NoteToolType>(toolIdx));
             UpdateToolButtons();
         });
@@ -908,9 +910,23 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             return;
         }
 
-        // 1-5 → 切换音符工具
+        // Enter → 完成当前进行中的 Slider
+        if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER)
+        {
+            if (m_core.HasWipSlider())
+            {
+                m_core.FinalizeSlider();
+                sakura::ui::ToastManager::Instance().Show(
+                    "Slider 已完成", sakura::ui::ToastType::Success);
+            }
+            return;
+        }
+
+        // 1-5 → 切换音符工具（自动取消进行中的 Slider）
         if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_5)
         {
+            if (m_core.HasWipSlider())
+                m_core.CancelSlider();
             int toolIdx = sc - SDL_SCANCODE_1;
             m_core.SetNoteTool(
                 static_cast<sakura::editor::NoteToolType>(toolIdx));
