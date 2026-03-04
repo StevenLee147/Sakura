@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <random>
 
 namespace sakura::effects
@@ -12,6 +13,8 @@ namespace sakura::effects
 // 随机数生成器（模块内静态）
 // ============================================================================
 static std::mt19937 s_rng{ std::random_device{}() };
+static constexpr float kDegToRad = std::numbers::pi_v<float> / 180.0f;
+static constexpr float kBlossomProbability = 0.30f;
 
 static float RandFloat(float lo, float hi)
 {
@@ -223,28 +226,33 @@ ParticleConfig JudgeSpark(sakura::core::Color color)
 static void DrawSakuraBlossom(sakura::core::Renderer& renderer, const Particle& p,
                               float sz, const sakura::core::Color& col)
 {
-    const float petalR = sz * 0.58f;
-    const float offset = sz * 0.68f;
-    const float angleStep = 72.0f;
-    const float baseRad = p.rotation * (3.1415926535f / 180.0f);
-    const float stepRad = angleStep * (3.1415926535f / 180.0f);
+    static constexpr float kBlossomPetalRadiusRatio = 0.58f;
+    static constexpr float kBlossomPetalOffsetRatio = 0.68f;
+    static constexpr float kBlossomVerticalSquash = 0.82f;
+    static constexpr float kBlossomCoreRadiusRatio = 0.36f;
+    static constexpr float kBlossomAngleStep = 360.0f / 5.0f;
+    const float petalR = sz * kBlossomPetalRadiusRatio;
+    const float offset = sz * kBlossomPetalOffsetRatio;
+    const float baseRad = p.rotation * kDegToRad;
+    const float stepRad = kBlossomAngleStep * kDegToRad;
     for (int i = 0; i < 5; ++i)
     {
         float a = baseRad + stepRad * static_cast<float>(i);
         renderer.DrawCircleFilled(p.x + std::cos(a) * offset,
-                                  p.y + std::sin(a) * offset * 0.82f,
+                                  p.y + std::sin(a) * offset * kBlossomVerticalSquash,
                                   petalR, col, 10);
     }
-    renderer.DrawCircleFilled(p.x, p.y, sz * 0.36f,
+    renderer.DrawCircleFilled(p.x, p.y, sz * kBlossomCoreRadiusRatio,
                               { 255, 240, 200, col.a }, 8);
 }
 
 static void DrawSakuraPetal(sakura::core::Renderer& renderer, const Particle& p,
                             float sz, const sakura::core::Color& col)
 {
-    const float rad = p.rotation * (3.1415926535f / 180.0f);
+    static constexpr float kPetalVerticalSquash = 0.82f;
+    const float rad = p.rotation * kDegToRad;
     const float dirX = std::cos(rad);
-    const float dirY = std::sin(rad) * 0.82f;
+    const float dirY = std::sin(rad) * kPetalVerticalSquash;
     renderer.DrawCircleFilled(p.x + dirX * sz * 0.45f,
                               p.y + dirY * sz * 0.45f,
                               sz * 0.62f, col, 10);
@@ -411,7 +419,7 @@ void ParticleSystem::Render(sakura::core::Renderer& renderer)
 
         if (p.shape == ParticleShape::SakuraMix)
         {
-            if (p.shapeSeed < 0.30f)
+            if (p.shapeSeed < kBlossomProbability)
                 DrawSakuraBlossom(renderer, p, sz, col);
             else
                 DrawSakuraPetal(renderer, p, sz, col);
