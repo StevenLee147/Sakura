@@ -201,6 +201,7 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
             hs.isHeld     = true;
             hs.headJudged = true;
             hs.headResult = result;
+            hs.lastHeldTimeMs = now;
             m_holdStates.push_back(hs);
         }
         // 头部判定结果反馈（闪光 + 计入头 Hit / Miss）
@@ -432,6 +433,31 @@ void SceneGame::OnUpdate(float dt)
         }
         auto& note = kbNotes[hs.noteIndex];
 
+        // 按键短断触滤波：短时间掉键不立即视为松开
+        bool keyHeld = false;
+        if (note.lane >= 0 && note.lane < LANE_COUNT)
+            keyHeld = sakura::core::Input::IsKeyHeld(m_laneKeys[note.lane]);
+
+        if (keyHeld)
+        {
+            hs.isHeld = true;
+            hs.lastHeldTimeMs = now;
+            hs.releaseTimeMs = -1;
+        }
+        else
+        {
+            if (hs.releaseTimeMs < 0)
+            {
+                hs.releaseTimeMs = now;
+            }
+
+            bool withinGapTolerance = (hs.lastHeldTimeMs >= 0) &&
+                (now - hs.lastHeldTimeMs <= sakura::game::HoldState::INPUT_GAP_TOLERANCE_MS);
+            hs.isHeld = withinGapTolerance;
+            if (withinGapTolerance)
+                hs.releaseTimeMs = -1;
+        }
+
         auto tickResult = m_judge.UpdateHoldTick(hs, note, now);
         if (tickResult != sakura::game::JudgeResult::None)
         {
@@ -469,8 +495,16 @@ void SceneGame::OnUpdate(float dt)
         }
         auto& note = msNotes[ss.noteIndex];
 
+        if (mouseDown)
+        {
+            ss.lastDownTimeMs = now;
+        }
+        bool filteredMouseDown = mouseDown ||
+            (ss.lastDownTimeMs >= 0 &&
+             now - ss.lastDownTimeMs <= sakura::game::SliderState::INPUT_GAP_TOLERANCE_MS);
+
         auto sResult = m_judge.UpdateSliderTracking(
-            ss, note, now, mouseX, mouseY, mouseDown);
+            ss, note, now, mouseX, mouseY, filteredMouseDown);
 
         // 拐点判定结果：计分并发出判定闪现
         if (sResult != sakura::game::JudgeResult::None)

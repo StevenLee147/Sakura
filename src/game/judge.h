@@ -31,7 +31,10 @@ struct HoldState
     bool  headJudged     = false;  // 头部是否已判定
     JudgeResult headResult = JudgeResult::None;
     int   releaseTimeMs  = -1;     // 松开时刻（-1=仍按住）
+    int   lastHeldTimeMs = -1;     // 最近一次检测到按住的时刻
     bool  finalized      = false;  // UpdateHoldTick 返回终判后置 true，场景据此移除
+    // Hold 断触容错（毫秒）：约 2~3 帧（60fps），过滤极短采样抖动，不掩盖真实松开
+    static constexpr int INPUT_GAP_TOLERANCE_MS = 45;
     // 注意：无 tick 系统，UpdateHoldTick 负责最终判定
 };
 
@@ -45,7 +48,10 @@ struct SliderState
     int   nextWaypointIndex  = 0;    // 下一个待判定的拐点索引（0-based）
     bool  isMissed           = false; // 已进入 miss 状态，后续拐点全判 Miss
     bool  finalized          = false; // 所有拐点判定完毕，可从活跃列表移除
+    int   lastDownTimeMs     = -1;    // 最近一次检测到鼠标按住的时刻
     static constexpr float PATH_TOLERANCE = 0.08f;  // 拐点命中容差（归一化）
+    // Slider 容错略大于 Hold：鼠标路径跟踪对瞬时抖动更敏感，给 60ms 抗短断触
+    static constexpr int INPUT_GAP_TOLERANCE_MS = 60;
 };
 
 // ── Judge — 判定计算器 ────────────────────────────────────────────────────────

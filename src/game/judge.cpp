@@ -178,10 +178,12 @@ JudgeResult Judge::UpdateHoldTick(HoldState& state,
     int holdEnd = note.time + note.duration;
 
     // ── 提前松开检测 ──────────────────────────────────────────────────────────
-    if (state.releaseTimeMs >= 0)
+    if (state.releaseTimeMs >= 0 && !state.isHeld)
     {
-        // 如果松开时间在 holdEnd - miss_window 之前，视为提前松开 → Miss
-        if (state.releaseTimeMs < holdEnd - m_windows.miss)
+        // 给输入采样增加短容错：仅当持续松开超过容错时再判提前松开
+        int releaseDuration = currentTimeMs - state.releaseTimeMs;
+        if (releaseDuration > HoldState::INPUT_GAP_TOLERANCE_MS &&
+            state.releaseTimeMs < holdEnd - m_windows.miss)
         {
             state.finalized = true;
             return JudgeResult::Miss;
