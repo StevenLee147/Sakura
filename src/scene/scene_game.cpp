@@ -15,6 +15,7 @@
 #include "effects/shader_manager.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -242,15 +243,29 @@ void SceneGame::HandleMouseClick(float normX, float normY)
     auto& msNotes = m_gameState.GetMouseNotes();
     auto  activeMs= m_gameState.GetActiveMouseNotes();
 
-    int  bestIdx  = -1;
-    int  bestDist = INT_MAX;
+    // 优先选取空间距离最近且在时间窗口内的未判定音符
+    // （鼠标区音符分布在二维空间，空间优先比时间优先更准确）
+    int   bestIdx   = -1;
+    float bestDist  = FLT_MAX;
+    int   bestTDist = INT_MAX;
     for (auto& n : activeMs)
     {
         if (n.isJudged) continue;
-        int dist = std::abs(n.time - now);
-        if (dist < bestDist)
+        // 排除时间上完全超前（还未进入判定窗口）的音符
+        int timeDiff = now - n.time;
+        if (timeDiff < -m_judge.GetWindows().miss) continue;
+
+        float dx = mouseX - n.x;
+        float dy = mouseY - n.y;
+        float dist = std::sqrt(dx * dx + dy * dy);
+        int   absT = std::abs(timeDiff);
+
+        // 空间最近优先，距离相同时取时间差最小的
+        if (dist < bestDist - 1e-4f ||
+            (dist < bestDist + 1e-4f && absT < bestTDist))
         {
-            bestDist = dist;
+            bestDist  = dist;
+            bestTDist = absT;
             for (int i = 0; i < static_cast<int>(msNotes.size()); ++i)
             {
                 if (&msNotes[i] == &n) { bestIdx = i; break; }
@@ -279,11 +294,16 @@ void SceneGame::HandleMouseClick(float normX, float normY)
         m_sliderStates.push_back(ss);
     }
 
-    m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-    // 将鼠标区局部坐标转换为屏幕坐标再存入闪现记录
-    float flashSX = MOUSE_X + note.x * MOUSE_W;
-    float flashSY = MOUSE_Y + note.y * MOUSE_H;
-    AddJudgeFlash(result, false, 0, flashSX, flashSY);
+    // 仅在有效判定（非 None）时计分并显示判定闪现
+    // None 表示点击未命中音符（距离过远或时间太早），不应产生任何反馈
+    if (result != sakura::game::JudgeResult::None)
+    {
+        m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
+        // 将鼠标区局部坐标转换为屏幕坐标再存入闪现记录
+        float flashSX = MOUSE_X + note.x * MOUSE_W;
+        float flashSY = MOUSE_Y + note.y * MOUSE_H;
+        AddJudgeFlash(result, false, 0, flashSX, flashSY);
+    }
 }
 
 // ── AddJudgeFlash ─────────────────────────────────────────────────────────────
@@ -889,16 +909,34 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             }
             else
             {
-                // 激活中：绘制沿路径移动的头部
+                // 激活中：
+                // 1. 在路径上绘制随时值移动的引导球（提示玩家当前应在何处）
                 float t = static_cast<float>(now - note.time)
                         / static_cast<float>(std::max(1, note.sliderDuration));
                 t = std::max(0.0f, std::min(1.0f, t));
                 auto [hx, hy] = sakura::game::Judge::GetSliderPosition(note, t);
                 float shx = MOUSE_X + hx * MOUSE_W;
                 float shy = MOUSE_Y + hy * MOUSE_H;
-                renderer.DrawCircleFilled(shx, shy, 0.022f,
+                // 引导球：绿色偏暗，半径略小，表示"应到达的位置"
+                renderer.DrawCircleFilled(shx, shy, 0.016f,
+                    sakura::core::Color{ 80, 200, 120,
+                        static_cast<uint8_t>(alpha * 0.7f) });
+                renderer.DrawCircleOutline(shx, shy, 0.016f,
+                    sakura::core::Color{ 150, 255, 180,
+                        static_cast<uint8_t>(alpha * 0.6f) },
+                    0.002f, 24);
+
+                // 2. 在鼠标当前位置绘制玩家光标圆环（随鼠标移动）
+                auto [cmx, cmy] = sakura::core::Input::GetMousePosition();
+                float localMx = std::max(0.0f, std::min(1.0f,
+                    (cmx - MOUSE_X) / MOUSE_W));
+                float localMy = std::max(0.0f, std::min(1.0f,
+                    (cmy - MOUSE_Y) / MOUSE_H));
+                float cursorSX = MOUSE_X + localMx * MOUSE_W;
+                float cursorSY = MOUSE_Y + localMy * MOUSE_H;
+                renderer.DrawCircleFilled(cursorSX, cursorSY, 0.022f,
                     sakura::core::Color{ 200, 255, 220, alpha });
-                renderer.DrawCircleOutline(shx, shy, 0.022f,
+                renderer.DrawCircleOutline(cursorSX, cursorSY, 0.022f,
                     sakura::core::Color{ 255, 255, 255, alpha },
                     0.002f, 32);
             }

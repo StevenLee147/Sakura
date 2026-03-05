@@ -71,6 +71,9 @@ void Input::ProcessEvent(const SDL_Event& event)
             if (btn < 1 || btn >= MOUSE_BUTTON_MAX) break;
 
             s_currMouse[btn] = true;
+            // 使用按键事件本身携带的坐标，避免依赖可能陈旧的 MOTION 事件位置
+            s_mousePixelX = event.button.x;
+            s_mousePixelY = event.button.y;
 
             if (s_debugLog)
             {
