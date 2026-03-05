@@ -188,6 +188,8 @@ void SfxGenerator::GenerateDefaults(std::string_view basePath)
     WriteWav(ui + "result_score.wav",    660.0f,  15,  0.2f,  0.2f);
     WriteWav(ui + "result_grade.wav",    880.0f, 200,  0.7f,  0.5f);
     WriteWav(ui + "toast.wav",           880.0f,  60,  0.5f,  0.4f);
+    WriteWav(ui + "calibration_beat.wav", 1760.0f, 35, 0.55f, 0.35f);
+    WriteWav(ui + "calibration_hit.wav",  1320.0f, 25, 0.40f, 0.30f);
 
     LOG_INFO("[SfxGenerator] 占位音效已生成至 {}", basePath);
 }

@@ -375,6 +375,8 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_uiSFXPaths[static_cast<int>(UISFXType::ResultScore)]   = ui + "result_score.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::ResultGrade)]   = ui + "result_grade.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::Toast)]         = ui + "toast.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationBeat)] = ui + "calibration_beat.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationHit)]  = ui + "calibration_hit.wav";
 
     LOG_INFO("[AudioManager] 已加载 hitsound set: {}", name);
     return true;

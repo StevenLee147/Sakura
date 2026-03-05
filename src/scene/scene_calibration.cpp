@@ -2,6 +2,7 @@
 
 #include "scene_calibration.h"
 #include "scene_settings.h"
+#include "audio/audio_manager.h"
 #include "core/config.h"
 #include "core/input.h"
 #include "utils/logger.h"
@@ -161,9 +162,11 @@ void SceneCalibration::OnUpdate(float dt)
 
     if (m_beatTimer >= BEAT_INTERVAL)
     {
-        m_beatTimer      -= BEAT_INTERVAL;
-        m_lastBeatTimeMs  = static_cast<int>(m_totalTimeMs);
-        m_pulseAnim       = 1.0f;
+        m_beatTimer = std::fmod(m_beatTimer, BEAT_INTERVAL);
+        m_lastBeatTimeMs = static_cast<int>(m_totalTimeMs);
+        m_pulseAnim      = 1.0f;
+        sakura::audio::AudioManager::GetInstance().PlayUISFX(
+            sakura::audio::UISFXType::CalibrationBeat);
     }
 
     if (m_btnApply)  m_btnApply->Update(dt);
@@ -201,6 +204,9 @@ void SceneCalibration::OnEvent(const SDL_Event& event)
                 if (static_cast<int>(m_samples.size()) > MAX_SAMPLES)
                     m_samples.pop_front();
 
+                sakura::audio::AudioManager::GetInstance().PlayUISFX(
+                    sakura::audio::UISFXType::CalibrationHit);
+
                 if (static_cast<int>(m_samples.size()) >= MAX_SAMPLES)
                     ComputeResult();
 
@@ -231,28 +237,39 @@ void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
         0.5f, 0.06f, 0.045f, { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
 
     // 说明
-    renderer.DrawText(m_font, "聆听节拍，在心跳位置按下 空格键",
+    renderer.DrawText(m_font, "音符触线且听到节拍时按下空格键",
         0.5f, 0.14f, 0.028f, { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
     renderer.DrawText(m_font, "收集 20 次后自动计算偏差",
         0.5f, 0.18f, 0.024f, { 150, 150, 170, 160 }, sakura::core::TextAlign::Center);
 
-    // 脉冲圆圈（BPM 120）
+    // 下落式校准动画（类似音游下落判定观察）
     {
-        float easedPulse = sakura::utils::EaseOutExpo(m_pulseAnim);
-        float radius     = 0.06f + easedPulse * 0.015f;
-        uint8_t alpha    = static_cast<uint8_t>(180 + 75 * easedPulse);
-        float glow       = 0.08f + easedPulse * 0.02f;
+        constexpr float laneX      = 0.5f;
+        constexpr float laneTopY   = 0.26f;
+        constexpr float judgeY     = 0.48f;
+        constexpr float laneHalfW  = 0.08f;
+        constexpr float noteRadius = 0.026f;
 
-        // 外发光
-        renderer.DrawCircleOutline(0.5f, 0.45f, glow,
-            { 180, 130, 255, static_cast<uint8_t>(60 * easedPulse) }, 0.003f);
+        float beatPhase = std::clamp(m_beatTimer / BEAT_INTERVAL, 0.0f, 1.0f);
+        float fallT     = sakura::utils::EaseInSine(beatPhase);
+        float noteY     = laneTopY + (judgeY - laneTopY) * fallT;
+        float pulse     = sakura::utils::EaseOutExpo(m_pulseAnim);
 
-        // 主圆
-        renderer.DrawCircleFilled(0.5f, 0.45f, radius,
-            { 160, 100, 220, alpha });
+        renderer.DrawFilledRect(
+            sakura::core::NormRect{ laneX - laneHalfW, laneTopY, laneHalfW * 2.0f, judgeY - laneTopY },
+            { 40, 40, 70, 90 });
+        renderer.DrawRectOutline(
+            sakura::core::NormRect{ laneX - laneHalfW, laneTopY, laneHalfW * 2.0f, judgeY - laneTopY },
+            { 110, 100, 150, 150 }, 0.0018f);
 
-        renderer.DrawCircleOutline(0.5f, 0.45f, radius,
-            { 200, 170, 255, 200 }, 0.002f);
+        renderer.DrawLine(laneX - laneHalfW - 0.02f, judgeY, laneX + laneHalfW + 0.02f, judgeY,
+            { 220, 180, 255, static_cast<uint8_t>(180 + 60 * pulse) }, 0.005f + 0.001f * pulse);
+
+        renderer.DrawCircleFilled(laneX, noteY, noteRadius, { 175, 120, 245, 225 });
+        renderer.DrawCircleOutline(laneX, noteY, noteRadius, { 235, 210, 255, 220 }, 0.0025f);
+        renderer.DrawCircleOutline(
+            laneX, judgeY, noteRadius + 0.006f + pulse * 0.005f,
+            { 190, 150, 255, static_cast<uint8_t>(80 * pulse) }, 0.002f);
     }
 
     // 进度（已收集样本数）

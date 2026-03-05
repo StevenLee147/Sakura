@@ -5,6 +5,7 @@
 
 #include "core/resource_manager.h"
 #include "game/note.h"
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <array>
@@ -27,6 +28,9 @@ enum class UISFXType
     ResultScore,    // 分数滚动 tick
     ResultGrade,    // 评级出现
     Toast,          // Toast 通知
+    CalibrationBeat,// 延迟校准节拍
+    CalibrationHit, // 延迟校准按键反馈
+    Count
 };
 
 // ── Hitsound 类型 ─────────────────────────────────────────────────────────────
@@ -163,7 +167,7 @@ private:
     std::string m_hitsoundSetName;
     std::array<std::string, 5>  m_hitsoundPaths;   // indexed by HitsoundType
     std::array<std::string, 5>  m_judgeSFXPaths;   // Perfect/Great/Good/Bad/Miss
-    std::array<std::string, 6>  m_uiSFXPaths;      // indexed by UISFXType
+    std::array<std::string, static_cast<std::size_t>(UISFXType::Count)> m_uiSFXPaths; // indexed by UISFXType
 };
 
 } // namespace sakura::audio
