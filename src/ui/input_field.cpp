@@ -79,7 +79,7 @@ void InputField::Render(sakura::core::Renderer& renderer)
     // 文字区域（左内边距）
     float padX = m_bounds.width  * 0.03f;
     float textX = m_bounds.x + padX;
-    float textY = m_bounds.y + m_bounds.height * 0.5f;
+    float textY = m_bounds.y + (m_bounds.height - m_normFontSize) * 0.5f;
 
     if (m_text.empty())
     {
