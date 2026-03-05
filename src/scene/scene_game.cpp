@@ -266,10 +266,7 @@ void SceneGame::HandleMouseClick(float normX, float normY)
         {
             bestDist  = dist;
             bestTDist = absT;
-            for (int i = 0; i < static_cast<int>(msNotes.size()); ++i)
-            {
-                if (&msNotes[i] == &n) { bestIdx = i; break; }
-            }
+            bestIdx = static_cast<int>(&n - msNotes.data());
         }
     }
     if (bestIdx < 0) return;
@@ -853,12 +850,11 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 
             // 查找对应的活跃 SliderState
             auto& msNotes = m_gameState.GetMouseNotes();
+            int noteIndex = static_cast<int>(&note - msNotes.data());
             const sakura::game::SliderState* ssPtr = nullptr;
             for (const auto& s : m_sliderStates)
             {
-                if (s.noteIndex >= 0 &&
-                    s.noteIndex < static_cast<int>(msNotes.size()) &&
-                    &msNotes[s.noteIndex] == &note)
+                if (s.noteIndex == noteIndex)
                 {
                     ssPtr = &s;
                     break;
@@ -889,12 +885,20 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 float spx = MOUSE_X + wpx * MOUSE_W;
                 float spy = MOUSE_Y + wpy * MOUSE_H;
                 bool passed = isActive && (wi < ssPtr->nextWaypointIndex);
+                bool isNext = isActive && (wi == ssPtr->nextWaypointIndex);
                 uint8_t wpAlpha = passed
                     ? static_cast<uint8_t>(alpha * 0.3f)
                     : static_cast<uint8_t>(alpha * 0.7f);
                 renderer.DrawCircleOutline(spx, spy, 0.018f,
                     sakura::core::Color{ 150, 255, 180, wpAlpha },
                     0.002f, 24);
+                if (isNext)
+                {
+                    renderer.DrawCircleOutline(spx, spy, 0.024f,
+                        sakura::core::Color{ 220, 255, 240,
+                            static_cast<uint8_t>(alpha * 0.9f) },
+                        0.002f, 24);
+                }
             }
 
             if (!isActive)
