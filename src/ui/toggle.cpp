@@ -126,7 +126,7 @@ void Toggle::Render(sakura::core::Renderer& renderer)
         renderer.DrawText(
             m_fontHandle, m_label,
             m_bounds.x,
-            m_bounds.y + m_bounds.height * 0.5f,
+            m_bounds.y + m_bounds.height * 0.5f - m_normFontSize * 0.5f,
             m_normFontSize,
             m_labelColor,
             sakura::core::TextAlign::Left);

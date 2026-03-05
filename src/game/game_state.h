@@ -118,6 +118,7 @@ private:
     GamePhase   m_phase            = GamePhase::Idle;
     int         m_currentTimeMs    = 0;       // 当前游戏时间（毫秒）
     int         m_globalOffset     = 0;       // Config 中的全局偏移（毫秒）
+    int         m_playbackStartMs  = 0;       // 本次倒计时结束后的音乐起播时间（毫秒）
     float       m_countdownTimer   = 3.0f;    // 倒计时剩余（秒）
     bool        m_musicStarted     = false;   // 音乐是否已开始
     int         m_forcedMissCount  = 0;       // CheckFinished 强制 miss 的音符数

@@ -177,10 +177,6 @@ void SceneManager::ApplyPendingSwitch()
             m_sceneStack.pop_back();
         }
         m_pendingIsPop = false;
-        if (!m_sceneStack.empty())
-        {
-            m_sceneStack.back()->OnEnter();
-        }
         LOG_DEBUG("SceneManager: 场景已弹出，栈深={}", m_sceneStack.size());
         return;
     }

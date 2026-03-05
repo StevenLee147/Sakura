@@ -179,12 +179,14 @@ void SceneSelect::RefreshDifficultyButtons()
                              MAX_DIFF_BUTTONS);
 
     // 难度按钮从右侧详情面板 (0.50~0.98) 展示，y=0.66
-    float totalW      = std::min(static_cast<float>(diffCount) * 0.080f, 0.44f);
-    float startX      = 0.50f + (0.48f - totalW) * 0.5f;
+    constexpr float panelX = 0.50f;
+    constexpr float panelW = 0.48f;
     float btnW        = 0.072f;
     float btnH        = 0.038f;
     float btnY        = 0.66f;
-    float gap         = 0.080f;
+    float stride      = 0.080f;
+    float groupW      = btnW + static_cast<float>(std::max(0, diffCount - 1)) * stride;
+    float startX      = panelX + (panelW - groupW) * 0.5f;
 
     for (int i = 0; i < diffCount; ++i)
     {
@@ -196,7 +198,7 @@ void SceneSelect::RefreshDifficultyButtons()
         else
             label << std::fixed << std::setprecision(1) << diff.level;
 
-        float x = startX + i * gap;
+        float x = startX + i * stride;
         sakura::core::NormRect bounds = { x, btnY, btnW, btnH };
 
         sakura::ui::ButtonColors c;
@@ -216,6 +218,7 @@ void SceneSelect::RefreshDifficultyButtons()
 
         auto btn = std::make_unique<sakura::ui::Button>(
             bounds, label.str(), m_fontSmall, 0.018f, 0.008f);
+        btn->SetTextAlign(sakura::core::TextAlign::Center);
         btn->SetColors(c);
 
         int idx = i;
@@ -427,7 +430,9 @@ void SceneSelect::RenderDetailPanel(sakura::core::Renderer& renderer)
 
     if (m_fontUI == sakura::core::INVALID_HANDLE) return;
 
-    float px = 0.74f;   // 右侧信息区中心 X
+    constexpr float panelX = 0.50f;
+    constexpr float panelW = 0.48f;
+    float px = panelX + panelW * 0.5f;   // 右侧信息区中心 X
 
     // 曲名
     renderer.DrawText(m_fontUI, chart.title,

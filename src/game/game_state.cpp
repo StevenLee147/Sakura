@@ -71,6 +71,7 @@ bool GameState::Start(const ChartInfo& chartInfo, int difficultyIndex)
 
     // 重置时间
     m_currentTimeMs  = 0;
+    m_playbackStartMs = 0;
     m_musicStarted   = false;
     m_countdownTimer = COUNTDOWN_DURATION;
     m_phase          = GamePhase::Countdown;
@@ -104,6 +105,7 @@ void GameState::Update(float dt)
             {
                 if (audio.PlayMusic(musicPath, 0))
                 {
+                    audio.SetMusicPosition(static_cast<double>(m_playbackStartMs) / 1000.0);
                     double dur = audio.GetMusicDuration();
                     if (dur > 0.0) m_musicDuration = dur;
                     m_musicStarted = true;
@@ -117,7 +119,7 @@ void GameState::Update(float dt)
             }
 
             m_phase          = GamePhase::Playing;
-            m_currentTimeMs  = 0;
+            m_currentTimeMs  = m_playbackStartMs;
         }
         break;
     }
@@ -181,12 +183,18 @@ void GameState::Resume()
 {
     if (m_phase != GamePhase::Paused) return;
 
-    m_phase = GamePhase::Playing;
+    m_playbackStartMs = std::max(0, m_currentTimeMs - 3000);
+    m_currentTimeMs   = m_playbackStartMs;
+    m_countdownTimer  = COUNTDOWN_DURATION;
+    m_phase           = GamePhase::Countdown;
+
     if (m_musicStarted)
     {
-        sakura::audio::AudioManager::GetInstance().ResumeMusic();
+        sakura::audio::AudioManager::GetInstance().StopMusic();
+        m_musicStarted = false;
     }
-    LOG_DEBUG("GameState: 游戏已恢复，当前时间={}ms", m_currentTimeMs);
+    UpdateActiveWindows();
+    LOG_DEBUG("GameState: 游戏恢复倒计时，起点={}ms", m_playbackStartMs);
 }
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
@@ -213,6 +221,7 @@ void GameState::Reset()
     }
 
     m_currentTimeMs  = 0;
+    m_playbackStartMs = 0;
     m_musicStarted   = false;
     m_countdownTimer = COUNTDOWN_DURATION;
     m_phase          = GamePhase::Countdown;
