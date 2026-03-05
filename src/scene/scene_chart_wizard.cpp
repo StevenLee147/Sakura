@@ -123,7 +123,7 @@ void SceneChartWizard::SetupButtons()
 
     m_btnCreate = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.38f, 0.745f, 0.20f, 0.055f },
-        "✔ 创建谱面", m_fontTitle, 0.022f, 0.010f);
+        "创建谱面", m_fontTitle, 0.022f, 0.010f);
     m_btnCreate->SetColors(createColors);
     m_btnCreate->SetOnClick([this]() { ValidateAndCreate(); });
 
@@ -136,7 +136,7 @@ void SceneChartWizard::SetupButtons()
 
     m_btnCancel = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.60f, 0.745f, 0.20f, 0.055f },
-        "✕ 取消", m_fontTitle, 0.022f, 0.010f);
+        "取消", m_fontTitle, 0.022f, 0.010f);
     m_btnCancel->SetColors(cancelColors);
     m_btnCancel->SetOnClick([this]() {
         m_manager.SwitchScene(
@@ -202,6 +202,8 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
         "曲名 *", "作曲/艺术家", "BPM *", "偏移 (ms)", "难度名称 *", "音乐文件", "输出目录"
     };
     constexpr float LABEL_X    = 0.37f;
+    constexpr float FIELD_H    = 0.044f;
+    constexpr float LABEL_SIZE = 0.020f;
     constexpr float FIELD_Y0   = 0.175f;
     constexpr float FIELD_STEP = 0.080f;
 
@@ -218,7 +220,7 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
                 ? sakura::core::Color{ 200, 180, 255, 230 }
                 : sakura::core::Color{ 140, 130, 180, 200 };
             renderer.DrawText(m_fontLabel, labelTexts[i],
-                LABEL_X, y + 0.022f, 0.020f,
+                LABEL_X, y + (FIELD_H - LABEL_SIZE) * 0.5f, LABEL_SIZE,
                 labelColor,
                 sakura::core::TextAlign::Right);
 
