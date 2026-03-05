@@ -478,11 +478,17 @@ bool SceneChartWizard::CreateChartFiles(const std::string& folderPath,
     std::string coverFileName;
     std::string backgroundFileName;
 
-    if (!CopyResourceToChartFolder(musicSourceFile, folderPath, "music", ".ogg", "音乐文件", musicFileName))
+    if (!CopyResourceToChartFolder(
+            musicSourceFile, folderPath, "music", ".ogg", "音乐文件",
+            { ".ogg", ".mp3", ".wav", ".flac" }, musicFileName))
         return false;
-    if (!CopyResourceToChartFolder(coverSourceFile, folderPath, "cover", ".png", "封面文件", coverFileName))
+    if (!CopyResourceToChartFolder(
+            coverSourceFile, folderPath, "cover", ".png", "封面文件",
+            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, coverFileName))
         return false;
-    if (!CopyResourceToChartFolder(backgroundSourceFile, folderPath, "bg", ".png", "背景文件", backgroundFileName))
+    if (!CopyResourceToChartFolder(
+            backgroundSourceFile, folderPath, "bg", ".png", "背景文件",
+            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, backgroundFileName))
         return false;
 
     // ── 写 info.json ──────────────────────────────────────────────────────────
@@ -558,25 +564,28 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
                                                  const std::string& standardBaseName,
                                                  const std::string& defaultExtension,
                                                  const std::string& resourceLabel,
+                                                 const std::vector<std::string>& allowedExtensions,
                                                  std::string& outFileName)
 {
-    auto NormalizeExtension = [](const std::string& ext, const std::string& fallback) -> std::string
+    auto normalizeExtension = [](const std::string& ext, const std::string& fallback) -> std::string
     {
         std::string lower = ext.empty() ? fallback : ext;
         std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c)
         {
             return static_cast<char>(std::tolower(c));
         });
+        if (lower.empty()) lower = fallback;
         if (lower.empty() || lower[0] != '.') lower.insert(lower.begin(), '.');
-        for (char& c : lower)
+        if (lower.size() <= 1) return fallback;
+        for (size_t i = 1; i < lower.size(); ++i)
         {
-            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '.'))
-                c = '_';
+            if (!std::isalnum(static_cast<unsigned char>(lower[i])))
+                return fallback;
         }
         return lower;
     };
 
-    outFileName = standardBaseName + NormalizeExtension("", defaultExtension);
+    outFileName = standardBaseName + normalizeExtension("", defaultExtension);
     if (sourcePath.empty()) return true;
 
     fs::path source = fs::u8path(sourcePath);
@@ -586,7 +595,20 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
         return false;
     }
 
-    std::string ext = NormalizeExtension(source.extension().string(), defaultExtension);
+    std::string ext = normalizeExtension(source.extension().string(), defaultExtension);
+    if (!allowedExtensions.empty())
+    {
+        bool matched = std::any_of(allowedExtensions.begin(), allowedExtensions.end(),
+            [&ext](const std::string& allowed)
+            {
+                return ext == allowed;
+            });
+        if (!matched)
+        {
+            ShowError(resourceLabel + "格式不支持: " + ext);
+            return false;
+        }
+    }
     outFileName = standardBaseName + ext;
 
     fs::path target = fs::path(folderPath) / outFileName;
@@ -614,7 +636,10 @@ void SceneChartWizard::OpenResourceFileDialog(int fieldIndex)
         int field = -1;
     };
 
-    auto* req = new DialogRequest{ this, fieldIndex };
+    auto req = std::make_unique<DialogRequest>();
+    req->wizard = this;
+    req->field  = fieldIndex;
+    SDL_ClearError();
     SDL_ShowOpenFileDialog(
         [](void* userdata, const char* const* filelist, int)
         {
@@ -627,11 +652,14 @@ void SceneChartWizard::OpenResourceFileDialog(int fieldIndex)
                     std::string("打开文件选择器失败: ") + (err ? err : "未知错误"));
                 return;
             }
-            if (filelist[0] == nullptr) return; // 用户取消
+            if (filelist[0] == nullptr) return; // 用户主动取消，属于正常行为
             holder->wizard->QueueResourceFileSelection(holder->field, filelist[0]);
         },
-        req,
+        req.release(),
         nullptr, nullptr, 0, nullptr, false);
+    const char* err = SDL_GetError();
+    if (err && err[0] != '\0')
+        QueueResourceFileError(std::string("打开文件选择器失败: ") + err);
 }
 
 void SceneChartWizard::QueueResourceFileSelection(int fieldIndex, const std::string& filePath)
