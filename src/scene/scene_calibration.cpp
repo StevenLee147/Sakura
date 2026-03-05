@@ -160,11 +160,17 @@ void SceneCalibration::OnUpdate(float dt)
     m_beatTimer   += dt;
     m_pulseAnim    = std::max(0.0f, m_pulseAnim - dt * 4.0f);
 
+    bool beatTriggered = false;
     while (m_beatTimer >= BEAT_INTERVAL)
     {
-        m_beatTimer      -= BEAT_INTERVAL;
-        m_lastBeatTimeMs  = static_cast<int>(m_totalTimeMs);
-        m_pulseAnim       = 1.0f;
+        m_beatTimer -= BEAT_INTERVAL;
+        beatTriggered = true;
+    }
+
+    if (beatTriggered)
+    {
+        m_lastBeatTimeMs = static_cast<int>(m_totalTimeMs - m_beatTimer * 1000.0f);
+        m_pulseAnim      = 1.0f;
         sakura::audio::AudioManager::GetInstance().PlayUISFX(
             sakura::audio::UISFXType::CalibrationBeat);
     }
