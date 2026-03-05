@@ -105,7 +105,10 @@ void GameState::Update(float dt)
             {
                 if (audio.PlayMusic(musicPath, 0))
                 {
-                    audio.SetMusicPosition(static_cast<double>(m_playbackStartMs) / 1000.0);
+                    if (!audio.SetMusicPosition(static_cast<double>(m_playbackStartMs) / 1000.0))
+                    {
+                        LOG_WARN("GameState::Update: 设置音乐起播位置失败，将按音频当前游标继续");
+                    }
                     double dur = audio.GetMusicDuration();
                     if (dur > 0.0) m_musicDuration = dur;
                     m_musicStarted = true;
@@ -183,7 +186,7 @@ void GameState::Resume()
 {
     if (m_phase != GamePhase::Paused) return;
 
-    m_playbackStartMs = std::max(0, m_currentTimeMs - 3000);
+    m_playbackStartMs = std::max(0, m_currentTimeMs - RESUME_REWIND_MS);
     m_currentTimeMs   = m_playbackStartMs;
     m_countdownTimer  = COUNTDOWN_DURATION;
     m_phase           = GamePhase::Countdown;

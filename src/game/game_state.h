@@ -142,6 +142,7 @@ private:
 
     // 倒计时总时长
     static constexpr float COUNTDOWN_DURATION = 3.0f;
+    static constexpr int   RESUME_REWIND_MS   = 3000;
 };
 
 } // namespace sakura::game

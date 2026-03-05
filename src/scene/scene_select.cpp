@@ -177,6 +177,7 @@ void SceneSelect::RefreshDifficultyButtons()
     const auto& chart = m_charts[m_selectedChart];
     int diffCount = std::min(static_cast<int>(chart.difficulties.size()),
                              MAX_DIFF_BUTTONS);
+    if (diffCount <= 0) return;
 
     // 难度按钮从右侧详情面板 (0.50~0.98) 展示，y=0.66
     constexpr float panelX = 0.50f;
@@ -185,7 +186,7 @@ void SceneSelect::RefreshDifficultyButtons()
     float btnH        = 0.038f;
     float btnY        = 0.66f;
     float stride      = 0.080f;
-    float groupW      = btnW + static_cast<float>(std::max(0, diffCount - 1)) * stride;
+    float groupW      = btnW + static_cast<float>(diffCount - 1) * stride;
     float startX      = panelX + (panelW - groupW) * 0.5f;
 
     for (int i = 0; i < diffCount; ++i)
