@@ -160,16 +160,10 @@ void SceneCalibration::OnUpdate(float dt)
     m_beatTimer   += dt;
     m_pulseAnim    = std::max(0.0f, m_pulseAnim - dt * 4.0f);
 
-    bool beatTriggered = false;
-    while (m_beatTimer >= BEAT_INTERVAL)
+    if (m_beatTimer >= BEAT_INTERVAL)
     {
-        m_beatTimer -= BEAT_INTERVAL;
-        beatTriggered = true;
-    }
-
-    if (beatTriggered)
-    {
-        m_lastBeatTimeMs = static_cast<int>(m_totalTimeMs - m_beatTimer * 1000.0f);
+        m_beatTimer = std::fmod(m_beatTimer, BEAT_INTERVAL);
+        m_lastBeatTimeMs = static_cast<int>(m_totalTimeMs);
         m_pulseAnim      = 1.0f;
         sakura::audio::AudioManager::GetInstance().PlayUISFX(
             sakura::audio::UISFXType::CalibrationBeat);
@@ -243,7 +237,7 @@ void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
         0.5f, 0.06f, 0.045f, { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
 
     // 说明
-    renderer.DrawText(m_font, "观察下落音符触线瞬间，按下空格键",
+    renderer.DrawText(m_font, "音符触线且听到节拍时按下空格键",
         0.5f, 0.14f, 0.028f, { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
     renderer.DrawText(m_font, "收集 20 次后自动计算偏差",
         0.5f, 0.18f, 0.024f, { 150, 150, 170, 160 }, sakura::core::TextAlign::Center);
