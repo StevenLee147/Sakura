@@ -201,6 +201,7 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
             hs.isHeld     = true;
             hs.headJudged = true;
             hs.headResult = result;
+            hs.lastHeldTimeMs = now;
             m_holdStates.push_back(hs);
         }
         // 头部判定结果反馈（闪光 + 计入头 Hit / Miss）
@@ -266,10 +267,7 @@ void SceneGame::HandleMouseClick(float normX, float normY)
         {
             bestDist  = dist;
             bestTDist = absT;
-            for (int i = 0; i < static_cast<int>(msNotes.size()); ++i)
-            {
-                if (&msNotes[i] == &n) { bestIdx = i; break; }
-            }
+            bestIdx = static_cast<int>(&n - msNotes.data());
         }
     }
     if (bestIdx < 0) return;
@@ -435,6 +433,31 @@ void SceneGame::OnUpdate(float dt)
         }
         auto& note = kbNotes[hs.noteIndex];
 
+        // 按键短断触滤波：短时间掉键不立即视为松开
+        bool keyHeld = false;
+        if (note.lane >= 0 && note.lane < LANE_COUNT)
+            keyHeld = sakura::core::Input::IsKeyHeld(m_laneKeys[note.lane]);
+
+        if (keyHeld)
+        {
+            hs.isHeld = true;
+            hs.lastHeldTimeMs = now;
+            hs.releaseTimeMs = -1;
+        }
+        else
+        {
+            if (hs.releaseTimeMs < 0)
+            {
+                hs.releaseTimeMs = now;
+            }
+
+            bool withinGapTolerance = (hs.lastHeldTimeMs >= 0) &&
+                (now - hs.lastHeldTimeMs <= sakura::game::HoldState::INPUT_GAP_TOLERANCE_MS);
+            hs.isHeld = withinGapTolerance;
+            if (withinGapTolerance)
+                hs.releaseTimeMs = -1;
+        }
+
         auto tickResult = m_judge.UpdateHoldTick(hs, note, now);
         if (tickResult != sakura::game::JudgeResult::None)
         {
@@ -472,8 +495,16 @@ void SceneGame::OnUpdate(float dt)
         }
         auto& note = msNotes[ss.noteIndex];
 
+        if (mouseDown)
+        {
+            ss.lastDownTimeMs = now;
+        }
+        bool filteredMouseDown = mouseDown ||
+            (ss.lastDownTimeMs >= 0 &&
+             now - ss.lastDownTimeMs <= sakura::game::SliderState::INPUT_GAP_TOLERANCE_MS);
+
         auto sResult = m_judge.UpdateSliderTracking(
-            ss, note, now, mouseX, mouseY, mouseDown);
+            ss, note, now, mouseX, mouseY, filteredMouseDown);
 
         // 拐点判定结果：计分并发出判定闪现
         if (sResult != sakura::game::JudgeResult::None)
@@ -853,12 +884,11 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 
             // 查找对应的活跃 SliderState
             auto& msNotes = m_gameState.GetMouseNotes();
+            int noteIndex = static_cast<int>(&note - msNotes.data());
             const sakura::game::SliderState* ssPtr = nullptr;
             for (const auto& s : m_sliderStates)
             {
-                if (s.noteIndex >= 0 &&
-                    s.noteIndex < static_cast<int>(msNotes.size()) &&
-                    &msNotes[s.noteIndex] == &note)
+                if (s.noteIndex == noteIndex)
                 {
                     ssPtr = &s;
                     break;
@@ -889,12 +919,20 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 float spx = MOUSE_X + wpx * MOUSE_W;
                 float spy = MOUSE_Y + wpy * MOUSE_H;
                 bool passed = isActive && (wi < ssPtr->nextWaypointIndex);
+                bool isNext = isActive && (wi == ssPtr->nextWaypointIndex);
                 uint8_t wpAlpha = passed
                     ? static_cast<uint8_t>(alpha * 0.3f)
                     : static_cast<uint8_t>(alpha * 0.7f);
                 renderer.DrawCircleOutline(spx, spy, 0.018f,
                     sakura::core::Color{ 150, 255, 180, wpAlpha },
                     0.002f, 24);
+                if (isNext)
+                {
+                    renderer.DrawCircleOutline(spx, spy, 0.024f,
+                        sakura::core::Color{ 220, 255, 240,
+                            static_cast<uint8_t>(alpha * 0.9f) },
+                        0.002f, 24);
+                }
             }
 
             if (!isActive)
