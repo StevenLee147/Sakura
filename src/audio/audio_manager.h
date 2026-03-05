@@ -27,6 +27,8 @@ enum class UISFXType
     ResultScore,    // 分数滚动 tick
     ResultGrade,    // 评级出现
     Toast,          // Toast 通知
+    CalibrationBeat,// 延迟校准节拍
+    CalibrationHit, // 延迟校准按键反馈
 };
 
 // ── Hitsound 类型 ─────────────────────────────────────────────────────────────
@@ -163,7 +165,7 @@ private:
     std::string m_hitsoundSetName;
     std::array<std::string, 5>  m_hitsoundPaths;   // indexed by HitsoundType
     std::array<std::string, 5>  m_judgeSFXPaths;   // Perfect/Great/Good/Bad/Miss
-    std::array<std::string, 6>  m_uiSFXPaths;      // indexed by UISFXType
+    std::array<std::string, 8>  m_uiSFXPaths;      // indexed by UISFXType
 };
 
 } // namespace sakura::audio
