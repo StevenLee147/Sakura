@@ -177,10 +177,7 @@ void SceneManager::ApplyPendingSwitch()
             m_sceneStack.pop_back();
         }
         m_pendingIsPop = false;
-        if (!m_sceneStack.empty())
-        {
-            m_sceneStack.back()->OnEnter();
-        }
+        // Pop 仅移除覆盖场景: 下层场景在 Push 时没有 OnExit, 不应再次触发 OnEnter。
         LOG_DEBUG("SceneManager: 场景已弹出，栈深={}", m_sceneStack.size());
         return;
     }

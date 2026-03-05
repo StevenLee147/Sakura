@@ -798,12 +798,8 @@ void SceneSettings::RenderDisplayTab(sakura::core::Renderer& renderer)
 {
     DrawSectionTitle(renderer, "显示", CONTENT_Y);
 
-    renderer.DrawText(m_font, "全屏模式",
-        CONTENT_X, SlotY(1), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
     renderer.DrawText(m_font, "帧率上限",
         CONTENT_X, SlotY(2), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
-    renderer.DrawText(m_font, "垂直同步",
-        CONTENT_X, SlotY(3), 0.026f, { 200, 200, 210, 200 }, sakura::core::TextAlign::Left);
     m_toggleFullscreen->Render(renderer);
     m_dropFpsLimit->Render(renderer);
     m_toggleVSync->Render(renderer);
