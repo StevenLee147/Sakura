@@ -164,10 +164,17 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
         if (!IsInArea(nx, ny)) return false;
 
         int lane = XToLane(nx);
-        if (lane < 0) return false;
 
         int rawTime  = static_cast<int>(YToTimeRaw(ny));
         int snapTime = m_core.QuantizeTime(rawTime);
+
+        if (event.button.button == SDL_BUTTON_LEFT && lane < 0)
+        {
+            m_core.SetCurrentTimeMs(snapTime);
+            return true;
+        }
+
+        if (lane < 0) return false;
 
         if (event.button.button == SDL_BUTTON_LEFT)
         {

@@ -456,6 +456,15 @@ int EditorCore::GetTotalDurationMs() const
 void EditorCore::SetCurrentTimeMs(int ms)
 {
     m_currentTimeMs = std::max(0, ms);
+
+    auto& audio = sakura::audio::AudioManager::GetInstance();
+    if (audio.IsPlaying() || audio.IsPaused())
+    {
+        double musicSeconds = std::max(
+            0.0,
+            static_cast<double>(m_currentTimeMs - m_chartInfo.offset) / 1000.0);
+        audio.SetMusicPosition(musicSeconds);
+    }
 }
 
 void EditorCore::TogglePlayback()
@@ -470,9 +479,12 @@ void EditorCore::TogglePlayback()
     {
         m_playing = true;
         // 尝试跳转并播放
-        sakura::audio::AudioManager::GetInstance().SetMusicPosition(
-            static_cast<double>(m_currentTimeMs) / 1000.0);
-        sakura::audio::AudioManager::GetInstance().ResumeMusic();
+        auto& audio = sakura::audio::AudioManager::GetInstance();
+        double musicSeconds = std::max(
+            0.0,
+            static_cast<double>(m_currentTimeMs - m_chartInfo.offset) / 1000.0);
+        audio.SetMusicPosition(musicSeconds);
+        audio.ResumeMusic();
         LOG_DEBUG("[EditorCore] 开始播放 @ {}ms", m_currentTimeMs);
     }
 }

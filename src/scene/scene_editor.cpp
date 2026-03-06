@@ -18,6 +18,14 @@
 namespace sakura::scene
 {
 
+namespace
+{
+constexpr float OVERVIEW_X = 0.77f;
+constexpr float OVERVIEW_Y = 0.06f;
+constexpr float OVERVIEW_W = 0.21f;
+constexpr float OVERVIEW_H = 0.94f;
+}
+
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
 SceneEditor::SceneEditor(SceneManager& mgr,
@@ -110,6 +118,8 @@ void SceneEditor::SetupToolbar()
             sakura::core::NormRect{ x, 0.005f, 0.068f, 0.048f },
             toolLabels[i], m_fontUI, 0.020f, 0.008f);
         m_toolBtns[i]->SetColors(toolColors);
+        m_toolBtns[i]->SetTextAlign(sakura::core::TextAlign::Center);
+        m_toolBtns[i]->SetTextPadding(0.0f);
 
         int toolIdx = i;
         m_toolBtns[i]->SetOnClick([this, toolIdx]()
@@ -125,29 +135,19 @@ void SceneEditor::SetupToolbar()
     m_btnPlay = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.40f, 0.005f, 0.08f, 0.048f },
         "▶ 播放", m_fontUI, 0.020f, 0.008f);
+    m_btnPlay->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnPlay->SetTextPadding(0.0f);
     m_btnPlay->SetOnClick([this]()
     {
-        // 如果有音乐文件，先加载
-        const std::string& musicFile = m_core.GetChartInfo().musicFile;
-        if (!musicFile.empty() && !m_core.GetChartInfo().folderPath.empty())
-        {
-            if (!m_core.IsPlaying())
-            {
-                std::string path = m_core.GetChartInfo().folderPath
-                                 + "/" + musicFile;
-                sakura::audio::AudioManager::GetInstance().PlayMusic(path, 0);
-                sakura::audio::AudioManager::GetInstance().SetMusicPosition(
-                    static_cast<double>(m_core.GetCurrentTimeMs()) / 1000.0);
-            }
-        }
-        m_core.TogglePlayback();
-        m_btnPlay->SetText(m_core.IsPlaying() ? "⏸ 暂停" : "▶ 播放");
+        TogglePlayback();
     });
 
     // 撤销按钮
     m_btnUndo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.635f, 0.005f, 0.072f, 0.048f },
         "↩ 撤销", m_fontUI, 0.020f, 0.008f);
+    m_btnUndo->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnUndo->SetTextPadding(0.0f);
     m_btnUndo->SetOnClick([this]()
     {
         m_core.Undo();
@@ -161,6 +161,8 @@ void SceneEditor::SetupToolbar()
     m_btnRedo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.712f, 0.005f, 0.072f, 0.048f },
         "↪ 重做", m_fontUI, 0.020f, 0.008f);
+    m_btnRedo->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnRedo->SetTextPadding(0.0f);
     m_btnRedo->SetOnClick([this]()
     {
         m_core.Redo();
@@ -174,12 +176,16 @@ void SceneEditor::SetupToolbar()
     m_btnSave = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.82f, 0.005f, 0.08f, 0.048f },
         "💾 保存", m_fontUI, 0.020f, 0.008f);
+    m_btnSave->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnSave->SetTextPadding(0.0f);
     m_btnSave->SetOnClick([this]() { DoSave(); });
 
     // 退出
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.91f, 0.005f, 0.08f, 0.048f },
         "← 退出", m_fontUI, 0.020f, 0.008f);
+    m_btnBack->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnBack->SetTextPadding(0.0f);
     m_btnBack->SetOnClick([this]()
     {
         if (m_core.IsDirty())
@@ -196,6 +202,8 @@ void SceneEditor::SetupToolbar()
     m_btnSnapDec = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.54f, 0.005f, 0.040f, 0.048f },
         "1/↓", m_fontUI, 0.018f, 0.006f);
+    m_btnSnapDec->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnSnapDec->SetTextPadding(0.0f);
     m_btnSnapDec->SetOnClick([this]()
     {
         int cur = m_core.GetBeatSnap();
@@ -209,6 +217,8 @@ void SceneEditor::SetupToolbar()
     m_btnSnapInc = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.585f, 0.005f, 0.040f, 0.048f },
         "1/↑", m_fontUI, 0.018f, 0.006f);
+    m_btnSnapInc->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnSnapInc->SetTextPadding(0.0f);
     m_btnSnapInc->SetOnClick([this]()
     {
         int cur = m_core.GetBeatSnap();
@@ -230,6 +240,8 @@ void SceneEditor::SetupToolbar()
         sakura::core::NormRect{ 0.425f, 0.696f, 0.048f, 0.034f },
         "◀", m_fontUI, 0.018f, 0.005f);
     m_btnDiffPrev->SetColors(diffColors);
+    m_btnDiffPrev->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnDiffPrev->SetTextPadding(0.0f);
     m_btnDiffPrev->SetOnClick([this]()
     {
         int cnt = static_cast<int>(m_core.GetChartInfo().difficulties.size());
@@ -241,6 +253,8 @@ void SceneEditor::SetupToolbar()
         sakura::core::NormRect{ 0.697f, 0.696f, 0.048f, 0.034f },
         "▶", m_fontUI, 0.018f, 0.005f);
     m_btnDiffNext->SetColors(diffColors);
+    m_btnDiffNext->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnDiffNext->SetTextPadding(0.0f);
     m_btnDiffNext->SetOnClick([this]()
     {
         int cnt = static_cast<int>(m_core.GetChartInfo().difficulties.size());
@@ -252,6 +266,8 @@ void SceneEditor::SetupToolbar()
         sakura::core::NormRect{ 0.597f, 0.696f, 0.048f, 0.034f },
         "+ 难度", m_fontUI, 0.015f, 0.005f);
     m_btnDiffAdd->SetColors(diffColors);
+    m_btnDiffAdd->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnDiffAdd->SetTextPadding(0.0f);
     m_btnDiffAdd->SetOnClick([this]() { AddNewDifficulty(); });
 }
 
@@ -338,6 +354,30 @@ void SceneEditor::UpdateUndoRedoButtons()
             : "↪ 重做";
         m_btnRedo->SetText(label);
     }
+}
+
+// ── TogglePlayback ───────────────────────────────────────────────────────────
+
+void SceneEditor::TogglePlayback()
+{
+    if (!m_core.IsPlaying())
+    {
+        const auto& info = m_core.GetChartInfo();
+        if (!info.musicFile.empty() && !info.folderPath.empty())
+        {
+            auto& audio = sakura::audio::AudioManager::GetInstance();
+            if (!audio.IsPlaying() && !audio.IsPaused())
+            {
+                std::string path = info.folderPath + "/" + info.musicFile;
+                audio.PlayMusic(path, 0);
+            }
+        }
+    }
+
+    m_core.TogglePlayback();
+
+    if (m_btnPlay)
+        m_btnPlay->SetText(m_core.IsPlaying() ? "⏸ 暂停" : "▶ 播放");
 }
 
 // ── DoSave ────────────────────────────────────────────────────────────────────
@@ -674,10 +714,67 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
         px, 0.921f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+A: 全选  Ctrl+M: 镜像  ESC: 退出",
+    renderer.DrawText(m_fontSmall, "点时间尺/全曲轴定位播放  Ctrl+M: 镜像  ESC: 退出",
         px, 0.944f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
+}
+
+// ── HandleOverviewAxisEvent ─────────────────────────────────────────────────
+
+bool SceneEditor::HandleOverviewAxisEvent(const SDL_Event& event)
+{
+    auto updateFromPointer = [this](float nx, float ny)
+    {
+        if (nx < OVERVIEW_X || nx > OVERVIEW_X + OVERVIEW_W
+         || ny < OVERVIEW_Y || ny > OVERVIEW_Y + OVERVIEW_H)
+        {
+            return false;
+        }
+
+        int totalMs = std::max(m_core.GetTotalDurationMs(), 1000);
+        float progress = (OVERVIEW_Y + OVERVIEW_H - ny) / OVERVIEW_H;
+        progress = std::clamp(progress, 0.0f, 1.0f);
+
+        int targetMs = static_cast<int>(std::round(progress * totalMs));
+        m_core.SetCurrentTimeMs(targetMs);
+        m_timeline.CenterOnTime(targetMs);
+        return true;
+    };
+
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
+     && event.button.button == SDL_BUTTON_LEFT)
+    {
+        SDL_Window* win = SDL_GetWindowFromID(event.button.windowID);
+        if (!win) return false;
+
+        int ww = 0;
+        int wh = 0;
+        SDL_GetWindowSize(win, &ww, &wh);
+        if (ww <= 0 || wh <= 0) return false;
+
+        float nx = event.button.x / static_cast<float>(ww);
+        float ny = event.button.y / static_cast<float>(wh);
+        return updateFromPointer(nx, ny);
+    }
+
+    if (event.type == SDL_EVENT_MOUSE_MOTION
+     && (event.motion.state & SDL_BUTTON_LMASK) != 0)
+    {
+        SDL_Window* win = SDL_GetWindowFromID(event.motion.windowID);
+        if (!win) return false;
+
+        int ww = 0;
+        int wh = 0;
+        SDL_GetWindowSize(win, &ww, &wh);
+        if (ww <= 0 || wh <= 0) return false;
+
+        float nx = event.motion.x / static_cast<float>(ww);
+        float ny = event.motion.y / static_cast<float>(wh);
+        return updateFromPointer(nx, ny);
+    }
+
+    return false;
 }
 
 // ── RenderOverviewAxis ────────────────────────────────────────────────────────
@@ -685,17 +782,13 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
 void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
 {
     // 底部全曲缩略轴：(0.77, 0.06, 0.21, 0.94)
-    constexpr float OVW_X = 0.77f;
-    constexpr float OVW_Y = 0.06f;
-    constexpr float OVW_W = 0.21f;
-    constexpr float OVW_H = 0.94f;
-
-    renderer.DrawFilledRect({ OVW_X, OVW_Y, OVW_W, OVW_H },
+    renderer.DrawFilledRect({ OVERVIEW_X, OVERVIEW_Y, OVERVIEW_W, OVERVIEW_H },
         sakura::core::Color{ 8, 6, 20, 200 });
     // 边框
-    renderer.DrawLine(OVW_X, OVW_Y, OVW_X, OVW_Y + OVW_H,
+    renderer.DrawLine(OVERVIEW_X, OVERVIEW_Y, OVERVIEW_X, OVERVIEW_Y + OVERVIEW_H,
         sakura::core::Color{ 55, 45, 85, 120 }, 0.001f);
-    renderer.DrawLine(OVW_X + OVW_W, OVW_Y, OVW_X + OVW_W, OVW_Y + OVW_H,
+    renderer.DrawLine(OVERVIEW_X + OVERVIEW_W, OVERVIEW_Y,
+        OVERVIEW_X + OVERVIEW_W, OVERVIEW_Y + OVERVIEW_H,
         sakura::core::Color{ 55, 45, 85, 120 }, 0.001f);
 
     int totalMs = m_core.GetTotalDurationMs();
@@ -706,10 +799,10 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
     for (const auto& n : notes)
     {
         float progress = static_cast<float>(n.time) / static_cast<float>(totalMs);
-        float noteY    = OVW_Y + OVW_H - progress * OVW_H;
-        if (noteY < OVW_Y || noteY > OVW_Y + OVW_H) continue;
+        float noteY    = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        if (noteY < OVERVIEW_Y || noteY > OVERVIEW_Y + OVERVIEW_H) continue;
 
-        float noteX = OVW_X + (n.lane + 0.5f) / 4.0f * OVW_W;
+        float noteX = OVERVIEW_X + (n.lane + 0.5f) / 4.0f * OVERVIEW_W;
         renderer.DrawFilledRect(
             { noteX - 0.003f, noteY - 0.002f, 0.006f, 0.004f },
             sakura::core::Color{ 80, 130, 255, 180 });
@@ -721,8 +814,8 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
     {
         float progress = static_cast<float>(curMs) / static_cast<float>(totalMs);
         if (progress > 1.0f) progress = 1.0f;
-        float headY = OVW_Y + OVW_H - progress * OVW_H;
-        renderer.DrawLine(OVW_X, headY, OVW_X + OVW_W, headY,
+        float headY = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        renderer.DrawLine(OVERVIEW_X, headY, OVERVIEW_X + OVERVIEW_W, headY,
             sakura::core::Color{ 255, 60, 100, 200 }, 0.002f);
     }
 
@@ -735,18 +828,18 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
             m_timeline.GetScrollTimeMs()
           + static_cast<int>(4000)) / static_cast<float>(totalMs);
 
-        float viewTop    = OVW_Y + OVW_H - std::clamp(viewProgress,   0.0f, 1.0f) * OVW_H;
-        float viewBottom = OVW_Y + OVW_H - std::clamp(scrollProgress, 0.0f, 1.0f) * OVW_H;
+        float viewTop    = OVERVIEW_Y + OVERVIEW_H - std::clamp(viewProgress,   0.0f, 1.0f) * OVERVIEW_H;
+        float viewBottom = OVERVIEW_Y + OVERVIEW_H - std::clamp(scrollProgress, 0.0f, 1.0f) * OVERVIEW_H;
         float viewHeight = viewBottom - viewTop;
 
         if (viewHeight > 0.005f)
         {
             renderer.DrawFilledRect(
-                { OVW_X, viewTop, OVW_W, viewHeight },
+                { OVERVIEW_X, viewTop, OVERVIEW_W, viewHeight },
                 sakura::core::Color{ 100, 90, 160, 50 });
-            renderer.DrawLine(OVW_X, viewTop, OVW_X + OVW_W, viewTop,
+            renderer.DrawLine(OVERVIEW_X, viewTop, OVERVIEW_X + OVERVIEW_W, viewTop,
                 sakura::core::Color{ 130, 120, 200, 120 }, 0.001f);
-            renderer.DrawLine(OVW_X, viewBottom, OVW_X + OVW_W, viewBottom,
+            renderer.DrawLine(OVERVIEW_X, viewBottom, OVERVIEW_X + OVERVIEW_W, viewBottom,
                 sakura::core::Color{ 130, 120, 200, 120 }, 0.001f);
         }
     }
@@ -754,7 +847,7 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
     if (m_fontSmall != sakura::core::INVALID_HANDLE)
     {
         renderer.DrawText(m_fontSmall, "全曲轴",
-            OVW_X + OVW_W * 0.5f, OVW_Y + 0.015f, 0.016f,
+            OVERVIEW_X + OVERVIEW_W * 0.5f, OVERVIEW_Y + 0.015f, 0.016f,
             sakura::core::Color{ 140, 130, 180, 180 },
             sakura::core::TextAlign::Center);
     }
@@ -833,8 +926,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         // 空格 → 播放/暂停
         if (sc == SDL_SCANCODE_SPACE)
         {
-            // 直接调用播放逻辑
-            if (m_btnPlay) m_btnPlay->HandleEvent(event);  // 触发 click
+            TogglePlayback();
             return;
         }
 
@@ -959,6 +1051,9 @@ void SceneEditor::OnEvent(const SDL_Event& event)
 
         // Ctrl+滚轮由 timeline 处理，但 Ctrl 单独按下时不做其他事
     }
+
+    if (HandleOverviewAxisEvent(event))
+        return;
 
     // ── 工具栏事件 ───────────────────────────────────────────────────────────
     for (auto& btn : m_toolBtns) if (btn) btn->HandleEvent(event);

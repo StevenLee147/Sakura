@@ -85,11 +85,16 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnEditorNew;    // 新建谱面
     std::unique_ptr<sakura::ui::Button> m_btnEditorCancel; // 取消
 
-    // 自制谱文件夹（仅允许在此目录下打开/编辑）
-    static constexpr const char* CUSTOM_CHARTS_PATH = "resources/charts/custom/";
+    // 编辑器谱面扫描根目录（与选歌场景保持一致）
+    static constexpr const char* CUSTOM_CHARTS_PATH = "resources/charts/";
 
     // 自制谱列表（打开面板时扫描）
-    struct ChartEntry { std::string folderPath; std::string title; };
+    struct ChartEntry
+    {
+        std::string folderPath;
+        std::string title;
+        std::string diffFile;
+    };
     std::vector<ChartEntry> m_customCharts;
     int m_selectedChartIdx = -1;  // 选中的谱面索引
 

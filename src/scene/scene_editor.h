@@ -88,9 +88,11 @@ private:
     void SetupToolbar();
     void UpdateToolButtons();       // 刷新工具按钮的选中状态颜色
     void UpdateUndoRedoButtons();   // 刷新撤销/重做按钮状态
+    void TogglePlayback();          // 从当前光标播放/暂停
     void DoSave();                  // 保存谱面并显示 Toast
     void SwitchDifficulty(int index);  // 切换到指定难度索引
     void AddNewDifficulty();           // 新建难度（从当前难度复制）
+    bool HandleOverviewAxisEvent(const SDL_Event& event);
 
     // ── 渲染分区 ──────────────────────────────────────────────────────────────
     void RenderToolbar       (sakura::core::Renderer& renderer);

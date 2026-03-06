@@ -225,7 +225,7 @@ void SceneMenu::ScanCustomCharts()
     m_customCharts.clear();
     m_selectedChartIdx = -1;
 
-    // 确保自制谱目录存在
+    // 确保谱面目录存在
     std::error_code ec;
     std::filesystem::create_directories(CUSTOM_CHARTS_PATH, ec);
 
@@ -236,8 +236,14 @@ void SceneMenu::ScanCustomCharts()
         ChartEntry entry;
         entry.folderPath = ci.folderPath;
         entry.title      = ci.title.empty() ? ci.id : ci.title;
+        entry.diffFile   = !ci.difficulties.empty() && !ci.difficulties.front().chartFile.empty()
+                         ? ci.difficulties.front().chartFile
+                         : "normal.json";
         m_customCharts.push_back(std::move(entry));
     }
+
+    if (!m_customCharts.empty())
+        m_selectedChartIdx = 0;
 
     LOG_INFO("[SceneMenu] 扫描自制谱: {} 首", m_customCharts.size());
 }
@@ -254,7 +260,7 @@ void SceneMenu::OpenEditorForChart(int idx)
     m_manager.SwitchScene(
         std::make_unique<SceneEditor>(m_manager,
                                       entry.folderPath,
-                                      "normal.json"),
+                                      entry.diffFile),
         TransitionType::SlideLeft, 0.4f);
 }
 
