@@ -94,7 +94,8 @@ private:
                                    const std::string& defaultExtension,
                                    const std::string& resourceLabel,
                                    const std::vector<std::string>& allowedExtensions,
-                                   std::string& outFileName);
+                                   std::string& outFileName,
+                                   bool convertToPng = false);
     void OpenResourceFileDialog(int fieldIndex);
     void QueueResourceFileSelection(int fieldIndex, const std::string& filePath);
     void QueueResourceFileError(const std::string& errorMsg);

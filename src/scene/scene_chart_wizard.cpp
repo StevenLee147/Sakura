@@ -8,6 +8,7 @@
 #include "ui/toast.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -486,11 +487,11 @@ bool SceneChartWizard::CreateChartFiles(const std::string& folderPath,
         return false;
     if (!CopyResourceToChartFolder(
             coverSourceFile, folderPath, "cover", ".png", "封面文件",
-            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, coverFileName))
+            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, coverFileName, true))
         return false;
     if (!CopyResourceToChartFolder(
             backgroundSourceFile, folderPath, "bg", ".png", "背景文件",
-            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, backgroundFileName))
+            { ".png", ".jpg", ".jpeg", ".webp", ".bmp" }, backgroundFileName, true))
         return false;
 
     // ── 写 info.json ──────────────────────────────────────────────────────────
@@ -567,7 +568,8 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
                                                  const std::string& defaultExtension,
                                                  const std::string& resourceLabel,
                                                  const std::vector<std::string>& allowedExtensions,
-                                                 std::string& outFileName)
+                                                 std::string& outFileName,
+                                                 bool convertToPng)
 {
     auto normalizeExtension = [](const std::string& ext, const std::string& fallback) -> std::string
     {
@@ -587,7 +589,11 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
         return lower;
     };
 
-    outFileName = standardBaseName + normalizeExtension("", defaultExtension);
+    // 如果需要转 PNG，始终输出 .png 文件名
+    if (convertToPng)
+        outFileName = standardBaseName + ".png";
+    else
+        outFileName = standardBaseName + normalizeExtension("", defaultExtension);
     if (sourcePath.empty()) return true;
 
     fs::path source = fs::u8path(sourcePath);
@@ -611,11 +617,37 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
             return false;
         }
     }
-    outFileName = standardBaseName + ext;
+    if (!convertToPng)
+        outFileName = standardBaseName + ext;
+    // convertToPng 情况下 outFileName 已在前面设置为 standardBaseName + ".png"
 
     fs::path target = fs::path(folderPath) / outFileName;
     try
     {
+        if (convertToPng)
+        {
+            // 通过 SDL_image 加载再保存，去除所有特殊元数据，确保与 SDL_Renderer 兼容
+            SDL_Surface* surface = IMG_Load(source.string().c_str());
+            if (surface)
+            {
+                bool saved = IMG_SavePNG(surface, target.string().c_str());
+                SDL_DestroySurface(surface);
+                if (saved)
+                {
+                    LOG_INFO("[SceneChartWizard] 已转换{}为 PNG: {} -> {}", resourceLabel, sourcePath, target.string());
+                    return true;
+                }
+                LOG_WARN("[SceneChartWizard] IMG_SavePNG 失败 ({}), 回退到直接复制", SDL_GetError());
+            }
+            else
+            {
+                LOG_WARN("[SceneChartWizard] IMG_Load 失败 ({}), 回退到直接复制", SDL_GetError());
+            }
+            // 回退：直接复制（保留原扩展名）
+            outFileName = standardBaseName + ext;
+            target = fs::path(folderPath) / outFileName;
+        }
+
         if (fs::exists(target) && fs::equivalent(source, target))
             return true;
 
