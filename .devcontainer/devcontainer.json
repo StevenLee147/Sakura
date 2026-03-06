@@ -1,0 +1,33 @@
+{
+    "name": "Sakura-樱 Dev Container",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    // 挂载 vcpkg 缓存以加速后续构建
+    "mounts": [
+        "source=sakura-vcpkg-cache,target=/root/.cache/vcpkg,type=volume"
+    ],
+    "containerEnv": {
+        "VCPKG_ROOT": "/opt/vcpkg",
+        // 关闭 vcpkg 遥测
+        "VCPKG_DISABLE_METRICS": "1",
+        // 让 vcpkg 二进制缓存写到挂载卷
+        "VCPKG_DEFAULT_BINARY_CACHE": "/root/.cache/vcpkg/archives"
+    },
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "ms-vscode.cpptools-extension-pack",
+                "twxs.cmake"
+            ],
+            "settings": {
+                "cmake.configurePreset": "ci-linux",
+                "cmake.buildPreset":     "ci-linux",
+                "cmake.testPreset":      "ci-linux"
+            }
+        }
+    }
+}

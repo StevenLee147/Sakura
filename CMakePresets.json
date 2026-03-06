@@ -34,6 +34,24 @@
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
             "binaryDir": "${sourceDir}/build/relwithdebinfo"
+        },
+        {
+            "name": "ci-linux",
+            "displayName": "CI Linux (Ninja, Release)",
+            "inherits": "vcpkg-base",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/ci-linux",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":   "Release",
+                "SAKURA_BUILD_TESTS": "ON",
+                "VCPKG_TARGET_TRIPLET": "x64-linux",
+                "VCPKG_INSTALLED_DIR": "${sourceDir}/build/ci-linux/vcpkg_installed"
+            },
+            "condition": {
+                "type": "notEquals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
         }
     ],
     "buildPresets": [
@@ -51,6 +69,26 @@
             "name": "relwithdebinfo",
             "configurePreset": "relwithdebinfo",
             "configuration": "RelWithDebInfo"
+        },
+        {
+            "name": "ci-linux",
+            "displayName": "CI Linux Build",
+            "configurePreset": "ci-linux"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "ci-linux",
+            "displayName": "CI Linux Tests",
+            "configurePreset": "ci-linux",
+            "output": {
+                "verbosity": "verbose",
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure":  false
+            }
         }
     ]
 }

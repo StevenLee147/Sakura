@@ -41,6 +41,14 @@ if(MSVC)
 endif()
 
 # ============================================================================
+# 测试选项
+# ============================================================================
+option(SAKURA_BUILD_TESTS "构建单元测试（Catch2）" OFF)
+
+# enable_testing() 必须在根 CMakeLists 中调用，才能让 ctest 发现子目录测试
+enable_testing()
+
+# ============================================================================
 # vcpkg 依赖查找
 # ============================================================================
 find_package(SDL3 CONFIG REQUIRED)
@@ -116,3 +124,24 @@ configure_file(
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
+
+# ============================================================================
+# 单元测试（仅 SAKURA_BUILD_TESTS=ON 时启用）
+# ============================================================================
+if(SAKURA_BUILD_TESTS)
+    # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
+    add_library(sakura-game-logic STATIC
+        src/game/score.cpp
+        src/game/judge.cpp
+    )
+    target_include_directories(sakura-game-logic PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(sakura-game-logic PUBLIC
+        nlohmann_json::nlohmann_json
+        spdlog::spdlog
+    )
+    target_compile_features(sakura-game-logic PUBLIC cxx_std_20)
+
+    add_subdirectory(tests)
+endif()
