@@ -104,7 +104,7 @@ void AudioManager::Shutdown()
 
 // ── 背景音乐 ──────────────────────────────────────────────────────────────────
 
-bool AudioManager::PlayMusic(const std::string& path, int loops)
+bool AudioManager::PlayMusic(const std::string& path, int loops, double startPositionSeconds)
 {
     if (!m_initialized || !m_engine)
     {
@@ -154,6 +154,23 @@ bool AudioManager::PlayMusic(const std::string& path, int loops)
     // 设置播放速度
     ma_sound_set_pitch(m_music, m_playbackSpeed);
 
+    // 在 start 前 seek 到指定起始位置，避免异步启动后再 seek 的竞争问题
+    if (startPositionSeconds > 0.0)
+    {
+        ma_uint32 sampleRate = ma_engine_get_sample_rate(m_engine);
+        ma_uint64 frame = static_cast<ma_uint64>(startPositionSeconds * sampleRate);
+        ma_result seekResult = ma_sound_seek_to_pcm_frame(m_music, frame);
+        if (seekResult != MA_SUCCESS)
+        {
+            LOG_WARN("PlayMusic: 起始位置 seek 失败 (pos={:.3f}s, error={}), 将从头播放",
+                     startPositionSeconds, static_cast<int>(seekResult));
+        }
+        else
+        {
+            LOG_DEBUG("PlayMusic: seek 到 {:.3f}s 成功", startPositionSeconds);
+        }
+    }
+
     // 开始播放
     result = ma_sound_start(m_music);
     if (result != MA_SUCCESS)
@@ -164,7 +181,7 @@ bool AudioManager::PlayMusic(const std::string& path, int loops)
 
     m_musicPaused = false;
     m_fadingOut   = false;
-    LOG_INFO("开始播放音乐: {} (loop={})", path, loops);
+    LOG_INFO("开始播放音乐: {} (loop={}, startPos={:.3f}s)", path, loops, startPositionSeconds);
     return true;
 }
 

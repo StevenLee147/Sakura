@@ -103,16 +103,14 @@ void GameState::Update(float dt)
 
             if (std::filesystem::exists(musicPath))
             {
-                if (audio.PlayMusic(musicPath, 0))
+                double startPos = static_cast<double>(m_playbackStartMs) / 1000.0;
+                if (audio.PlayMusic(musicPath, 0, startPos))
                 {
-                    if (!audio.SetMusicPosition(static_cast<double>(m_playbackStartMs) / 1000.0))
-                    {
-                        LOG_WARN("GameState::Update: 设置音乐起播位置失败，将按音频当前游标继续");
-                    }
                     double dur = audio.GetMusicDuration();
                     if (dur > 0.0) m_musicDuration = dur;
                     m_musicStarted = true;
-                    LOG_DEBUG("音乐开始播放: {}，时长={:.1f}s", musicPath, m_musicDuration);
+                    LOG_DEBUG("音乐开始播放: {}，时长={:.1f}s，起始位置={:.3f}s",
+                              musicPath, m_musicDuration, startPos);
                 }
                 else
                 {

@@ -66,7 +66,8 @@ public:
 
     // 播放音乐（path 相对于工作目录）
     // loops: -1 = 无限循环, 0 = 播放一次, n = 循环 n 次
-    bool PlayMusic(const std::string& path, int loops = 0);
+    // startPositionSeconds: 起播位置（秒），在 ma_sound_start 前 seek，避免竞争
+    bool PlayMusic(const std::string& path, int loops = 0, double startPositionSeconds = 0.0);
 
     // 使用已加载的 MusicHandle 播放（不重新加载文件）
     bool PlayMusicFromHandle(sakura::core::MusicHandle handle, int loops = 0);
