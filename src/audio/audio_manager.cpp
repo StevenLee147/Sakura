@@ -155,11 +155,10 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     ma_sound_set_pitch(m_music, m_playbackSpeed);
 
     // 在 start 前 seek 到指定起始位置，避免异步启动后再 seek 的竞争问题
+    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
     if (startPositionSeconds > 0.0)
     {
-        ma_uint32 sampleRate = ma_engine_get_sample_rate(m_engine);
-        ma_uint64 frame = static_cast<ma_uint64>(startPositionSeconds * sampleRate);
-        ma_result seekResult = ma_sound_seek_to_pcm_frame(m_music, frame);
+        ma_result seekResult = ma_sound_seek_to_second(m_music, static_cast<float>(startPositionSeconds));
         if (seekResult != MA_SUCCESS)
         {
             LOG_WARN("PlayMusic: 起始位置 seek 失败 (pos={:.3f}s, error={}), 将从头播放",
@@ -246,11 +245,8 @@ bool AudioManager::SetMusicPosition(double seconds)
 {
     if (!m_music) return false;
 
-    // 获取采样率以计算帧位置
-    ma_uint32 sampleRate = ma_engine_get_sample_rate(m_engine);
-    ma_uint64 frame = static_cast<ma_uint64>(seconds * sampleRate);
-
-    ma_result result = ma_sound_seek_to_pcm_frame(m_music, frame);
+    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
+    ma_result result = ma_sound_seek_to_second(m_music, static_cast<float>(seconds));
     if (result != MA_SUCCESS)
     {
         LOG_ERROR("SetMusicPosition 失败: error={}", static_cast<int>(result));

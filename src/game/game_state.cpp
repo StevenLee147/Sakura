@@ -97,25 +97,35 @@ void GameState::Update(float dt)
         m_countdownTimer -= dt;
         if (m_countdownTimer <= 0.0f)
         {
-            // 倒计时结束，开始播放音乐
             auto& audio = sakura::audio::AudioManager::GetInstance();
-            const std::string musicPath = m_chartInfo.folderPath + "/" + m_chartInfo.musicFile;
 
-            if (std::filesystem::exists(musicPath))
+            if (m_musicStarted && audio.IsPaused())
             {
-                double startPos = static_cast<double>(m_playbackStartMs) / 1000.0;
-                if (audio.PlayMusic(musicPath, 0, startPos))
+                // 从暂停恢复：ma_sound 已存在且已 seek 到正确位置，直接恢复播放
+                audio.ResumeMusic();
+                LOG_DEBUG("音乐恢复播放，起始位置={:.3f}s",
+                          static_cast<double>(m_playbackStartMs) / 1000.0);
+            }
+            else if (!m_musicStarted)
+            {
+                // 首次开始：加载并播放音乐
+                const std::string musicPath = m_chartInfo.folderPath + "/" + m_chartInfo.musicFile;
+                if (std::filesystem::exists(musicPath))
                 {
-                    double dur = audio.GetMusicDuration();
-                    if (dur > 0.0) m_musicDuration = dur;
-                    m_musicStarted = true;
-                    LOG_DEBUG("音乐开始播放: {}，时长={:.1f}s，起始位置={:.3f}s",
-                              musicPath, m_musicDuration, startPos);
-                }
-                else
-                {
-                    LOG_WARN("音乐播放失败，游戏以无音乐模式运行");
-                    m_musicStarted = false;
+                    double startPos = static_cast<double>(m_playbackStartMs) / 1000.0;
+                    if (audio.PlayMusic(musicPath, 0, startPos))
+                    {
+                        double dur = audio.GetMusicDuration();
+                        if (dur > 0.0) m_musicDuration = dur;
+                        m_musicStarted = true;
+                        LOG_DEBUG("音乐开始播放: {}，时长={:.1f}s，起始位置={:.3f}s",
+                                  musicPath, m_musicDuration, startPos);
+                    }
+                    else
+                    {
+                        LOG_WARN("音乐播放失败，游戏以无音乐模式运行");
+                        m_musicStarted = false;
+                    }
                 }
             }
 
@@ -191,8 +201,12 @@ void GameState::Resume()
 
     if (m_musicStarted)
     {
-        sakura::audio::AudioManager::GetInstance().StopMusic();
-        m_musicStarted = false;
+        // 保持 ma_sound 不销毁，仅 seek 到回退位置（音乐仍处于暂停状态）
+        auto& audio = sakura::audio::AudioManager::GetInstance();
+        double seekPos = static_cast<double>(m_playbackStartMs) / 1000.0;
+        audio.SetMusicPosition(seekPos);
+        // 不调用 StopMusic()，不重置 m_musicStarted
+        // 倒计时结束后通过 ResumeMusic() 恢复播放
     }
     UpdateActiveWindows();
     LOG_DEBUG("GameState: 游戏恢复倒计时，起点={}ms", m_playbackStartMs);
