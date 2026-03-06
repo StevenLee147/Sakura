@@ -239,6 +239,10 @@ void SceneSelect::OnSongSelected(int index)
 {
     if (index < 0 || index >= static_cast<int>(m_charts.size())) return;
 
+    // 切换谱面时立即停止当前预览，并重置状态以触发新预览倒计时
+    StopPreview();
+    m_previewPlaying = false;   // 确保计时器能在 OnUpdate 中重新计数
+
     m_selectedChart    = index;
     m_selectedDifficulty = 0;
     m_previewTimer     = 0.0f;   // 重置预览计时
