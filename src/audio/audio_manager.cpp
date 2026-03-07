@@ -6,6 +6,7 @@
 #include <miniaudio.h>
 
 #include "audio_manager.h"
+#include "audio_visualizer.h"
 #include "sfx_generator.h"
 #include "core/config.h"
 #include "utils/logger.h"
@@ -87,6 +88,7 @@ void AudioManager::Shutdown()
         delete m_music;
         m_music = nullptr;
     }
+    AudioVisualizer::GetInstance().ClearSource();
 
     // 释放引擎
     if (m_engine)
@@ -143,6 +145,7 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     }
 
     m_musicPath = path;
+    AudioVisualizer::GetInstance().SetSourceFile(path);
 
     // 设置循环
     bool shouldLoop = (loops == -1) || (loops > 0);
@@ -222,6 +225,7 @@ void AudioManager::StopMusic()
     m_musicPath   = "";
     m_musicPaused = false;
     m_fadingOut   = false;
+    AudioVisualizer::GetInstance().ClearSource();
     LOG_DEBUG("音乐已停止");
 }
 
@@ -304,6 +308,10 @@ void AudioManager::PlaySFX(const std::string& path)
     if (result != MA_SUCCESS)
     {
         LOG_WARN("PlaySFX 失败 [{}]: error={}", path, static_cast<int>(result));
+    }
+    else
+    {
+        AudioVisualizer::GetInstance().AddImpulse(0.30f);
     }
 }
 

@@ -1,6 +1,7 @@
 // scene_select.cpp — 选歌场景
 
 #include "scene_select.h"
+#include "audio/audio_visualizer.h"
 #include "scene_menu.h"
 #include "scene_game.h"
 #include "core/input.h"
@@ -572,6 +573,13 @@ void SceneSelect::OnRender(sakura::core::Renderer& renderer)
         if (btn) btn->Render(renderer);
 
     // 底部按钮
+    sakura::audio::AudioVisualizer::GetInstance().RenderBars(
+        renderer,
+        { 0.04f, 0.90f, 0.92f, 0.06f },
+        { 90, 140, 255, 120 },
+        { 255, 210, 140, 210 },
+        0.85f);
+
     if (m_btnBack)  m_btnBack->Render(renderer);
     if (m_btnStart) m_btnStart->Render(renderer);
 }

@@ -6,6 +6,7 @@
 #include "scene_result.h"
 #include "core/input.h"
 #include "core/config.h"
+#include "audio/audio_visualizer.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "audio/audio_manager.h"
@@ -735,6 +736,13 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
                 0.025f, 3);
         }
     }
+
+    sakura::audio::AudioVisualizer::GetInstance().RenderBars(
+        renderer,
+        { TRACK_X, JUDGE_LINE_Y + 0.018f, TRACK_W, 0.055f },
+        { 90, 210, 255, 90 },
+        { 255, 210, 150, 180 },
+        0.60f);
 
     // 鼠标区域边框
     renderer.DrawRectOutline(

@@ -4,6 +4,7 @@
 #include "scene/test_scenes.h"
 #include "scene/scene_splash.h"
 #include "audio/audio_manager.h"
+#include "audio/audio_visualizer.h"
 #include "game/chart_loader.h"
 #include "game/achievement_manager.h"
 #include "data/database.h"
@@ -256,6 +257,14 @@ void App::Update(float dt)
 
     // 场景更新
     m_sceneManager.Update(dt);
+
+    {
+        auto& audio = sakura::audio::AudioManager::GetInstance();
+        sakura::audio::AudioVisualizer::GetInstance().Update(
+            dt,
+            audio.GetMusicPosition(),
+            audio.IsPlaying());
+    }
 
     // 屏幕震动更新：将偏移量（归一化）转为像素写入渲染器
     {

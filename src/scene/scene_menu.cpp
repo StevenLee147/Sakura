@@ -7,6 +7,7 @@
 #include "scene_settings.h"
 #include "scene_editor.h"
 #include "scene_chart_wizard.h"
+#include "audio/audio_visualizer.h"
 #include "core/input.h"
 #include "game/chart_loader.h"
 #include "utils/logger.h"
@@ -461,6 +462,17 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
     // ── 背景微粒 + 樱花飘落 ────────────────────────────────────────────────────
     m_particles.Render(renderer);
+
+    sakura::audio::AudioVisualizer::GetInstance().RenderCircle(
+        renderer,
+        0.80f, 0.28f, 0.10f,
+        { 255, 170, 210, 180 },
+        0.75f);
+    sakura::audio::AudioVisualizer::GetInstance().RenderWave(
+        renderer,
+        { 0.54f, 0.78f, 0.38f, 0.10f },
+        { 160, 220, 255, 170 },
+        0.80f);
 
     // ── 鼠标点击光环特效 ────────────────────────────────────────────────────────
     for (const auto& ring : m_clickRings)
