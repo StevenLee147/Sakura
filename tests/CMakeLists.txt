@@ -5,6 +5,7 @@ add_executable(SakuraTests
     test_main.cpp
     test_achievement_manager.cpp
     test_chart_loader_builtin.cpp
+    test_pp_calculator.cpp
     test_score.cpp
     test_judge.cpp
     test_tutorial_data.cpp

@@ -47,6 +47,7 @@ void SceneResult::OnEnter()
 
     m_scoreTimer   = 0.0f;
     m_displayScore = 0;
+    m_resultPP     = sakura::game::PPCalculator::CalculatePP(m_result, m_result.difficultyLevel);
     m_elemTimer    = 0.0f;
 
     // 评级弹入动画复位
@@ -311,9 +312,26 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
                           sakura::core::TextAlign::Center);
     }
 
-    // ── 元素 6：最大连击 ──────────────────────────────────────────────────────
+    // ── 元素 6：本局 PP ──────────────────────────────────────────────────────
     {
         float a = ElemAlpha(6);
+        std::ostringstream ppSS;
+        ppSS << std::fixed << std::setprecision(2) << m_resultPP << " PP";
+        renderer.DrawText(m_fontUI, "本局 PP",
+                          0.50f, 0.60f, 0.020f,
+                          sakura::core::Color{210, 190, 110,
+                              static_cast<uint8_t>(a * 255)},
+                          sakura::core::TextAlign::Center);
+        renderer.DrawText(m_fontUI, ppSS.str(),
+                          0.50f, 0.625f, 0.028f,
+                          sakura::core::Color{255, 235, 150,
+                              static_cast<uint8_t>(a * 255)},
+                          sakura::core::TextAlign::Center);
+    }
+
+    // ── 元素 7：最大连击 ──────────────────────────────────────────────────────
+    {
+        float a = ElemAlpha(7);
         renderer.DrawText(m_fontUI, "最大连击",
                           0.72f, 0.53f, 0.022f,
                           sakura::core::Color{160, 160, 200,
@@ -326,9 +344,9 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
                           sakura::core::TextAlign::Center);
     }
 
-    // ── 元素 7：判定统计（5 行）─────────────────────────────────────────────
+    // ── 元素 8：判定统计（5 行）─────────────────────────────────────────────
     {
-        float a = ElemAlpha(7);
+        float a = ElemAlpha(8);
         struct JudgeRow { const char* label; int count; sakura::core::Color color; };
         JudgeRow rows[] =
         {
@@ -350,9 +368,9 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
         }
     }
 
-    // ── 元素 8：偏差分布图（横轴 ±150 ms）─────────────────────────────────
+    // ── 元素 9：偏差分布图（横轴 ±150 ms）─────────────────────────────────
     {
-        float a = ElemAlpha(8);
+        float a = ElemAlpha(9);
         if (a > 0.0f && !m_result.hitErrors.empty())
         {
             constexpr float CHART_CX = 0.50f;
@@ -411,8 +429,8 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
         }
     }
 
-    // ── 元素 9：按钮 ──────────────────────────────────────────────────────────
-    if (ElemAlpha(9) > 0.0f)
+    // ── 元素 10：按钮 ─────────────────────────────────────────────────────────
+    if (ElemAlpha(10) > 0.0f)
     {
         if (m_btnRetry) m_btnRetry->Render(renderer);
         if (m_btnBack)  m_btnBack ->Render(renderer);

@@ -9,6 +9,7 @@
 #include "ui/button.h"
 #include "ui/toast.h"
 #include "game/chart.h"
+#include "game/pp_calculator.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 
@@ -53,6 +54,7 @@ private:
     static constexpr float SCORE_ANIM_DURATION = 1.5f;
     float m_scoreTimer  = 0.0f;
     int   m_displayScore = 0;
+    double m_resultPP = 0.0;
 
     // 元素淡入计时
     float m_elemTimer = 0.0f;

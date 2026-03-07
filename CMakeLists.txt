@@ -135,6 +135,7 @@ if(SAKURA_BUILD_TESTS)
         src/data/database.cpp
         src/game/achievement_manager.cpp
         src/game/chart_loader.cpp
+        src/game/pp_calculator.cpp
         src/game/score.cpp
         src/game/judge.cpp
         src/game/tutorial_data.cpp
