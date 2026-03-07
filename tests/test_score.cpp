@@ -1,14 +1,13 @@
 // tests/test_score.cpp — ScoreCalculator 单元测试
 // 不依赖 SDL3；仅测试纯计分逻辑
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include "test_framework.h"
 
 #include "game/score.h"
 
 using namespace sakura::game;
-using Catch::Matchers::WithinAbs;
-using Catch::Matchers::WithinRel;
+using sakura::tests::Matchers::WithinAbs;
+using sakura::tests::Matchers::WithinRel;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 辅助：快速完成一局全 Perfect
@@ -46,9 +45,10 @@ TEST_CASE("ScoreCalculator::Initialize 接受 0（保护性最小值 1）", "[sc
 {
     ScoreCalculator sc;
     REQUIRE_NOTHROW(sc.Initialize(0));
-    // 不应崩溃，判一次 Perfect 分数 ≤ 1e6
+    // 不应崩溃；单音符也会受到连击加成影响，但仍应受 10% 上限约束
     sc.OnJudge(JudgeResult::Perfect, 0);
-    REQUIRE(sc.GetScore() <= 1'000'000);
+    REQUIRE(sc.GetScore() >= 1'000'000);
+    REQUIRE(sc.GetScore() <= 1'100'000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

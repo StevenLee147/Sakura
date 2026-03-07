@@ -45,6 +45,10 @@ void Config::ApplyDefaults()
     setDefault(ConfigKeys::kBloom,        false);
     setDefault(ConfigKeys::kSkinPath,     std::string("resources/skins/default"));
 
+    // 教程
+    setDefault(ConfigKeys::kTutorialCompleted,   false);
+    setDefault(ConfigKeys::kTutorialPromptShown, false);
+
     m_dirty = false;  // 默认值不算脏
 }
 

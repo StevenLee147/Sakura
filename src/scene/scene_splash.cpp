@@ -3,6 +3,8 @@
 #include "scene_splash.h"
 #include "scene_loading.h"
 #include "scene_menu.h"
+#include "scene_tutorial.h"
+#include "core/config.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -125,10 +127,14 @@ void SceneSplash::GoToNextScene()
         // UI 组件字体/纹理已预加载
     }});
 
-    // 目标场景工厂 → SceneMenu
+    // 目标场景工厂：首次运行先进入教程提示，否则进入主菜单
     auto& mgr = m_manager;
     auto factory = [&mgr]() -> std::unique_ptr<Scene>
     {
+        bool shouldPromptTutorial = !sakura::core::Config::GetInstance().Get<bool>(
+            std::string(sakura::core::ConfigKeys::kTutorialPromptShown), false);
+        if (shouldPromptTutorial)
+            return std::make_unique<SceneTutorial>(mgr, true);
         return std::make_unique<SceneMenu>(mgr);
     };
 

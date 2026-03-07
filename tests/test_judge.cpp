@@ -1,7 +1,7 @@
 // tests/test_judge.cpp — Judge 判定逻辑单元测试
 // 不依赖 SDL3；仅测试纯时间窗口和偏差计算逻辑
 
-#include <catch2/catch_test_macros.hpp>
+#include "test_framework.h"
 
 #include "game/judge.h"
 

@@ -42,6 +42,10 @@ namespace ConfigKeys
     inline constexpr std::string_view kParticles      = "graphics.particles";      // bool
     inline constexpr std::string_view kBloom          = "graphics.bloom";           // bool
     inline constexpr std::string_view kSkinPath       = "graphics.skin_path";       // string
+
+    // ── 教程 ─────────────────────────────────────────────────────────────────
+    inline constexpr std::string_view kTutorialCompleted  = "tutorial.completed";    // bool
+    inline constexpr std::string_view kTutorialPromptShown = "tutorial.prompt_shown"; // bool
 }
 
 // ============================================================================

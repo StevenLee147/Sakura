@@ -131,8 +131,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 if(SAKURA_BUILD_TESTS)
     # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
     add_library(sakura-game-logic STATIC
+        src/core/config.cpp
         src/game/score.cpp
         src/game/judge.cpp
+        src/game/tutorial_data.cpp
+        src/utils/logger.cpp
     )
     target_include_directories(sakura-game-logic PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
