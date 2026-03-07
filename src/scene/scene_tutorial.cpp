@@ -21,6 +21,39 @@ namespace
 constexpr sakura::core::Color kBgTop    = { 20, 16, 36, 255 };
 constexpr sakura::core::Color kBgBottom = { 10, 8, 20, 255 };
 
+std::vector<int> BuildDragPathLanes(int startLane, int endLane)
+{
+    std::vector<int> lanes;
+    lanes.push_back(startLane);
+
+    if (startLane == endLane)
+        return lanes;
+
+    int step = (endLane > startLane) ? 1 : -1;
+    for (int lane = startLane + step;; lane += step)
+    {
+        lanes.push_back(lane);
+        if (lane == endLane)
+            break;
+    }
+
+    return lanes;
+}
+
+int CalcDragStepTimeMs(const sakura::game::TutorialLessonNote& note,
+                       const std::vector<int>& pathLanes,
+                       int pathIndex)
+{
+    int totalPathPoints = static_cast<int>(pathLanes.size());
+    if (totalPathPoints <= 1)
+        return note.timeMs + note.durationMs;
+
+    float ratio = static_cast<float>(pathIndex)
+        / static_cast<float>(totalPathPoints - 1);
+    return note.timeMs + static_cast<int>(std::lround(
+        static_cast<float>(note.durationMs) * ratio));
+}
+
 } // namespace
 
 SceneTutorial::SceneTutorial(SceneManager& mgr, bool showFirstRunPrompt)
@@ -100,7 +133,11 @@ void SceneTutorial::BeginLesson(int lessonIndex)
     m_runtimeNotes.clear();
     for (const auto& note : m_lessons[lessonIndex].notes)
     {
-        m_runtimeNotes.push_back(RuntimeNote{ note, false, false });
+        RuntimeNote runtimeNote;
+        runtimeNote.note = note;
+        if (note.type == sakura::game::NoteType::Drag)
+            runtimeNote.dragPathLanes = BuildDragPathLanes(note.lane, note.targetLane);
+        m_runtimeNotes.push_back(std::move(runtimeNote));
     }
 
     m_lessonTimerMs = 0.0f;
@@ -114,6 +151,7 @@ void SceneTutorial::StartCurrentLesson()
     {
         note.started = false;
         note.completed = false;
+        note.dragNextLaneIndex = 1;
     }
 
     m_lessonTimerMs = 0.0f;
@@ -289,16 +327,42 @@ void SceneTutorial::UpdatePlayingState()
                 allCompleted = false;
                 if (m_lessonTimerMs > static_cast<float>(note.timeMs + lesson.judgeWindowMs))
                 {
-                    FailCurrentLesson("Drag 要先按起点，再切到目标轨道。");
+                    FailCurrentLesson("Drag 要先按起点，并沿路径依次进入后续轨道。");
                     return;
                 }
             }
             else if (!runtimeNote.completed)
             {
                 allCompleted = false;
+
+                int activeLaneCount = std::min(runtimeNote.dragNextLaneIndex,
+                    static_cast<int>(runtimeNote.dragPathLanes.size()));
+                for (int pathIndex = 0; pathIndex < activeLaneCount; ++pathIndex)
+                {
+                    int heldLane = runtimeNote.dragPathLanes[pathIndex];
+                    bool held = sakura::core::Input::IsKeyHeld(m_laneKeys[heldLane]);
+                    if (!held && m_lessonTimerMs < static_cast<float>(note.timeMs + note.durationMs))
+                    {
+                        FailCurrentLesson("Drag 已按下的轨道要一直按住，直到终点判定完成。\n中间轨也不能提前松开。");
+                        return;
+                    }
+                }
+
+                if (runtimeNote.dragNextLaneIndex < static_cast<int>(runtimeNote.dragPathLanes.size()))
+                {
+                    int nextStepTime = CalcDragStepTimeMs(note,
+                        runtimeNote.dragPathLanes,
+                        runtimeNote.dragNextLaneIndex);
+                    if (m_lessonTimerMs > static_cast<float>(nextStepTime + lesson.judgeWindowMs))
+                    {
+                        FailCurrentLesson("Drag 漏掉了中间轨道。\n要按箭头顺序依次经过每一格。\n例如 0→2 需要按 0、1、2。 ");
+                        return;
+                    }
+                }
+
                 if (m_lessonTimerMs > static_cast<float>(note.timeMs + note.durationMs + lesson.judgeWindowMs))
                 {
-                    FailCurrentLesson("方向切换慢了一点，再沿着箭头试一次。");
+                    FailCurrentLesson("Drag 终点慢了一点，再沿着路径依次按下试一次。");
                     return;
                 }
             }
@@ -330,10 +394,27 @@ void SceneTutorial::HandleKeyboardInput(SDL_Scancode scancode)
         if (note.type == sakura::game::NoteType::Drag
             && runtimeNote.started
             && !runtimeNote.completed
-            && note.targetLane == lane)
+            && runtimeNote.dragNextLaneIndex >= 0
+            && runtimeNote.dragNextLaneIndex < static_cast<int>(runtimeNote.dragPathLanes.size())
+            && runtimeNote.dragPathLanes[runtimeNote.dragNextLaneIndex] == lane)
         {
-            int targetTime = note.timeMs + note.durationMs;
-            int distance = std::abs(static_cast<int>(m_lessonTimerMs) - targetTime);
+            bool activeLanesHeld = true;
+            for (int pathIndex = 0; pathIndex < runtimeNote.dragNextLaneIndex; ++pathIndex)
+            {
+                int heldLane = runtimeNote.dragPathLanes[pathIndex];
+                if (!sakura::core::Input::IsKeyHeld(m_laneKeys[heldLane]))
+                {
+                    activeLanesHeld = false;
+                    break;
+                }
+            }
+            if (!activeLanesHeld)
+                continue;
+
+            int stepTime = CalcDragStepTimeMs(note,
+                runtimeNote.dragPathLanes,
+                runtimeNote.dragNextLaneIndex);
+            int distance = std::abs(static_cast<int>(m_lessonTimerMs) - stepTime);
             if (distance <= lesson.judgeWindowMs && distance < bestDistance)
             {
                 bestDistance = distance;
@@ -344,7 +425,10 @@ void SceneTutorial::HandleKeyboardInput(SDL_Scancode scancode)
 
     if (bestIndex >= 0)
     {
-        m_runtimeNotes[bestIndex].completed = true;
+        auto& runtimeNote = m_runtimeNotes[bestIndex];
+        ++runtimeNote.dragNextLaneIndex;
+        if (runtimeNote.dragNextLaneIndex >= static_cast<int>(runtimeNote.dragPathLanes.size()))
+            runtimeNote.completed = true;
         sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::Tap);
         return;
     }
@@ -383,6 +467,8 @@ void SceneTutorial::HandleKeyboardInput(SDL_Scancode scancode)
     case sakura::game::NoteType::Hold:
     case sakura::game::NoteType::Drag:
         runtimeNote.started = true;
+        if (runtimeNote.note.type == sakura::game::NoteType::Drag)
+            runtimeNote.dragNextLaneIndex = 1;
         break;
     default:
         break;
@@ -646,14 +732,57 @@ void SceneTutorial::RenderKeyboardArea(sakura::core::Renderer& renderer) const
 
         if (note.type == sakura::game::NoteType::Drag)
         {
-            float fromX = TRACK_X + laneWidth * note.lane + laneWidth * 0.5f;
-            float toX   = TRACK_X + laneWidth * note.targetLane + laneWidth * 0.5f;
-            renderer.DrawLine(fromX, noteY, toX, noteY - 0.05f,
-                { 140, 220, 255, 220 }, 0.003f);
-            renderer.DrawText(m_fontSmall, LaneLabel(note.targetLane),
-                toX, noteY - 0.07f, 0.018f,
-                { 185, 235, 255, 230 },
-                sakura::core::TextAlign::Center);
+            const auto& pathLanes = runtimeNote.dragPathLanes;
+            if (!pathLanes.empty())
+            {
+                float guideY = noteY - 0.055f;
+                for (int pathIndex = 0; pathIndex < static_cast<int>(pathLanes.size()); ++pathIndex)
+                {
+                    int pathLane = pathLanes[pathIndex];
+                    float pathX = TRACK_X + laneWidth * pathLane + laneWidth * 0.5f;
+
+                    if (pathIndex > 0)
+                    {
+                        int prevLane = pathLanes[pathIndex - 1];
+                        float prevX = TRACK_X + laneWidth * prevLane + laneWidth * 0.5f;
+                        renderer.DrawLine(prevX, guideY, pathX, guideY,
+                            { 140, 220, 255, 220 }, 0.003f);
+                    }
+
+                    bool reached = runtimeNote.started && pathIndex < runtimeNote.dragNextLaneIndex;
+                    bool nextStep = runtimeNote.started && !runtimeNote.completed
+                        && pathIndex == runtimeNote.dragNextLaneIndex;
+                    sakura::core::Color markerColor = reached
+                        ? sakura::core::Color{ 255, 222, 140, 235 }
+                        : (nextStep
+                            ? sakura::core::Color{ 120, 245, 255, 240 }
+                            : sakura::core::Color{ 185, 235, 255, 170 });
+                    renderer.DrawCircleFilled(pathX, guideY, nextStep ? 0.013f : 0.010f,
+                        markerColor, 20);
+                    renderer.DrawText(m_fontSmall, LaneLabel(pathLane),
+                        pathX, guideY - 0.030f, 0.018f,
+                        markerColor,
+                        sakura::core::TextAlign::Center);
+                }
+
+                if (runtimeNote.started && !runtimeNote.completed)
+                {
+                    renderer.DrawRoundedRect({ 0.12f, 0.89f, 0.30f, 0.018f },
+                        0.006f, { 36, 32, 58, 220 }, true);
+                    float progress = 0.0f;
+                    if (pathLanes.size() > 1)
+                    {
+                        progress = static_cast<float>(runtimeNote.dragNextLaneIndex - 1)
+                            / static_cast<float>(pathLanes.size() - 1);
+                    }
+                    renderer.DrawRoundedRect({ 0.12f, 0.89f, 0.30f * std::clamp(progress, 0.0f, 1.0f), 0.018f },
+                        0.006f, { 120, 220, 255, 230 }, true);
+                    renderer.DrawText(m_fontSmall, "Drag 路径进度",
+                        0.12f, 0.865f, 0.018f,
+                        { 170, 210, 230, 220 },
+                        sakura::core::TextAlign::Left);
+                }
+            }
         }
     }
 }

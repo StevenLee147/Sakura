@@ -42,6 +42,8 @@ private:
         sakura::game::TutorialLessonNote note;
         bool started   = false;
         bool completed = false;
+        std::vector<int> dragPathLanes;
+        int dragNextLaneIndex = 1;
     };
 
     SceneManager& m_manager;

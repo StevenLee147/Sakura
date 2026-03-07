@@ -44,8 +44,8 @@ std::vector<TutorialLesson> BuildTutorialLessons()
     lessons.push_back(TutorialLesson{
         TutorialLessonType::KeyboardDrag,
         "第 3 课 - 键盘 Drag",
-        "先按起点轨道，再跟着箭头快速切到目标轨道。",
-        "方向切换完成，Drag 已经入门。",
+        "先按起点轨道，再沿着箭头依次按下中间轨和终点轨。已经按下的轨道要一直按住到终点判定完成。",
+        "很好，已经掌握 Drag 的连续按轨和全程保持了。",
         200,
         0.1f,
         true,

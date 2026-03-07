@@ -10,6 +10,21 @@
 namespace sakura::game
 {
 
+namespace
+{
+
+int CalcDragStepTime(const KeyboardNote& note, int totalPathPoints, int pathIndex)
+{
+    if (totalPathPoints <= 1) return note.time + note.duration;
+
+    float ratio = static_cast<float>(pathIndex)
+        / static_cast<float>(totalPathPoints - 1);
+    return note.time + static_cast<int>(std::lround(
+        static_cast<float>(note.duration) * ratio));
+}
+
+}
+
 // 鼠标点击命中容差（归一化欧氏距离）
 static constexpr float MOUSE_HIT_TOLERANCE = 0.06f;
 
@@ -203,23 +218,116 @@ JudgeResult Judge::UpdateHoldTick(HoldState& state,
     return JudgeResult::None;
 }
 
-// ── JudgeDragEnd ──────────────────────────────────────────────────────────────
+// ── UpdateDragTick ────────────────────────────────────────────────────────────
 
-JudgeResult Judge::JudgeDragEnd(KeyboardNote& note, int hitTimeMs, int hitLane)
+JudgeResult Judge::UpdateDragTick(DragState& state,
+                                  const KeyboardNote& note,
+                                  int currentTimeMs)
 {
+    if (!state.headJudged || state.finalized) return JudgeResult::None;
+
+    int totalPathPoints = static_cast<int>(state.pathLanes.size());
+    int dragEnd = note.time + note.duration;
+    if (totalPathPoints <= 1)
+    {
+        int lane = note.lane;
+        if (lane >= 0 && lane < static_cast<int>(state.releaseTimeMs.size()) &&
+            state.releaseTimeMs[lane] >= 0)
+        {
+            int releaseDuration = currentTimeMs - state.releaseTimeMs[lane];
+            if (releaseDuration > DragState::INPUT_GAP_TOLERANCE_MS &&
+                state.releaseTimeMs[lane] < dragEnd - m_windows.miss)
+            {
+                state.finalized = true;
+                return JudgeResult::Miss;
+            }
+        }
+
+        if (currentTimeMs > dragEnd + m_windows.good)
+        {
+            state.finalized = true;
+            return state.headResult;
+        }
+
+        return JudgeResult::None;
+    }
+
+    for (int i = 0; i < state.nextLaneIndex && i < totalPathPoints; ++i)
+    {
+        int lane = state.pathLanes[i];
+        if (lane < 0 || lane >= static_cast<int>(state.releaseTimeMs.size()))
+            continue;
+
+        if (state.releaseTimeMs[lane] >= 0)
+        {
+            int releaseDuration = currentTimeMs - state.releaseTimeMs[lane];
+            if (releaseDuration > DragState::INPUT_GAP_TOLERANCE_MS &&
+                state.releaseTimeMs[lane] < dragEnd - m_windows.miss)
+            {
+                state.finalized = true;
+                return JudgeResult::Miss;
+            }
+        }
+    }
+
+    if (state.nextLaneIndex < totalPathPoints)
+    {
+        int nextStepTime = CalcDragStepTime(note, totalPathPoints, state.nextLaneIndex);
+        if (currentTimeMs > nextStepTime + m_windows.miss)
+        {
+            state.finalized = true;
+            return JudgeResult::Miss;
+        }
+    }
+
+    return JudgeResult::None;
+}
+
+// ── JudgeDragStep ─────────────────────────────────────────────────────────────
+
+JudgeResult Judge::JudgeDragStep(DragState& state,
+                                 KeyboardNote& note,
+                                 int hitTimeMs,
+                                 int hitLane,
+                                 bool& isFinalStep)
+{
+    isFinalStep = false;
+
     if (note.type != NoteType::Drag) return JudgeResult::None;
+    if (note.result != JudgeResult::None) return JudgeResult::None;
+    if (state.finalized) return JudgeResult::None;
 
-    // 检查是否在目标轨道
-    if (hitLane != note.dragToLane) return JudgeResult::None;
+    int totalPathPoints = static_cast<int>(state.pathLanes.size());
+    if (state.nextLaneIndex < 0 || state.nextLaneIndex >= totalPathPoints)
+        return JudgeResult::None;
 
-    // 时间判定（Drag 结束时间 = start + duration）
-    int endTime = note.time + note.duration;
-    int diff    = hitTimeMs - endTime;
+    int expectedLane = state.pathLanes[state.nextLaneIndex];
+    if (hitLane != expectedLane) return JudgeResult::None;
+
+    int stepTime = CalcDragStepTime(note, totalPathPoints, state.nextLaneIndex);
+    int diff    = hitTimeMs - stepTime;
+    if (diff < -m_windows.miss) return JudgeResult::None;
     int absDiff = std::abs(diff);
 
     JudgeResult result = GetResultByTimeDiff(absDiff);
-    note.isJudged = true;
-    note.result   = result;
+    if (result == JudgeResult::Miss)
+    {
+        state.finalized = true;
+        note.isJudged = true;
+        note.result = JudgeResult::Miss;
+        return JudgeResult::Miss;
+    }
+
+    ++state.nextLaneIndex;
+    isFinalStep = (state.nextLaneIndex >= totalPathPoints);
+
+    if (isFinalStep)
+    {
+        state.finalized = true;
+        note.isJudged = true;
+        note.result   = result;
+    }
+
     return result;
 }
 
