@@ -70,6 +70,11 @@ public:
     // 便捷接口
     long long GetTotalPlayCount()       const;
     double    GetTotalPlayTimeSeconds() const;
+    int       GetHighestScore()         const;
+    float     GetHighestAccuracy()      const;
+    int       GetHighestCombo()         const;
+    bool      HasAnyFullCombo()         const;
+    bool      HasAnyAllPerfect()        const;
 
     // ── 成就 ─────────────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "data/database.h"
+#include "game/achievement_manager.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 
@@ -84,6 +85,16 @@ void SceneResult::OnEnter()
     // ── 保存成绩到数据库 ──────────────────────────────────────────────────────
     sakura::data::Database::GetInstance().SaveScore(m_result);
 
+    for (const auto& achievement : sakura::game::AchievementManager::GetInstance().CheckAndUnlock(m_result))
+    {
+        sakura::ui::ToastManager::Instance().Show(
+            "成就解锁: " + achievement.definition.title,
+            sakura::ui::ToastType::Achievement,
+            4.0f);
+        sakura::audio::AudioManager::GetInstance().PlayUISFX(
+            sakura::audio::UISFXType::Toast);
+    }
+
     // ── 樱花飘落持续发射器 ────────────────────────────────────────────────────
     m_particles.Clear();
     auto petalCfg = sakura::effects::ParticlePresets::SakuraPetal();
@@ -145,6 +156,7 @@ void SceneResult::OnUpdate(float dt)
 
     // 粒子更新
     m_particles.Update(dt);
+    sakura::ui::ToastManager::Instance().Update(dt);
 
     if (m_btnRetry) m_btnRetry->Update(dt);
     if (m_btnBack)  m_btnBack ->Update(dt);
@@ -408,6 +420,8 @@ void SceneResult::OnRender(sakura::core::Renderer& renderer)
 
     // 粒子层（最上层渲染）
     m_particles.Render(renderer);
+
+    sakura::ui::ToastManager::Instance().Render(renderer, m_fontUI, 0.022f);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────

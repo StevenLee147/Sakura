@@ -7,6 +7,7 @@
 #include "core/renderer.h"
 #include "core/resource_manager.h"
 #include "ui/button.h"
+#include "ui/toast.h"
 #include "game/chart.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"

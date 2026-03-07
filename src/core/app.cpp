@@ -5,6 +5,7 @@
 #include "scene/scene_splash.h"
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
+#include "game/achievement_manager.h"
 #include "data/database.h"
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
@@ -37,6 +38,10 @@ bool App::Initialize()
     if (!sakura::data::Database::GetInstance().Initialize("data/sakura.db"))
     {
         LOG_WARN("Database 初始化失败（非致命）");
+    }
+    if (!sakura::game::AchievementManager::GetInstance().LoadAchievements())
+    {
+        LOG_WARN("AchievementManager 初始化失败（非致命）");
     }
     // ── SDL 初始化 ────────────────────────────────────────────────────────────
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))

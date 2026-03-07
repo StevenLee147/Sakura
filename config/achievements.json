@@ -1,0 +1,83 @@
+{
+    "version": 1,
+    "achievements": [
+        {
+            "id": "first_play",
+            "title": "初樱试音",
+            "description": "完成第一次游玩",
+            "target": 1
+        },
+        {
+            "id": "first_fc",
+            "title": "樱落无失",
+            "description": "首次获得 Full Combo",
+            "target": 1
+        },
+        {
+            "id": "first_ap",
+            "title": "樱华绝奏",
+            "description": "首次获得 All Perfect",
+            "target": 1
+        },
+        {
+            "id": "combo_100",
+            "title": "百连花开",
+            "description": "达成 100 连击",
+            "target": 100
+        },
+        {
+            "id": "combo_500",
+            "title": "千枝半途",
+            "description": "达成 500 连击",
+            "target": 500
+        },
+        {
+            "id": "combo_1000",
+            "title": "樱雨无间",
+            "description": "达成 1000 连击",
+            "target": 1000
+        },
+        {
+            "id": "play_10",
+            "title": "渐入佳境",
+            "description": "累计游玩 10 次",
+            "target": 10
+        },
+        {
+            "id": "play_50",
+            "title": "常驻花见",
+            "description": "累计游玩 50 次",
+            "target": 50
+        },
+        {
+            "id": "play_100",
+            "title": "樱境常客",
+            "description": "累计游玩 100 次",
+            "target": 100
+        },
+        {
+            "id": "all_s",
+            "title": "花谱收藏家",
+            "description": "所有谱面难度均达到 S 或以上",
+            "target": 1
+        },
+        {
+            "id": "all_charts",
+            "title": "全曲巡礼",
+            "description": "游玩过所有曲目",
+            "target": 1
+        },
+        {
+            "id": "accuracy_99",
+            "title": "精密花瓣",
+            "description": "任意一局准确率达到 99%",
+            "target": 99
+        },
+        {
+            "id": "score_999k",
+            "title": "极樱分数线",
+            "description": "任意一局分数达到 999000",
+            "target": 999000
+        }
+    ]
+}

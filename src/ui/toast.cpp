@@ -47,6 +47,7 @@ sakura::core::Color ToastManager::GetTypeColor(ToastType type)
     {
         case ToastType::Info:    return { 40,  55,  80,  230 };
         case ToastType::Success: return { 30,  70,  50,  230 };
+        case ToastType::Achievement: return { 78,  58,  12, 235 };
         case ToastType::Warning: return { 80,  65,  20,  230 };
         case ToastType::Error:   return { 80,  30,  30,  230 };
     }
@@ -59,6 +60,7 @@ sakura::core::Color ToastManager::GetIconColor(ToastType type)
     {
         case ToastType::Info:    return { 100, 160, 255, 255 };
         case ToastType::Success: return { 100, 220, 130, 255 };
+        case ToastType::Achievement: return { 255, 220, 110, 255 };
         case ToastType::Warning: return { 255, 200,  80, 255 };
         case ToastType::Error:   return { 255,  90,  90, 255 };
     }
@@ -71,6 +73,7 @@ const char* ToastManager::GetTypeIcon(ToastType type)
     {
         case ToastType::Info:    return "i";
         case ToastType::Success: return "✓";
+        case ToastType::Achievement: return "★";
         case ToastType::Warning: return "!";
         case ToastType::Error:   return "✕";
     }

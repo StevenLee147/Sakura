@@ -132,6 +132,8 @@ if(SAKURA_BUILD_TESTS)
     # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
     add_library(sakura-game-logic STATIC
         src/core/config.cpp
+        src/data/database.cpp
+        src/game/achievement_manager.cpp
         src/game/chart_loader.cpp
         src/game/score.cpp
         src/game/judge.cpp
@@ -143,6 +145,7 @@ if(SAKURA_BUILD_TESTS)
     )
     target_link_libraries(sakura-game-logic PUBLIC
         nlohmann_json::nlohmann_json
+        unofficial::sqlite3::sqlite3
         spdlog::spdlog
     )
     target_compile_features(sakura-game-logic PUBLIC cxx_std_20)

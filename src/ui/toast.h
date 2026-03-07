@@ -18,6 +18,7 @@ enum class ToastType
 {
     Info,
     Success,
+    Achievement,
     Warning,
     Error
 };

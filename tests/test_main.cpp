@@ -3,10 +3,15 @@
 #include "utils/logger.h"
 
 #include <exception>
+#include <filesystem>
 #include <iostream>
 
 int main()
 {
+#ifdef SAKURA_SOURCE_DIR
+    std::filesystem::current_path(SAKURA_SOURCE_DIR);
+#endif
+
     sakura::utils::Logger::Init("logs/sakura-tests.log");
 
     int passed = 0;

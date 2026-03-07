@@ -511,6 +511,91 @@ double Database::GetTotalPlayTimeSeconds() const
     return GetStatistic("total_play_time_seconds");
 }
 
+int Database::GetHighestScore() const
+{
+    if (!m_db) return 0;
+
+    const char* sql = "SELECT COALESCE(MAX(score), 0) FROM scores;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int value = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+float Database::GetHighestAccuracy() const
+{
+    if (!m_db) return 0.0f;
+
+    const char* sql = "SELECT COALESCE(MAX(accuracy), 0.0) FROM scores;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0.0f;
+
+    float value = 0.0f;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = static_cast<float>(sqlite3_column_double(stmt, 0));
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+int Database::GetHighestCombo() const
+{
+    if (!m_db) return 0;
+
+    const char* sql = "SELECT COALESCE(MAX(max_combo), 0) FROM scores;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int value = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+bool Database::HasAnyFullCombo() const
+{
+    if (!m_db) return false;
+
+    const char* sql = "SELECT COUNT(*) FROM scores WHERE is_full_combo = 1;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    bool value = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0) > 0;
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+bool Database::HasAnyAllPerfect() const
+{
+    if (!m_db) return false;
+
+    const char* sql = "SELECT COUNT(*) FROM scores WHERE is_all_perfect = 1;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    bool value = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0) > 0;
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SaveAchievement / GetAchievements / IsAchievementUnlocked
 // ═════════════════════════════════════════════════════════════════════════════
