@@ -1,0 +1,230 @@
+{
+    "version":  2,
+    "timing_points":  [
+                          {
+                              "time":  0,
+                              "bpm":  130,
+                              "time_signature":  [
+                                                     4,
+                                                     4
+                                                 ]
+                          }
+                      ],
+    "sv_points":  [
+
+                  ],
+    "keyboard_notes":  [
+                           {
+                               "time":  1000,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1420,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1840,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2260,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2680,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3100,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3520,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3940,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4360,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4780,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5200,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5620,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6040,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6460,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6880,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7300,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7720,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8140,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8560,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8980,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9400,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9820,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10240,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10660,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11080,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11500,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11920,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12340,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12760,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13180,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4800,
+                               "lane":  1,
+                               "type":  "hold",
+                               "duration":  700
+                           },
+                           {
+                               "time":  7800,
+                               "lane":  2,
+                               "type":  "hold",
+                               "duration":  700
+                           },
+                           {
+                               "time":  10800,
+                               "lane":  0,
+                               "type":  "hold",
+                               "duration":  700
+                           },
+                           {
+                               "time":  13800,
+                               "lane":  3,
+                               "type":  "hold",
+                               "duration":  700
+                           }
+                       ],
+    "mouse_notes":  [
+                        {
+                            "time":  1800,
+                            "x":  0.2,
+                            "y":  0.28,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  3900,
+                            "x":  0.32,
+                            "y":  0.37,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6000,
+                            "x":  0.44,
+                            "y":  0.46,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8100,
+                            "x":  0.56,
+                            "y":  0.55,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10200,
+                            "x":  0.68,
+                            "y":  0.29,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12300,
+                            "x":  0.25,
+                            "y":  0.38,
+                            "type":  "circle"
+                        }
+                    ]
+}

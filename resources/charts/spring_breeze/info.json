@@ -1,0 +1,37 @@
+{
+    "version":  2,
+    "id":  "spring_breeze",
+    "title":  "Spring Breeze",
+    "artist":  "Aoi Ensemble",
+    "charter":  "Sakura Team",
+    "source":  "Official Test Pack",
+    "tags":  [
+                 "official",
+                 "phase4",
+                 "test-pack"
+             ],
+    "music_file":  "music.wav",
+    "cover_file":  "cover.png",
+    "background_file":  "cover.png",
+    "preview_time":  1600,
+    "bpm":  130,
+    "offset":  0,
+    "difficulties":  [
+                         {
+                             "name":  "Normal",
+                             "level":  3,
+                             "chart_file":  "normal.json",
+                             "note_count":  34,
+                             "hold_count":  4,
+                             "mouse_note_count":  6
+                         },
+                         {
+                             "name":  "Hard",
+                             "level":  5.5,
+                             "chart_file":  "hard.json",
+                             "note_count":  56,
+                             "hold_count":  6,
+                             "mouse_note_count":  24
+                         }
+                     ]
+}

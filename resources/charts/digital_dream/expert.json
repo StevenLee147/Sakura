@@ -1,0 +1,1749 @@
+{
+    "version":  2,
+    "timing_points":  [
+                          {
+                              "time":  0,
+                              "bpm":  175,
+                              "time_signature":  [
+                                                     4,
+                                                     4
+                                                 ]
+                          },
+                          {
+                              "time":  6400,
+                              "bpm":  190,
+                              "time_signature":  [
+                                                     4,
+                                                     4
+                                                 ]
+                          },
+                          {
+                              "time":  11800,
+                              "bpm":  165,
+                              "time_signature":  [
+                                                     4,
+                                                     4
+                                                 ]
+                          },
+                          {
+                              "time":  17200,
+                              "bpm":  205,
+                              "time_signature":  [
+                                                     4,
+                                                     4
+                                                 ]
+                          }
+                      ],
+    "sv_points":  [
+
+                  ],
+    "keyboard_notes":  [
+                           {
+                               "time":  700,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  795,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  890,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  985,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1080,
+                               "lane":  2,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  1175,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  1270,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1365,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1460,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1555,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1650,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  1745,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1840,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  1935,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2030,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2125,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  2220,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2315,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2410,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2505,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2600,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  2695,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2790,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2885,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  2980,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3075,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  3170,
+                               "lane":  0,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  3265,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3360,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3455,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3550,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  3645,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3740,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3835,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  3930,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4025,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  4120,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4215,
+                               "lane":  3,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  4310,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4405,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4500,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  4595,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4690,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4785,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4880,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  4975,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  5070,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5165,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5260,
+                               "lane":  2,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  5355,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5450,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  5545,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5640,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5735,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5830,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  5925,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  6020,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6115,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6210,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6305,
+                               "lane":  1,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  6400,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  6495,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6590,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6685,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6780,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  6875,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  6970,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7065,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7160,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7255,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7350,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  7445,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7540,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7635,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7730,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  7825,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  7920,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8015,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8110,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8205,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8300,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  8395,
+                               "lane":  3,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  8490,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8585,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8680,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8775,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  8870,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  8965,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9060,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9155,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9250,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  9345,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9440,
+                               "lane":  2,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  9535,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9630,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9725,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  9820,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  9915,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10010,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10105,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10200,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  10295,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10390,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10485,
+                               "lane":  1,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  10580,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10675,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  10770,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10865,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  10960,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11055,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11150,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  11245,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11340,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11435,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11530,
+                               "lane":  0,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  11625,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  11720,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11815,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  11910,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12005,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12100,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  12195,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12290,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12385,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12480,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12575,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  12670,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12765,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12860,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  12955,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13050,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  13145,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13240,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13335,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13430,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13525,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  13620,
+                               "lane":  2,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  13715,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13810,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  13905,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14000,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  14095,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14190,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14285,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14380,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14475,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  14570,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14665,
+                               "lane":  1,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  14760,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14855,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  14950,
+                               "lane":  2,
+                               "type":  "drag",
+                               "drag_to_lane":  3
+                           },
+                           {
+                               "time":  15045,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15140,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15235,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15330,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15425,
+                               "lane":  3,
+                               "type":  "drag",
+                               "drag_to_lane":  0
+                           },
+                           {
+                               "time":  15520,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15615,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15710,
+                               "lane":  0,
+                               "type":  "hold",
+                               "duration":  240
+                           },
+                           {
+                               "time":  15805,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  15900,
+                               "lane":  0,
+                               "type":  "drag",
+                               "drag_to_lane":  1
+                           },
+                           {
+                               "time":  15995,
+                               "lane":  3,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  16090,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  16185,
+                               "lane":  1,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  16280,
+                               "lane":  0,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  16375,
+                               "lane":  1,
+                               "type":  "drag",
+                               "drag_to_lane":  2
+                           },
+                           {
+                               "time":  16470,
+                               "lane":  2,
+                               "type":  "tap"
+                           },
+                           {
+                               "time":  16565,
+                               "lane":  1,
+                               "type":  "tap"
+                           }
+                       ],
+    "mouse_notes":  [
+                        {
+                            "time":  900,
+                            "x":  0.16,
+                            "y":  0.2,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  1065,
+                            "x":  0.23,
+                            "y":  0.34,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.28,
+                                                    0.39
+                                                ],
+                                                [
+                                                    0.35,
+                                                    0.29
+                                                ],
+                                                [
+                                                    0.41,
+                                                    0.38
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  1230,
+                            "x":  0.4,
+                            "y":  0.4,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  1395,
+                            "x":  0.52,
+                            "y":  0.5,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  1560,
+                            "x":  0.64,
+                            "y":  0.6,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  1725,
+                            "x":  0.59,
+                            "y":  0.4,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.64,
+                                                    0.45
+                                                ],
+                                                [
+                                                    0.71,
+                                                    0.35
+                                                ],
+                                                [
+                                                    0.77,
+                                                    0.44
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  1890,
+                            "x":  0.22,
+                            "y":  0.26,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  2055,
+                            "x":  0.34,
+                            "y":  0.36,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  2220,
+                            "x":  0.46,
+                            "y":  0.46,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  2385,
+                            "x":  0.27,
+                            "y":  0.46,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.32,
+                                                    0.51
+                                                ],
+                                                [
+                                                    0.39,
+                                                    0.41
+                                                ],
+                                                [
+                                                    0.45,
+                                                    0.5
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  2550,
+                            "x":  0.7,
+                            "y":  0.66,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  2715,
+                            "x":  0.82,
+                            "y":  0.22,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  2880,
+                            "x":  0.28,
+                            "y":  0.32,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  3045,
+                            "x":  0.63,
+                            "y":  0.52,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.68,
+                                                    0.57
+                                                ],
+                                                [
+                                                    0.75,
+                                                    0.47
+                                                ],
+                                                [
+                                                    0.81,
+                                                    0.56
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  3210,
+                            "x":  0.52,
+                            "y":  0.52,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  3375,
+                            "x":  0.64,
+                            "y":  0.62,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  3540,
+                            "x":  0.76,
+                            "y":  0.72,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  3705,
+                            "x":  0.31,
+                            "y":  0.58,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.36,
+                                                    0.63
+                                                ],
+                                                [
+                                                    0.43,
+                                                    0.53
+                                                ],
+                                                [
+                                                    0.49,
+                                                    0.62
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  3870,
+                            "x":  0.34,
+                            "y":  0.38,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  4035,
+                            "x":  0.46,
+                            "y":  0.48,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  4200,
+                            "x":  0.58,
+                            "y":  0.58,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  4365,
+                            "x":  0.67,
+                            "y":  0.64,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.72,
+                                                    0.69
+                                                ],
+                                                [
+                                                    0.79,
+                                                    0.59
+                                                ],
+                                                [
+                                                    0.85,
+                                                    0.68
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  4530,
+                            "x":  0.82,
+                            "y":  0.24,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  4695,
+                            "x":  0.28,
+                            "y":  0.34,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  4860,
+                            "x":  0.4,
+                            "y":  0.44,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  5025,
+                            "x":  0.35,
+                            "y":  0.7,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.4,
+                                                    0.75
+                                                ],
+                                                [
+                                                    0.47,
+                                                    0.65
+                                                ],
+                                                [
+                                                    0.53,
+                                                    0.74
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  5190,
+                            "x":  0.64,
+                            "y":  0.64,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  5355,
+                            "x":  0.76,
+                            "y":  0.2,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  5520,
+                            "x":  0.22,
+                            "y":  0.3,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  5685,
+                            "x":  0.71,
+                            "y":  0.18,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.76,
+                                                    0.23
+                                                ],
+                                                [
+                                                    0.83,
+                                                    0.13
+                                                ],
+                                                [
+                                                    0.89,
+                                                    0.22
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  5850,
+                            "x":  0.46,
+                            "y":  0.5,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6015,
+                            "x":  0.58,
+                            "y":  0.6,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6180,
+                            "x":  0.7,
+                            "y":  0.7,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6345,
+                            "x":  0.39,
+                            "y":  0.24,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.44,
+                                                    0.29
+                                                ],
+                                                [
+                                                    0.51,
+                                                    0.19
+                                                ],
+                                                [
+                                                    0.57,
+                                                    0.28
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  6510,
+                            "x":  0.28,
+                            "y":  0.36,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6675,
+                            "x":  0.4,
+                            "y":  0.46,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  6840,
+                            "x":  0.52,
+                            "y":  0.56,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  7005,
+                            "x":  0.75,
+                            "y":  0.3,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.8,
+                                                    0.35
+                                                ],
+                                                [
+                                                    0.87,
+                                                    0.25
+                                                ],
+                                                [
+                                                    0.93,
+                                                    0.34
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  7170,
+                            "x":  0.76,
+                            "y":  0.22,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  7335,
+                            "x":  0.22,
+                            "y":  0.32,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  7500,
+                            "x":  0.34,
+                            "y":  0.42,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  7665,
+                            "x":  0.43,
+                            "y":  0.36,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.48,
+                                                    0.41
+                                                ],
+                                                [
+                                                    0.55,
+                                                    0.31
+                                                ],
+                                                [
+                                                    0.61,
+                                                    0.4
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  7830,
+                            "x":  0.58,
+                            "y":  0.62,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  7995,
+                            "x":  0.7,
+                            "y":  0.72,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8160,
+                            "x":  0.82,
+                            "y":  0.28,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8325,
+                            "x":  0.79,
+                            "y":  0.42,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.84,
+                                                    0.47
+                                                ],
+                                                [
+                                                    0.91,
+                                                    0.37
+                                                ],
+                                                [
+                                                    0.97,
+                                                    0.46
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  8490,
+                            "x":  0.4,
+                            "y":  0.48,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8655,
+                            "x":  0.52,
+                            "y":  0.58,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8820,
+                            "x":  0.64,
+                            "y":  0.68,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  8985,
+                            "x":  0.47,
+                            "y":  0.48,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.52,
+                                                    0.53
+                                                ],
+                                                [
+                                                    0.59,
+                                                    0.43
+                                                ],
+                                                [
+                                                    0.65,
+                                                    0.52
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  9150,
+                            "x":  0.22,
+                            "y":  0.34,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  9315,
+                            "x":  0.34,
+                            "y":  0.44,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  9480,
+                            "x":  0.46,
+                            "y":  0.54,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  9645,
+                            "x":  0.15,
+                            "y":  0.54,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.2,
+                                                    0.59
+                                                ],
+                                                [
+                                                    0.27,
+                                                    0.49
+                                                ],
+                                                [
+                                                    0.33,
+                                                    0.58
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  9810,
+                            "x":  0.7,
+                            "y":  0.2,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  9975,
+                            "x":  0.82,
+                            "y":  0.3,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10140,
+                            "x":  0.28,
+                            "y":  0.4,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10305,
+                            "x":  0.51,
+                            "y":  0.6,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.56,
+                                                    0.65
+                                                ],
+                                                [
+                                                    0.63,
+                                                    0.55
+                                                ],
+                                                [
+                                                    0.69,
+                                                    0.64
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  10470,
+                            "x":  0.52,
+                            "y":  0.6,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10635,
+                            "x":  0.64,
+                            "y":  0.7,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10800,
+                            "x":  0.76,
+                            "y":  0.26,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  10965,
+                            "x":  0.19,
+                            "y":  0.66,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.24,
+                                                    0.71
+                                                ],
+                                                [
+                                                    0.31,
+                                                    0.61
+                                                ],
+                                                [
+                                                    0.37,
+                                                    0.7
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  11130,
+                            "x":  0.34,
+                            "y":  0.46,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  11295,
+                            "x":  0.46,
+                            "y":  0.56,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  11460,
+                            "x":  0.58,
+                            "y":  0.66,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  11625,
+                            "x":  0.55,
+                            "y":  0.72,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.6,
+                                                    0.77
+                                                ],
+                                                [
+                                                    0.67,
+                                                    0.67
+                                                ],
+                                                [
+                                                    0.73,
+                                                    0.76
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  11790,
+                            "x":  0.82,
+                            "y":  0.32,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  11955,
+                            "x":  0.28,
+                            "y":  0.42,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12120,
+                            "x":  0.4,
+                            "y":  0.52,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12285,
+                            "x":  0.23,
+                            "y":  0.2,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.28,
+                                                    0.25
+                                                ],
+                                                [
+                                                    0.35,
+                                                    0.15
+                                                ],
+                                                [
+                                                    0.41,
+                                                    0.24
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  12450,
+                            "x":  0.64,
+                            "y":  0.72,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12615,
+                            "x":  0.76,
+                            "y":  0.28,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12780,
+                            "x":  0.22,
+                            "y":  0.38,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  12945,
+                            "x":  0.59,
+                            "y":  0.26,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.64,
+                                                    0.31
+                                                ],
+                                                [
+                                                    0.71,
+                                                    0.21
+                                                ],
+                                                [
+                                                    0.77,
+                                                    0.3
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  13110,
+                            "x":  0.46,
+                            "y":  0.58,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  13275,
+                            "x":  0.58,
+                            "y":  0.68,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  13440,
+                            "x":  0.7,
+                            "y":  0.24,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  13605,
+                            "x":  0.27,
+                            "y":  0.32,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.32,
+                                                    0.37
+                                                ],
+                                                [
+                                                    0.39,
+                                                    0.27
+                                                ],
+                                                [
+                                                    0.45,
+                                                    0.36
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  13770,
+                            "x":  0.28,
+                            "y":  0.44,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  13935,
+                            "x":  0.4,
+                            "y":  0.54,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  14100,
+                            "x":  0.52,
+                            "y":  0.64,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  14265,
+                            "x":  0.63,
+                            "y":  0.38,
+                            "type":  "slider",
+                            "slider_duration":  260,
+                            "slider_path":  [
+                                                [
+                                                    0.68,
+                                                    0.43
+                                                ],
+                                                [
+                                                    0.75,
+                                                    0.33
+                                                ],
+                                                [
+                                                    0.81,
+                                                    0.42
+                                                ]
+                                            ]
+                        },
+                        {
+                            "time":  14430,
+                            "x":  0.76,
+                            "y":  0.3,
+                            "type":  "circle"
+                        },
+                        {
+                            "time":  14595,
+                            "x":  0.22,
+                            "y":  0.4,
+                            "type":  "circle"
+                        }
+                    ]
+}

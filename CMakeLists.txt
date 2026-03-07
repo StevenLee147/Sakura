@@ -132,6 +132,7 @@ if(SAKURA_BUILD_TESTS)
     # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
     add_library(sakura-game-logic STATIC
         src/core/config.cpp
+        src/game/chart_loader.cpp
         src/game/score.cpp
         src/game/judge.cpp
         src/game/tutorial_data.cpp

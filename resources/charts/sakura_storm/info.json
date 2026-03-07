@@ -1,0 +1,29 @@
+{
+    "version":  2,
+    "id":  "sakura_storm",
+    "title":  "Sakura Storm",
+    "artist":  "Sakura Official",
+    "charter":  "Sakura Team",
+    "source":  "Official Test Pack",
+    "tags":  [
+                 "official",
+                 "phase4",
+                 "test-pack"
+             ],
+    "music_file":  "music.wav",
+    "cover_file":  "cover.png",
+    "background_file":  "cover.png",
+    "preview_time":  2600,
+    "bpm":  200,
+    "offset":  0,
+    "difficulties":  [
+                         {
+                             "name":  "Expert",
+                             "level":  14,
+                             "chart_file":  "expert.json",
+                             "note_count":  216,
+                             "hold_count":  17,
+                             "mouse_note_count":  108
+                         }
+                     ]
+}

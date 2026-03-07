@@ -1,0 +1,29 @@
+{
+    "version":  2,
+    "id":  "tutorial_song",
+    "title":  "Tutorial Song",
+    "artist":  "Sakura System",
+    "charter":  "Sakura Team",
+    "source":  "Official Test Pack",
+    "tags":  [
+                 "official",
+                 "phase4",
+                 "test-pack"
+             ],
+    "music_file":  "music.wav",
+    "cover_file":  "cover.png",
+    "background_file":  "cover.png",
+    "preview_time":  1200,
+    "bpm":  100,
+    "offset":  0,
+    "difficulties":  [
+                         {
+                             "name":  "Easy",
+                             "level":  1,
+                             "chart_file":  "easy.json",
+                             "note_count":  20,
+                             "hold_count":  0,
+                             "mouse_note_count":  0
+                         }
+                     ]
+}
