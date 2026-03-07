@@ -43,6 +43,7 @@
             "binaryDir": "${sourceDir}/build/ci-linux",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE":   "Release",
+                "SAKURA_BUILD_APP":   "OFF",
                 "SAKURA_BUILD_TESTS": "ON",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/build/ci-linux/vcpkg_installed"

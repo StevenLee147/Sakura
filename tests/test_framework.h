@@ -121,13 +121,14 @@ inline void RequireThat(double actual, const TMatcher& matcher,
     static void SAKURA_TEST_CONCAT(TestFunc_, __LINE__)()
 
 #define REQUIRE(expr) \
-    do { \
-        if (!(expr)) \
+    [&]() { \
+        const bool sakuraRequirementSatisfied = static_cast<bool>(expr); \
+        if (!sakuraRequirementSatisfied) \
             ::sakura::tests::Fail(#expr, __FILE__, __LINE__); \
-    } while (false)
+    }()
 
 #define REQUIRE_NOTHROW(expr) \
-    do { \
+    [&]() { \
         try { \
             expr; \
         } catch (const std::exception& exceptionObject) { \
@@ -135,9 +136,9 @@ inline void RequireThat(double actual, const TMatcher& matcher,
         } catch (...) { \
             ::sakura::tests::Fail(#expr, __FILE__, __LINE__, "threw unknown exception"); \
         } \
-    } while (false)
+    }()
 
 #define REQUIRE_THAT(actual, matcher) \
-    do { \
+    [&]() { \
         ::sakura::tests::RequireThat(static_cast<double>(actual), matcher, #actual, __FILE__, __LINE__); \
-    } while (false)
+    }()

@@ -141,9 +141,9 @@ jobs:
           $md = "### $status`n| Property | Value |`n|----------|-------|`n| Preset | ``$preset`` |`n| Commit | ``${{ github.sha }}`` |"
           Add-Content $env:GITHUB_STEP_SUMMARY $md
 
-  # ── Linux 构建 + 单测（ubuntu，Ninja，ci-linux preset） ────────────────────
+  # ── Linux 逻辑层单测（ubuntu，Ninja，ci-linux preset） ─────────────────────
   test-linux:
-    name: "Linux Tests (Ninja, Catch2)"
+    name: "Linux Tests (Ninja)"
     runs-on: ubuntu-latest
 
     steps:
@@ -152,18 +152,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies for SDL3
+      - name: Install system dependencies for core libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build pkg-config \
-            libx11-dev libxext-dev libxrandr-dev libxi-dev \
-            libxfixes-dev libxcursor-dev libxxf86vm-dev libxss-dev \
-            libgl-dev libgles2-mesa-dev libegl-dev \
-            libwayland-dev libxkbcommon-dev \
-            libpulse-dev libasound2-dev libudev-dev \
-            libpng-dev libjpeg-turbo8-dev libwebp-dev \
-            libfreetype-dev libharfbuzz-dev
+            ninja-build pkg-config
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -188,7 +181,7 @@ jobs:
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
 
-      - name: Publish test results
+      - name: Publish test metadata
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -214,25 +207,27 @@ jobs:
           path: dist/
 
       - name: Rename zip with tag version
+        id: release_file
         run: |
           TAG="${{ github.ref_name }}"
           mv dist/Sakura-win64.zip "dist/Sakura-${TAG}-win64.zip"
-          echo "RELEASE_FILE=dist/Sakura-${TAG}-win64.zip" >> $GITHUB_ENV
+          echo "file=dist/Sakura-${TAG}-win64.zip" >> $GITHUB_OUTPUT
 
       - name: Determine pre-release flag
+        id: prerelease
         run: |
           TAG="${{ github.ref_name }}"
           if [[ "$TAG" == *"-dev"* || "$TAG" == *"-alpha"* || "$TAG" == *"-beta"* ]]; then
-            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "value=true" >> $GITHUB_OUTPUT
           else
-            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "value=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.RELEASE_FILE }}
-          prerelease: ${{ env.IS_PRERELEASE }}
+          files: ${{ steps.release_file.outputs.file }}
+          prerelease: ${{ steps.prerelease.outputs.value }}
           generate_release_notes: true
           name: "Sakura-樱 ${{ github.ref_name }}"
         env:

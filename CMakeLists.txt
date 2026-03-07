@@ -43,7 +43,14 @@ endif()
 # ============================================================================
 # 测试选项
 # ============================================================================
-option(SAKURA_BUILD_TESTS "构建单元测试（Catch2）" OFF)
+if(WIN32)
+    set(SAKURA_BUILD_APP_DEFAULT ON)
+else()
+    set(SAKURA_BUILD_APP_DEFAULT OFF)
+endif()
+
+option(SAKURA_BUILD_APP "构建 Sakura 主程序" ${SAKURA_BUILD_APP_DEFAULT})
+option(SAKURA_BUILD_TESTS "构建单元测试" OFF)
 
 # enable_testing() 必须在根 CMakeLists 中调用，才能让 ctest 发现子目录测试
 enable_testing()
@@ -51,68 +58,103 @@ enable_testing()
 # ============================================================================
 # vcpkg 依赖查找
 # ============================================================================
-find_package(SDL3 CONFIG REQUIRED)
-find_package(SDL3_image CONFIG REQUIRED)
-find_package(SDL3_ttf CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-# miniaudio 是 header-only, 通过 vcpkg 安装后直接 include
+
+if(SAKURA_BUILD_APP)
+    find_package(SDL3 CONFIG REQUIRED)
+    find_package(SDL3_image CONFIG REQUIRED)
+    find_package(SDL3_ttf CONFIG REQUIRED)
+    # miniaudio 是 header-only, 通过 vcpkg 安装后直接 include
+endif()
 
 # ============================================================================
 # 源文件收集
 # ============================================================================
-file(GLOB_RECURSE SAKURA_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-)
+if(SAKURA_BUILD_APP)
+    file(GLOB_RECURSE SAKURA_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    )
 
-file(GLOB_RECURSE SAKURA_HEADERS CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
-)
+    file(GLOB_RECURSE SAKURA_HEADERS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+    )
 
-# ============================================================================
-# 可执行文件
-# ============================================================================
-add_executable(${PROJECT_NAME} WIN32
-    ${SAKURA_SOURCES}
-    ${SAKURA_HEADERS}
-)
+    file(GLOB_RECURSE SAKURA_RESOURCE_DIRECTORIES
+        LIST_DIRECTORIES true
+        RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/*"
+    )
 
-target_include_directories(${PROJECT_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-)
+    file(GLOB_RECURSE SAKURA_RESOURCE_FILES
+        LIST_DIRECTORIES false
+        RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/*"
+    )
 
-# ============================================================================
-# 链接库
-# ============================================================================
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    nlohmann_json::nlohmann_json
-    unofficial::sqlite3::sqlite3
-    spdlog::spdlog
-)
+    # ========================================================================
+    # 可执行文件
+    # ========================================================================
+    add_executable(${PROJECT_NAME} WIN32
+        ${SAKURA_SOURCES}
+        ${SAKURA_HEADERS}
+    )
 
-# ============================================================================
-# 资源文件复制
-# ============================================================================
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
-    COMMENT "Copying resources to output directory"
-)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
 
-# ============================================================================
-# 安装规则
-# ============================================================================
-install(TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION bin
-)
-install(DIRECTORY resources/
-    DESTINATION bin/resources
-)
+    # ========================================================================
+    # 链接库
+    # ========================================================================
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        SDL3::SDL3
+        SDL3_image::SDL3_image
+        SDL3_ttf::SDL3_ttf
+        nlohmann_json::nlohmann_json
+        unofficial::sqlite3::sqlite3
+        spdlog::spdlog
+    )
+
+    # ========================================================================
+    # 资源文件复制
+    # ========================================================================
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
+        COMMENT "Syncing resources to output directory"
+    )
+
+    foreach(resourceDir IN LISTS SAKURA_RESOURCE_DIRECTORIES)
+        if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/${resourceDir}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/${resourceDir}"
+            )
+        endif()
+    endforeach()
+
+    foreach(resourceFile IN LISTS SAKURA_RESOURCE_FILES)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources/${resourceFile}"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/${resourceFile}"
+        )
+    endforeach()
+
+    # ========================================================================
+    # 安装规则
+    # ========================================================================
+    install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION bin
+    )
+    install(DIRECTORY resources/
+        DESTINATION bin/resources
+    )
+endif()
 
 # ============================================================================
 # 版本信息
@@ -121,9 +163,11 @@ configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/version.h"
 )
-target_include_directories(${PROJECT_NAME} PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated"
-)
+if(SAKURA_BUILD_APP)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    )
+endif()
 
 # ============================================================================
 # 单元测试（仅 SAKURA_BUILD_TESTS=ON 时启用）

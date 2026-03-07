@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-# ─── Catch2 ──────────────────────────────────────────────────────────────────
+# ─── SakuraTests ─────────────────────────────────────────────────────────────
 add_executable(SakuraTests
     test_main.cpp
     test_achievement_manager.cpp

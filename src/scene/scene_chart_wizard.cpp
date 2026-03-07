@@ -596,7 +596,8 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
         outFileName = standardBaseName + normalizeExtension("", defaultExtension);
     if (sourcePath.empty()) return true;
 
-    fs::path source = fs::u8path(sourcePath);
+    const auto* sourceUtf8 = reinterpret_cast<const char8_t*>(sourcePath.c_str());
+    fs::path source = fs::path(std::u8string(sourceUtf8, sourceUtf8 + sourcePath.size()));
     if (!fs::exists(source) || !fs::is_regular_file(source))
     {
         ShowError(resourceLabel + "不存在或不可读");
