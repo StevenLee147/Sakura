@@ -5,6 +5,7 @@
 
 #include "game/chart.h"
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -75,6 +76,12 @@ public:
     int       GetHighestCombo()         const;
     bool      HasAnyFullCombo()         const;
     bool      HasAnyAllPerfect()        const;
+    double    GetAverageAccuracy()      const;
+    int       GetTotalNotesJudged()     const;
+    int       GetFullComboCount()       const;
+    int       GetAllPerfectCount()      const;
+    std::array<int, 6> GetGradeDistribution() const;
+    std::vector<sakura::game::GameResult> GetRecentScores(int limit = 20) const;
 
     // ── 成就 ─────────────────────────────────────────────────────────────────
 

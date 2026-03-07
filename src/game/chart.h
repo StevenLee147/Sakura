@@ -3,6 +3,7 @@
 // chart.h — 谱面相关数据结构（元信息 + 谱面数据）
 
 #include "note.h"
+#include <array>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,7 @@ struct GameResult
 
     bool    isFullCombo  = false;   // 全连击（0 Miss + 0 Bad）
     bool    isAllPerfect = false;   // 全完美
+    double  playTimeSeconds = 0.0;  // 本次游玩时长（秒）
 
     long long playedAt   = 0;       // Unix 时间戳（秒）
     std::vector<int> hitErrors;     // 每个音符的判定偏差（毫秒）

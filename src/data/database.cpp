@@ -331,6 +331,7 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
 
     // 同步更新统计
     IncrementStatistic("total_play_count",   1.0);
+    IncrementStatistic("total_play_time_seconds", result.playTimeSeconds);
 
     return ok;
 }
@@ -594,6 +595,137 @@ bool Database::HasAnyAllPerfect() const
 
     sqlite3_finalize(stmt);
     return value;
+}
+
+double Database::GetAverageAccuracy() const
+{
+    if (!m_db) return 0.0;
+
+    const char* sql = "SELECT COALESCE(AVG(accuracy), 0.0) FROM scores;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0.0;
+
+    double value = 0.0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_double(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+int Database::GetTotalNotesJudged() const
+{
+    if (!m_db) return 0;
+
+    const char* sql = R"sql(
+        SELECT COALESCE(SUM(perfect_count + great_count + good_count + bad_count + miss_count), 0)
+        FROM scores;
+    )sql";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int value = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+int Database::GetFullComboCount() const
+{
+    if (!m_db) return 0;
+
+    const char* sql = "SELECT COUNT(*) FROM scores WHERE is_full_combo = 1;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int value = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+int Database::GetAllPerfectCount() const
+{
+    if (!m_db) return 0;
+
+    const char* sql = "SELECT COUNT(*) FROM scores WHERE is_all_perfect = 1;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int value = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int(stmt, 0);
+
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+std::array<int, 6> Database::GetGradeDistribution() const
+{
+    std::array<int, 6> counts = { 0, 0, 0, 0, 0, 0 };
+    if (!m_db) return counts;
+
+    const char* sql = R"sql(
+        SELECT grade, COUNT(*)
+        FROM scores
+        GROUP BY grade;
+    )sql";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return counts;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const char* grade = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        int count = sqlite3_column_int(stmt, 1);
+
+        if (!grade) continue;
+        if (std::strcmp(grade, "SS") == 0) counts[0] = count;
+        else if (std::strcmp(grade, "S") == 0) counts[1] = count;
+        else if (std::strcmp(grade, "A") == 0) counts[2] = count;
+        else if (std::strcmp(grade, "B") == 0) counts[3] = count;
+        else if (std::strcmp(grade, "C") == 0) counts[4] = count;
+        else counts[5] = count;
+    }
+
+    sqlite3_finalize(stmt);
+    return counts;
+}
+
+std::vector<sakura::game::GameResult> Database::GetRecentScores(int limit) const
+{
+    if (!m_db) return {};
+
+    const char* sql = R"sql(
+        SELECT chart_id, chart_title, difficulty, difficulty_level,
+               score, accuracy, max_combo, grade,
+               perfect_count, great_count, good_count, bad_count, miss_count,
+               is_full_combo, is_all_perfect, played_at, hit_errors_json
+        FROM scores
+        ORDER BY played_at DESC, id DESC
+        LIMIT ?;
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return {};
+
+    sqlite3_bind_int(stmt, 1, limit);
+
+    std::vector<sakura::game::GameResult> results;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        results.push_back(RowToGameResult(stmt));
+
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

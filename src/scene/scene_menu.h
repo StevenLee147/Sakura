@@ -45,8 +45,8 @@ private:
     sakura::core::FontHandle m_fontSub     = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontButton  = sakura::core::INVALID_HANDLE;
 
-    // 按钮组（开始/教程/谱面编辑器/设置/退出）
-    static constexpr int BUTTON_COUNT = 5;
+    // 按钮组（开始/教程/统计/谱面编辑器/设置/退出）
+    static constexpr int BUTTON_COUNT = 6;
     std::array<std::unique_ptr<sakura::ui::Button>, BUTTON_COUNT> m_buttons;
 
     // 按钮位置
@@ -66,10 +66,10 @@ private:
 
         // 每个按钮从左侧滑入（初始 X 偏移 -0.25，向右滑到目标）
         std::array<float, BUTTON_COUNT> btnOffsetX = {
-            -0.25f, -0.25f, -0.25f, -0.25f, -0.25f
+            -0.25f, -0.25f, -0.25f, -0.25f, -0.25f, -0.25f
         };
         std::array<float, BUTTON_COUNT> btnTimers  = {
-            0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
         };
         static constexpr float BTN_DURATION = 0.32f;   // 每个按钮动画时长
         static constexpr float BTN_STAGGER  = 0.08f;   // 按钮启动间隔
