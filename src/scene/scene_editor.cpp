@@ -103,7 +103,7 @@ void SceneEditor::OnExit()
 
 void SceneEditor::SetupToolbar()
 {
-    const char* toolLabels[TOOL_COUNT] = { "Tap", "Hold", "Drag", "Circle", "Slider" };
+    const char* toolLabels[TOOL_COUNT] = { "Tap", "Hold", "Circle", "Slider" };
 
     sakura::ui::ButtonColors toolColors;
     toolColors.normal   = { 30, 25, 60, 200 };
@@ -702,7 +702,7 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
     }
 
     // 快捷键提示
-    renderer.DrawText(m_fontSmall, "1-5: 工具  Space: 播放  Del: 删除",
+    renderer.DrawText(m_fontSmall, "1-4: 工具  Space: 播放  Del: 删除",
         px, 0.875f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
@@ -990,8 +990,6 @@ void SceneEditor::OnEvent(const SDL_Event& event)
                 {
                     auto newNote = notes[i];
                     newNote.lane = 3 - newNote.lane;
-                    if (newNote.dragToLane >= 0)
-                        newNote.dragToLane = 3 - newNote.dragToLane;
                     batch->Add(std::make_unique<sakura::editor::ModifyNoteCommand>(
                         i, notes[i], newNote));
                 }
@@ -1014,8 +1012,8 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             return;
         }
 
-        // 1-5 → 切换音符工具（自动取消进行中的 Slider）
-        if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_5)
+        // 1-4 → 切换音符工具（自动取消进行中的 Slider）
+        if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_4)
         {
             if (m_core.HasWipSlider())
                 m_core.CancelSlider();

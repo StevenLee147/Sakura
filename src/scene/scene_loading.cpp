@@ -16,7 +16,7 @@ const std::vector<std::string> SceneLoading::k_tips =
 {
     "Tip: 保持节奏，熟能生巧。",
     "Tip: 合理使用 Offset 可以改善手感。",
-    "Tip: Drag 音符只需在起止轨道按下即可。",
+    "Tip: Hold 音符要按到尾部结束再松开。",
     "Tip: Slider 需要全程跟踪鼠标路径。",
     "Tip: 获得 SS 段位需要保持 99% 以上准确率。",
     "Tip: 连击越高，分数加成越多（最高 10%）。",

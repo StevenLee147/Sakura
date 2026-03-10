@@ -10,21 +10,6 @@
 namespace sakura::game
 {
 
-namespace
-{
-
-int CalcDragStepTime(const KeyboardNote& note, int totalPathPoints, int pathIndex)
-{
-    if (totalPathPoints <= 1) return note.time + note.duration;
-
-    float ratio = static_cast<float>(pathIndex)
-        / static_cast<float>(totalPathPoints - 1);
-    return note.time + static_cast<int>(std::lround(
-        static_cast<float>(note.duration) * ratio));
-}
-
-}
-
 // 鼠标点击命中容差（归一化欧氏距离）
 static constexpr float MOUSE_HIT_TOLERANCE = 0.06f;
 
@@ -82,7 +67,7 @@ JudgeResult Judge::JudgeKeyboardNote(KeyboardNote& note, int hitTimeMs)
         note.isJudged = true;
         note.result   = result;
     }
-    // Hold/Drag：只判定头部（后续由 UpdateHoldTick 处理）
+    // Hold：只判定头部（后续由 UpdateHoldTick 处理）
     // 调用方需要据此创建 HoldState
     // 这里仅标记头部已开始，不完全标记 isJudged
     // 完全标记由场景在 Hold 结束时设置
@@ -141,7 +126,7 @@ int Judge::CheckMisses(std::vector<KeyboardNote>& notes, int currentTimeMs)
     {
         if (note.isJudged) continue;
 
-        // Hold/Drag 音符头部超时检查
+        // Hold 音符头部超时检查
         int diff = currentTimeMs - note.time;
         if (diff > m_windows.miss)
         {
@@ -216,119 +201,6 @@ JudgeResult Judge::UpdateHoldTick(HoldState& state,
 
     // hold 仍在进行中
     return JudgeResult::None;
-}
-
-// ── UpdateDragTick ────────────────────────────────────────────────────────────
-
-JudgeResult Judge::UpdateDragTick(DragState& state,
-                                  const KeyboardNote& note,
-                                  int currentTimeMs)
-{
-    if (!state.headJudged || state.finalized) return JudgeResult::None;
-
-    int totalPathPoints = static_cast<int>(state.pathLanes.size());
-    int dragEnd = note.time + note.duration;
-    if (totalPathPoints <= 1)
-    {
-        int lane = note.lane;
-        if (lane >= 0 && lane < static_cast<int>(state.releaseTimeMs.size()) &&
-            state.releaseTimeMs[lane] >= 0)
-        {
-            int releaseDuration = currentTimeMs - state.releaseTimeMs[lane];
-            if (releaseDuration > DragState::INPUT_GAP_TOLERANCE_MS &&
-                state.releaseTimeMs[lane] < dragEnd - m_windows.miss)
-            {
-                state.finalized = true;
-                return JudgeResult::Miss;
-            }
-        }
-
-        if (currentTimeMs > dragEnd + m_windows.good)
-        {
-            state.finalized = true;
-            return state.headResult;
-        }
-
-        return JudgeResult::None;
-    }
-
-    for (int i = 0; i < state.nextLaneIndex && i < totalPathPoints; ++i)
-    {
-        int lane = state.pathLanes[i];
-        if (lane < 0 || lane >= static_cast<int>(state.releaseTimeMs.size()))
-            continue;
-
-        if (state.releaseTimeMs[lane] >= 0)
-        {
-            int releaseDuration = currentTimeMs - state.releaseTimeMs[lane];
-            if (releaseDuration > DragState::INPUT_GAP_TOLERANCE_MS &&
-                state.releaseTimeMs[lane] < dragEnd - m_windows.miss)
-            {
-                state.finalized = true;
-                return JudgeResult::Miss;
-            }
-        }
-    }
-
-    if (state.nextLaneIndex < totalPathPoints)
-    {
-        int nextStepTime = CalcDragStepTime(note, totalPathPoints, state.nextLaneIndex);
-        if (currentTimeMs > nextStepTime + m_windows.miss)
-        {
-            state.finalized = true;
-            return JudgeResult::Miss;
-        }
-    }
-
-    return JudgeResult::None;
-}
-
-// ── JudgeDragStep ─────────────────────────────────────────────────────────────
-
-JudgeResult Judge::JudgeDragStep(DragState& state,
-                                 KeyboardNote& note,
-                                 int hitTimeMs,
-                                 int hitLane,
-                                 bool& isFinalStep)
-{
-    isFinalStep = false;
-
-    if (note.type != NoteType::Drag) return JudgeResult::None;
-    if (note.result != JudgeResult::None) return JudgeResult::None;
-    if (state.finalized) return JudgeResult::None;
-
-    int totalPathPoints = static_cast<int>(state.pathLanes.size());
-    if (state.nextLaneIndex < 0 || state.nextLaneIndex >= totalPathPoints)
-        return JudgeResult::None;
-
-    int expectedLane = state.pathLanes[state.nextLaneIndex];
-    if (hitLane != expectedLane) return JudgeResult::None;
-
-    int stepTime = CalcDragStepTime(note, totalPathPoints, state.nextLaneIndex);
-    int diff    = hitTimeMs - stepTime;
-    if (diff < -m_windows.miss) return JudgeResult::None;
-    int absDiff = std::abs(diff);
-
-    JudgeResult result = GetResultByTimeDiff(absDiff);
-    if (result == JudgeResult::Miss)
-    {
-        state.finalized = true;
-        note.isJudged = true;
-        note.result = JudgeResult::Miss;
-        return JudgeResult::Miss;
-    }
-
-    ++state.nextLaneIndex;
-    isFinalStep = (state.nextLaneIndex >= totalPathPoints);
-
-    if (isFinalStep)
-    {
-        state.finalized = true;
-        note.isJudged = true;
-        note.result   = result;
-    }
-
-    return result;
 }
 
 // ── UpdateSliderTracking ──────────────────────────────────────────────────────

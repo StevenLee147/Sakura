@@ -201,7 +201,6 @@ enum class NoteType : uint8_t
 {
     Tap,
     Hold,
-    Drag,
     Circle,
     Slider
 };

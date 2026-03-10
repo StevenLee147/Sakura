@@ -23,44 +23,6 @@
 
 namespace sakura::scene
 {
-
-namespace
-{
-
-std::vector<int> BuildDragPathLanes(int startLane, int endLane)
-{
-    std::vector<int> lanes;
-    lanes.push_back(startLane);
-
-    if (startLane == endLane)
-        return lanes;
-
-    int step = (endLane > startLane) ? 1 : -1;
-    for (int lane = startLane + step;; lane += step)
-    {
-        lanes.push_back(lane);
-        if (lane == endLane)
-            break;
-    }
-
-    return lanes;
-}
-
-int CalcDragStepTime(const sakura::game::KeyboardNote& note,
-                     const sakura::game::DragState& state,
-                     int pathIndex)
-{
-    int totalPathPoints = static_cast<int>(state.pathLanes.size());
-    if (totalPathPoints <= 1) return note.time + note.duration;
-
-    float ratio = static_cast<float>(pathIndex)
-        / static_cast<float>(totalPathPoints - 1);
-    return note.time + static_cast<int>(std::lround(
-        static_cast<float>(note.duration) * ratio));
-}
-
-}
-
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
 SceneGame::SceneGame(SceneManager& mgr,
@@ -134,7 +96,6 @@ void SceneGame::OnEnter()
 
     // 清空状态
     m_holdStates.clear();
-    m_dragStates.clear();
     m_sliderStates.clear();
     m_judgeFlashes.clear();
 
@@ -153,7 +114,6 @@ void SceneGame::OnExit()
     LOG_INFO("[SceneGame] 退出游戏场景");
     sakura::audio::AudioManager::GetInstance().StopMusic();
     m_holdStates.clear();
-    m_dragStates.clear();
     m_sliderStates.clear();
     m_judgeFlashes.clear();
     m_particles.Clear();
@@ -198,66 +158,6 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
 
     int now = m_gameState.GetCurrentTime();
     auto& kbNotes = m_gameState.GetKeyboardNotes();
-
-    int bestDragStateIdx = -1;
-    int bestDragDist = INT_MAX;
-    for (int i = 0; i < static_cast<int>(m_dragStates.size()); ++i)
-    {
-        auto& ds = m_dragStates[i];
-        if (ds.noteIndex < 0 || ds.noteIndex >= static_cast<int>(kbNotes.size())) continue;
-
-        auto& dragNote = kbNotes[ds.noteIndex];
-        if (dragNote.type != sakura::game::NoteType::Drag) continue;
-        if (ds.nextLaneIndex < 0 || ds.nextLaneIndex >= static_cast<int>(ds.pathLanes.size()))
-            continue;
-        if (ds.pathLanes[ds.nextLaneIndex] != lane) continue;
-
-        bool previousLanesHeld = true;
-        for (int pathIndex = 0; pathIndex < ds.nextLaneIndex; ++pathIndex)
-        {
-            int requiredLane = ds.pathLanes[pathIndex];
-            bool isHeld = sakura::core::Input::IsKeyHeld(m_laneKeys[requiredLane]);
-            bool withinGapTolerance = ds.lastHeldTimeMs[requiredLane] >= 0 &&
-                now - ds.lastHeldTimeMs[requiredLane] <= sakura::game::DragState::INPUT_GAP_TOLERANCE_MS;
-            if (!isHeld && !withinGapTolerance)
-            {
-                previousLanesHeld = false;
-                break;
-            }
-        }
-        if (!previousLanesHeld) continue;
-
-        int dist = std::abs(CalcDragStepTime(dragNote, ds, ds.nextLaneIndex) - now);
-        if (dist < bestDragDist)
-        {
-            bestDragDist = dist;
-            bestDragStateIdx = i;
-        }
-    }
-
-    if (bestDragStateIdx >= 0)
-    {
-        auto& ds = m_dragStates[bestDragStateIdx];
-        auto& dragNote = kbNotes[ds.noteIndex];
-        bool isFinalStep = false;
-        auto result = m_judge.JudgeDragStep(ds, dragNote, now, lane, isFinalStep);
-        if (result != sakura::game::JudgeResult::None)
-        {
-            ds.lastHeldTimeMs[lane] = now;
-            ds.releaseTimeMs[lane] = -1;
-
-            if (isFinalStep || result == sakura::game::JudgeResult::Miss)
-            {
-                m_score.OnJudge(result, sakura::game::Judge::GetHitError(
-                    CalcDragStepTime(dragNote, ds,
-                        std::min(ds.nextLaneIndex, static_cast<int>(ds.pathLanes.size()) - 1)), now));
-            }
-            AddJudgeFlash(result, true, lane);
-            if (ds.finalized)
-                m_dragStates.erase(m_dragStates.begin() + bestDragStateIdx);
-            return;
-        }
-    }
 
     // 在活跃键盘音符中找同轨道最近未判定的音符
     auto activeKb = m_gameState.GetActiveKeyboardNotes();
@@ -305,31 +205,6 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
             m_holdStates.push_back(hs);
         }
         // 头部判定结果反馈（闪光 + 计入头 Hit / Miss）
-        m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-        AddJudgeFlash(result, true, lane);
-    }
-    // Drag 起始
-    else if (note.type == sakura::game::NoteType::Drag)
-    {
-        auto result = m_judge.JudgeKeyboardNote(note, now);
-        if (result != sakura::game::JudgeResult::Miss &&
-            result != sakura::game::JudgeResult::None)
-        {
-            note.isJudged = true;
-            note.result   = sakura::game::JudgeResult::None;
-
-            sakura::game::DragState ds;
-            ds.noteIndex            = bestIdx;
-            ds.headJudged           = true;
-            ds.headResult           = result;
-            int targetLane = (note.dragToLane >= 0 && note.dragToLane < LANE_COUNT)
-                ? note.dragToLane
-                : note.lane;
-            ds.pathLanes            = BuildDragPathLanes(note.lane, targetLane);
-            ds.lastHeldTimeMs[note.lane] = now;
-            m_dragStates.push_back(ds);
-        }
-
         m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
         AddJudgeFlash(result, true, lane);
     }
@@ -488,21 +363,6 @@ void SceneGame::OnUpdate(float dt)
     {
         LOG_INFO("[SceneGame] 游戏完成，切换到结算");
 
-        auto& kbNotes = m_gameState.GetKeyboardNotes();
-        for (auto& ds : m_dragStates)
-        {
-            if (ds.noteIndex >= 0 && ds.noteIndex < static_cast<int>(kbNotes.size()))
-            {
-                auto& dragNote = kbNotes[ds.noteIndex];
-                if (dragNote.result == sakura::game::JudgeResult::None)
-                {
-                    dragNote.result = sakura::game::JudgeResult::Miss;
-                    m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
-                }
-            }
-        }
-        m_dragStates.clear();
-
         // 将活跃 Slider 中未完成的拐点计为 Miss（音乐结束时 Slider 可能仍在进行中）
         auto& msNotes = m_gameState.GetMouseNotes();
         for (auto& ss : m_sliderStates)
@@ -608,52 +468,6 @@ void SceneGame::OnUpdate(float dt)
         {
             ++it;
         }
-    }
-
-    // ── Drag 持续判定 ────────────────────────────────────────────────────────
-    for (auto it = m_dragStates.begin(); it != m_dragStates.end(); )
-    {
-        auto& ds = *it;
-        if (ds.noteIndex < 0 || ds.noteIndex >= static_cast<int>(kbNotes.size()))
-        {
-            it = m_dragStates.erase(it);
-            continue;
-        }
-
-        auto& note = kbNotes[ds.noteIndex];
-
-        int activePathCount = std::min(ds.nextLaneIndex, static_cast<int>(ds.pathLanes.size()));
-        for (int pathIndex = 0; pathIndex < activePathCount; ++pathIndex)
-        {
-            int lane = ds.pathLanes[pathIndex];
-            bool keyHeld = sakura::core::Input::IsKeyHeld(m_laneKeys[lane]);
-
-            if (keyHeld)
-            {
-                ds.lastHeldTimeMs[lane] = now;
-                ds.releaseTimeMs[lane] = -1;
-            }
-            else if (ds.releaseTimeMs[lane] < 0)
-            {
-                ds.releaseTimeMs[lane] = now;
-            }
-        }
-
-        auto dragResult = m_judge.UpdateDragTick(ds, note, now);
-        if (dragResult != sakura::game::JudgeResult::None)
-        {
-            note.result = dragResult;
-            m_score.OnJudge(dragResult, 0);
-            int flashLane = (note.dragToLane >= 0 && note.dragToLane < LANE_COUNT)
-                ? note.dragToLane
-                : note.lane;
-            AddJudgeFlash(dragResult, true, flashLane);
-        }
-
-        if (ds.finalized)
-            it = m_dragStates.erase(it);
-        else
-            ++it;
     }
 
     // ── Slider 路径追踪 ───────────────────────────────────────────────────────
@@ -804,36 +618,6 @@ void SceneGame::OnEvent(const SDL_Event& event)
             }
         }
 
-        for (auto& ds : m_dragStates)
-        {
-            if (ds.noteIndex < 0) continue;
-            auto& kbNotes = m_gameState.GetKeyboardNotes();
-            if (ds.noteIndex < static_cast<int>(kbNotes.size()))
-            {
-                int releasedLane = -1;
-                for (int lane = 0; lane < LANE_COUNT; ++lane)
-                {
-                    if (event.key.scancode == m_laneKeys[lane])
-                    {
-                        releasedLane = lane;
-                        break;
-                    }
-                }
-
-                if (releasedLane < 0) continue;
-
-                int activePathCount = std::min(ds.nextLaneIndex, static_cast<int>(ds.pathLanes.size()));
-                for (int pathIndex = 0; pathIndex < activePathCount; ++pathIndex)
-                {
-                    int requiredLane = ds.pathLanes[pathIndex];
-                    if (requiredLane == releasedLane)
-                    {
-                        ds.releaseTimeMs[releasedLane] = now;
-                        break;
-                    }
-                }
-            }
-        }
         break;
     }
 
@@ -979,16 +763,14 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
         float lx   = GetLaneX(note.lane);
         float alpha = note.alpha;
 
-        // Hold/Drag：预先计算尾部 Y，用于精确可见性判断
+        // Hold：预先计算尾部 Y，用于精确可见性判断
         float tailY = -999.0f;
-        if (note.type == sakura::game::NoteType::Hold ||
-            note.type == sakura::game::NoteType::Drag)
+        if (note.type == sakura::game::NoteType::Hold)
             tailY = CalcNoteRenderY(note.time + note.duration, now, sv);
 
         // ── 可见性剔除 ─────────────────────────────────────────────────────────
-        // Hold/Drag 头部可能已过判定线（ry > 1.05），但尾部仍在屏幕内，不可跳过
-        if (note.type == sakura::game::NoteType::Hold ||
-            note.type == sakura::game::NoteType::Drag)
+        // Hold 头部可能已过判定线（ry > 1.05），但尾部仍在屏幕内，不可跳过
+        if (note.type == sakura::game::NoteType::Hold)
         {
             if (tailY > 1.05f) continue;
             if (ry < -0.05f && tailY < -0.05f) continue;
@@ -1040,77 +822,6 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
                 { lx + 0.003f, headY - NOTE_H * 0.5f,
                   LANE_W - 0.006f, NOTE_H },
                 0.004f, headColor, true);
-            break;
-        }
-        case sakura::game::NoteType::Drag:
-        {
-            float sourceX = lx + LANE_W * 0.5f;
-            int targetLane = (note.dragToLane >= 0 && note.dragToLane < LANE_COUNT)
-                ? note.dragToLane
-                : note.lane;
-            float targetX = GetLaneX(targetLane) + LANE_W * 0.5f;
-            bool isDragging = note.isJudged &&
-                              (note.result == sakura::game::JudgeResult::None);
-            float headY = (isDragging && ry > JUDGE_LINE_Y) ? JUDGE_LINE_Y : ry;
-
-            int noteIndex = static_cast<int>(&note - m_gameState.GetKeyboardNotes().data());
-            const sakura::game::DragState* dragState = nullptr;
-            for (const auto& ds : m_dragStates)
-            {
-                if (ds.noteIndex == noteIndex)
-                {
-                    dragState = &ds;
-                    break;
-                }
-            }
-
-            auto pathLanes = BuildDragPathLanes(note.lane, targetLane);
-
-            sakura::core::Color dragColor = {
-                150, 230, 255, static_cast<uint8_t>(200 * alpha) };
-            sakura::core::Color trailColor = {
-                100, 200, 240, static_cast<uint8_t>(170 * alpha) };
-
-            renderer.DrawLine(sourceX, headY, targetX, tailY,
-                trailColor, 0.006f);
-
-            float guideY = std::clamp(headY - 0.048f, 0.05f, JUDGE_LINE_Y - 0.02f);
-            for (int pathIndex = 0; pathIndex < static_cast<int>(pathLanes.size()); ++pathIndex)
-            {
-                int pathLane = pathLanes[pathIndex];
-                float pathX = GetLaneX(pathLane) + LANE_W * 0.5f;
-                if (pathIndex > 0)
-                {
-                    int prevLane = pathLanes[pathIndex - 1];
-                    float prevX = GetLaneX(prevLane) + LANE_W * 0.5f;
-                    renderer.DrawLine(prevX, guideY, pathX, guideY,
-                        { 120, 205, 240, static_cast<uint8_t>(120 * alpha) }, 0.0025f);
-                }
-
-                bool reached = dragState && pathIndex < dragState->nextLaneIndex;
-                bool nextStep = dragState && !dragState->finalized
-                    && pathIndex == dragState->nextLaneIndex;
-                float radius = nextStep ? 0.012f : 0.009f;
-                sakura::core::Color markerColor = reached
-                    ? sakura::core::Color{ 255, 220, 120, static_cast<uint8_t>(230 * alpha) }
-                    : (nextStep
-                        ? sakura::core::Color{ 120, 250, 255, static_cast<uint8_t>(235 * alpha) }
-                        : sakura::core::Color{ 190, 235, 255, static_cast<uint8_t>(150 * alpha) });
-                renderer.DrawCircleFilled(pathX, guideY, radius, markerColor, 18);
-
-                if (nextStep)
-                {
-                    renderer.DrawCircleOutline(pathX, JUDGE_LINE_Y, 0.020f,
-                        { 120, 250, 255, static_cast<uint8_t>(160 * alpha) }, 0.002f, 24);
-                }
-            }
-
-            renderer.DrawCircleFilled(sourceX, headY, 0.014f, dragColor, 16);
-            renderer.DrawCircleFilled(targetX, tailY, 0.012f,
-                sakura::core::Color{ 210, 245, 255, static_cast<uint8_t>(190 * alpha) }, 16);
-            renderer.DrawLine(targetX, tailY - 0.018f, targetX, tailY + 0.018f,
-                sakura::core::Color{ 100, 200, 240, static_cast<uint8_t>(200 * alpha) },
-                0.004f);
             break;
         }
         default:

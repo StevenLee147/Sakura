@@ -29,7 +29,6 @@ const char* EditorCore::NoteTypeToStr(sakura::game::NoteType t)
     {
         case sakura::game::NoteType::Tap:    return "tap";
         case sakura::game::NoteType::Hold:   return "hold";
-        case sakura::game::NoteType::Drag:   return "drag";
         case sakura::game::NoteType::Circle: return "circle";
         case sakura::game::NoteType::Slider: return "slider";
         default:                             return "tap";
@@ -185,11 +184,10 @@ bool EditorCore::SaveChartTo(const std::string& fullPath)
         for (const auto& n : sortedKb)
         {
             json note;
-            note["time"]         = n.time;
-            note["lane"]         = n.lane;
-            note["type"]         = NoteTypeToStr(n.type);
-            note["duration"]     = n.duration;
-            note["drag_to_lane"] = n.dragToLane;
+            note["time"]     = n.time;
+            note["lane"]     = n.lane;
+            note["type"]     = NoteTypeToStr(n.type);
+            note["duration"] = n.duration;
             kbArr.push_back(std::move(note));
         }
         j["keyboard_notes"] = std::move(kbArr);
@@ -343,11 +341,6 @@ bool EditorCore::PlaceKeyboardNote(int timeMs, int lane, int durationMs)
             note.duration = (durationMs > 0)
                 ? durationMs
                 : static_cast<int>(GetBeatIntervalMs(timeMs));
-            break;
-        case NoteToolType::Drag:
-            note.type = sakura::game::NoteType::Drag;
-            // dragToLane 默认同轨，用户可通过属性面板修改
-            note.dragToLane = lane;
             break;
         default:
             note.type = sakura::game::NoteType::Tap;

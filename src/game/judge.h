@@ -4,7 +4,6 @@
 // 处理所有类型音符的判定逻辑
 
 #include "note.h"
-#include <array>
 #include <vector>
 #include <span>
 
@@ -37,21 +36,6 @@ struct HoldState
     // Hold 断触容错（毫秒）：约 2~3 帧（60fps），过滤极短采样抖动，不掩盖真实松开
     static constexpr int INPUT_GAP_TOLERANCE_MS = 25;
     // 注意：无 tick 系统，UpdateHoldTick 负责最终判定
-};
-
-// ── Drag 判定状态 ─────────────────────────────────────────────────────────────
-
-struct DragState
-{
-    int   noteIndex             = -1;     // 对应 keyboardNotes 的索引
-    bool  headJudged            = false;  // 头部是否已判定
-    JudgeResult headResult      = JudgeResult::None;
-    std::vector<int> pathLanes;           // 包含起点和终点的连续轨道路径
-    int   nextLaneIndex         = 1;      // 下一个必须命中的 pathLanes 索引
-    std::array<int, 4> releaseTimeMs      = { -1, -1, -1, -1 };
-    std::array<int, 4> lastHeldTimeMs     = { -1, -1, -1, -1 };
-    bool  finalized             = false;  // 已终判，可从活跃列表移除
-    static constexpr int INPUT_GAP_TOLERANCE_MS = HoldState::INPUT_GAP_TOLERANCE_MS;
 };
 
 // ── Slider 判定状态 ───────────────────────────────────────────────────────────
@@ -87,7 +71,7 @@ public:
 
     // ── 普通按键判定 ──────────────────────────────────────────────────────────
 
-    // 键盘音符判定（Tap/Hold头部/Drag头部）
+    // 键盘音符判定（Tap/Hold 头部）
     // hitTimeMs: 玩家按下时刻（游戏时间，毫秒）
     JudgeResult JudgeKeyboardNote(KeyboardNote& note, int hitTimeMs);
 
@@ -113,25 +97,6 @@ public:
     JudgeResult UpdateHoldTick(HoldState& state,
                                const KeyboardNote& note,
                                int currentTimeMs);
-
-    // 每帧检查 Drag 状态：
-    //   - 起始轨道提前松开（dragEnd - miss_window 之前）→ Miss
-    //   - 超过 Drag 终点 miss 窗口仍未命中目标轨道 → Miss
-    //   - 其他：返回 None
-    JudgeResult UpdateDragTick(DragState& state,
-                               const KeyboardNote& note,
-                               int currentTimeMs);
-
-    // 判定 Drag 路径上的下一个轨道（中间轨/终点轨）
-    // 返回 None 表示当前按键不满足时序或轨道要求
-    // isFinalStep 输出本次命中是否完成整个 Drag
-    JudgeResult JudgeDragStep(DragState& state,
-                              KeyboardNote& note,
-                              int hitTimeMs,
-                              int hitLane,
-                              bool& isFinalStep);
-
-    // ── Drag 判定 ─────────────────────────────────────────────────────────────
 
     // ── Slider 路径判定 ───────────────────────────────────────────────────────
 

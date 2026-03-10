@@ -487,8 +487,6 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
         sakura::core::Color noteColor = { 80, 130, 255, 230 };    // Tap: 蓝
         if (n.type == sakura::game::NoteType::Hold)
             noteColor = { 80, 220, 120, 230 };                     // Hold: 绿
-        else if (n.type == sakura::game::NoteType::Drag)
-            noteColor = { 255, 170, 60, 230 };                     // Drag: 橙
 
         // Hold：画一个从 time 到 time+duration 的竖条
         if (n.type == sakura::game::NoteType::Hold && n.duration > 0)
@@ -520,25 +518,6 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
               TRACK_LANE_W * 0.9f,
               NOTE_H * 2.0f },
             noteColor);
-
-        // Drag 音符：绘制目标道箭头
-        if (n.type == sakura::game::NoteType::Drag && n.dragToLane >= 0 && n.dragToLane != n.lane)
-        {
-            float xTarget = LaneToX(n.dragToLane) + TRACK_LANE_W * 0.5f;
-            float xSrc    = x + TRACK_LANE_W * 0.5f;
-            // 横向箭头线
-            renderer.DrawLine(xSrc, y, xTarget, y,
-                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
-            // 箭头头（三角）
-            float dir = (xTarget > xSrc) ? 1.0f : -1.0f;
-            float ax  = xTarget;
-            renderer.DrawLine(ax, y,
-                              ax - dir * 0.012f, y - 0.008f,
-                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
-            renderer.DrawLine(ax, y,
-                              ax - dir * 0.012f, y + 0.008f,
-                              sakura::core::Color{ 255, 200, 80, 220 }, 0.002f);
-        }
 
         // 选中时加边框
         if (isSelected)
@@ -590,7 +569,6 @@ void EditorTimeline::DrawHoverPreview(sakura::core::Renderer& renderer)
 
     NoteToolType tool = m_core.GetNoteTool();
     if      (tool == NoteToolType::Hold)   previewColor = { 80, 220, 120, 100 };
-    else if (tool == NoteToolType::Drag)   previewColor = { 255, 170, 60, 100 };
     else if (tool == NoteToolType::Circle) previewColor = { 255, 80, 200, 100 };
 
     renderer.DrawFilledRect(

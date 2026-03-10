@@ -38,7 +38,11 @@ NoteType ChartLoader::ParseNoteType(const std::string& typeStr) const
 {
     if (typeStr == "tap")    return NoteType::Tap;
     if (typeStr == "hold")   return NoteType::Hold;
-    if (typeStr == "drag")   return NoteType::Drag;
+    if (typeStr == "drag")
+    {
+        LOG_WARN("谱面仍在使用已移除的 Drag 音符类型，将按 Hold 兼容加载");
+        return NoteType::Hold;
+    }
     if (typeStr == "circle") return NoteType::Circle;
     if (typeStr == "slider") return NoteType::Slider;
 
@@ -235,7 +239,6 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
             note.lane       = SafeGet<int>(n, "lane", 0);
             note.type       = ParseNoteType(SafeGet<std::string>(n, "type", "tap"));
             note.duration   = SafeGet<int>(n, "duration", 0);
-            note.dragToLane = SafeGet<int>(n, "drag_to_lane", -1);
             data.keyboardNotes.push_back(std::move(note));
         }
     }

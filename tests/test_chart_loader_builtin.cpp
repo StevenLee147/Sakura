@@ -101,11 +101,7 @@ TEST_CASE("官方测试谱面难度与数据满足 Step 4.2 要求", "[charts][l
         REQUIRE(static_cast<int>(data->svPoints.size()) >= item.minSvPoints);
 
         if (std::string(item.chartId) == "digital_dream" && std::string(item.chartFile) == "hard.json")
-        {
-            REQUIRE(std::all_of(data->keyboardNotes.begin(), data->keyboardNotes.end(),
-                [](const KeyboardNote& note) { return note.type == NoteType::Drag; }));
             REQUIRE(std::all_of(data->mouseNotes.begin(), data->mouseNotes.end(),
                 [](const MouseNote& note) { return note.type == NoteType::Slider; }));
-        }
     }
 }
