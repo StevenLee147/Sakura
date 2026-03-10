@@ -382,6 +382,7 @@ JudgeResult Judge::UpdateSliderTracking(SliderState& state,
     // 已到达（或超过）拐点时间，进行判定。
     // 对 Slider 追踪给一个短的晚到宽限：玩家常会在拐点附近用 1~2 帧修正轨迹，
     // 若一到点就立即 Miss，会明显破坏手感。
+    // 这里直接复用 Good 窗口，保证宽限仍然落在现有判定体系内，后续若要单独调参再抽常量。
     int latestAllowedTime = wpTime + m_windows.good;
 
     JudgeResult result;

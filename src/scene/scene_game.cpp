@@ -27,6 +27,7 @@ namespace sakura::scene
 namespace
 {
 
+// 将判定结果映射为点击选 note 时的优先级：值越小表示时间判定越好。
 int JudgePriority(sakura::game::JudgeResult result)
 {
     switch (result)
@@ -382,9 +383,11 @@ void SceneGame::HandleMouseClick(float normX, float normY)
     for (auto& n : activeMs)
     {
         if (n.isJudged) continue;
-        // 排除时间上完全超前（还未进入判定窗口）的音符
+        // 排除时间上完全超前（还未进入判定窗口）或已经彻底过期的音符，
+        // 避免点击被尚未可打/已经 Miss 的鼠标音符抢走。
         int timeDiff = now - n.time;
-        if (std::abs(timeDiff) > m_judge.GetWindows().miss) continue;
+        if (timeDiff < -m_judge.GetWindows().miss ||
+            timeDiff > m_judge.GetWindows().miss) continue;
 
         float dx = mouseX - n.x;
         float dy = mouseY - n.y;
