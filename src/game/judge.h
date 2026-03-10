@@ -95,6 +95,9 @@ public:
     // hitX, hitY: 鼠标点击位置（鼠标区域内的归一化坐标 0~1）
     JudgeResult JudgeMouseNote(MouseNote& note, int hitTimeMs, float hitX, float hitY);
 
+    // 获取鼠标音符头部点击容差（鼠标区域内归一化距离）
+    static float GetMouseHitTolerance(const MouseNote& note);
+
     // ── 自动 Miss 检测 ────────────────────────────────────────────────────────
 
     // 检查并标记所有超时未判定的键盘音符为 Miss

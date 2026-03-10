@@ -114,7 +114,7 @@ JudgeResult Judge::JudgeMouseNote(MouseNote& note, int hitTimeMs, float hitX, fl
     float dy = hitY - note.y;
     float dist = std::sqrt(dx * dx + dy * dy);
 
-    if (dist > MOUSE_HIT_TOLERANCE)
+    if (dist > GetMouseHitTolerance(note))
     {
         // 距离太远，不判定
         return JudgeResult::None;
@@ -129,6 +129,13 @@ JudgeResult Judge::JudgeMouseNote(MouseNote& note, int hitTimeMs, float hitX, fl
     // Slider：头部判定（路径跟踪由 UpdateSliderTracking 处理）
 
     return timeResult;
+}
+
+float Judge::GetMouseHitTolerance(const MouseNote& note)
+{
+    if (note.type == NoteType::Slider)
+        return std::max(MOUSE_HIT_TOLERANCE, SliderState::PATH_TOLERANCE);
+    return MOUSE_HIT_TOLERANCE;
 }
 
 // ── CheckMisses ───────────────────────────────────────────────────────────────
@@ -372,7 +379,11 @@ JudgeResult Judge::UpdateSliderTracking(SliderState& state,
     if (currentTimeMs < wpTime)
         return JudgeResult::None;
 
-    // 已到达（或超过）拐点时间，进行判定
+    // 已到达（或超过）拐点时间，进行判定。
+    // 对 Slider 追踪给一个短的晚到宽限：玩家常会在拐点附近用 1~2 帧修正轨迹，
+    // 若一到点就立即 Miss，会明显破坏手感。
+    int latestAllowedTime = wpTime + m_windows.good;
+
     JudgeResult result;
     if (state.isMissed)
     {
@@ -392,6 +403,10 @@ JudgeResult Judge::UpdateSliderTracking(SliderState& state,
             // Slider 拐点判定侧重空间位置的连续跟踪，不再细分时间窗口（Perfect/Great/Good），
             // 玩家只需在正确位置保持按住即可，每个拐点要么命中（Perfect）要么 Miss。
             result = JudgeResult::Perfect;
+        }
+        else if (currentTimeMs <= latestAllowedTime)
+        {
+            return JudgeResult::None;
         }
         else
         {
