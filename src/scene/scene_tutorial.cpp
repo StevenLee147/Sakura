@@ -54,6 +54,19 @@ int CalcDragStepTimeMs(const sakura::game::TutorialLessonNote& note,
         static_cast<float>(note.durationMs) * ratio));
 }
 
+int CalcSliderWaypointTimeMs(const sakura::game::TutorialLessonNote& note,
+                             int waypointCount,
+                             int waypointIndex)
+{
+    if (waypointCount <= 0)
+        return note.timeMs;
+
+    float ratio = static_cast<float>(waypointIndex + 1)
+        / static_cast<float>(waypointCount);
+    return note.timeMs + static_cast<int>(std::lround(
+        static_cast<float>(note.durationMs) * ratio));
+}
+
 } // namespace
 
 SceneTutorial::SceneTutorial(SceneManager& mgr, bool showFirstRunPrompt)
@@ -152,6 +165,7 @@ void SceneTutorial::StartCurrentLesson()
         note.started = false;
         note.completed = false;
         note.dragNextLaneIndex = 1;
+        note.sliderNextWaypointIndex = 0;
     }
 
     m_lessonTimerMs = 0.0f;
@@ -283,6 +297,80 @@ void SceneTutorial::UpdatePlayingState()
                 if (m_lessonTimerMs > static_cast<float>(note.timeMs + lesson.judgeWindowMs))
                 {
                     FailCurrentLesson("错过了节奏点，按空格重新开始这一课。");
+                    return;
+                }
+            }
+            break;
+
+        case sakura::game::NoteType::Slider:
+            if (!runtimeNote.started)
+            {
+                allCompleted = false;
+                if (m_lessonTimerMs > static_cast<float>(note.timeMs + lesson.judgeWindowMs))
+                {
+                    FailCurrentLesson("Slide 需要先在起点按下鼠标左键。");
+                    return;
+                }
+            }
+            else if (!runtimeNote.completed)
+            {
+                allCompleted = false;
+
+                bool held = sakura::core::Input::IsMouseButtonHeld(SDL_BUTTON_LEFT);
+                if (!held && m_lessonTimerMs < static_cast<float>(note.timeMs + note.durationMs))
+                {
+                    FailCurrentLesson("Slide 中途松开了。\n按住鼠标左键并沿着路径继续滑动。");
+                    return;
+                }
+
+                if (note.sliderPath.empty())
+                {
+                    runtimeNote.completed = true;
+                    break;
+                }
+
+                auto [mouseX, mouseY] = sakura::core::Input::GetMousePosition();
+                float localX = (mouseX - MOUSE_X) / MOUSE_W;
+                float localY = (mouseY - MOUSE_Y) / MOUSE_H;
+
+                if (runtimeNote.sliderNextWaypointIndex < static_cast<int>(note.sliderPath.size()))
+                {
+                    int waypointIndex = runtimeNote.sliderNextWaypointIndex;
+                    int waypointTime = CalcSliderWaypointTimeMs(note,
+                        static_cast<int>(note.sliderPath.size()),
+                        waypointIndex);
+
+                    if (held)
+                    {
+                        const auto& waypoint = note.sliderPath[waypointIndex];
+                        float dx = localX - waypoint.first;
+                        float dy = localY - waypoint.second;
+                        float distance = std::sqrt(dx * dx + dy * dy);
+                        if (distance <= lesson.mouseTolerance)
+                        {
+                            ++runtimeNote.sliderNextWaypointIndex;
+                            sakura::audio::AudioManager::GetInstance().PlayHitsound(
+                                sakura::audio::HitsoundType::Circle);
+                            if (runtimeNote.sliderNextWaypointIndex
+                                >= static_cast<int>(note.sliderPath.size()))
+                            {
+                                runtimeNote.completed = true;
+                            }
+                        }
+                    }
+
+                    if (!runtimeNote.completed
+                        && m_lessonTimerMs > static_cast<float>(waypointTime + lesson.judgeWindowMs))
+                    {
+                        FailCurrentLesson("Slide 要按住鼠标，并按顺序滑过每个发光节点。");
+                        return;
+                    }
+                }
+
+                if (!runtimeNote.completed
+                    && m_lessonTimerMs > static_cast<float>(note.timeMs + note.durationMs + lesson.judgeWindowMs))
+                {
+                    FailCurrentLesson("Slide 终点慢了一点，再沿路径滑一次。");
                     return;
                 }
             }
@@ -492,8 +580,13 @@ void SceneTutorial::HandleMouseInput(float screenX, float screenY)
     {
         auto& runtimeNote = m_runtimeNotes[i];
         const auto& note = runtimeNote.note;
-        if (runtimeNote.completed || note.type != sakura::game::NoteType::Circle)
+        if (runtimeNote.completed)
             continue;
+        if (note.type != sakura::game::NoteType::Circle
+            && (note.type != sakura::game::NoteType::Slider || runtimeNote.started))
+        {
+            continue;
+        }
 
         int timeDistance = std::abs(static_cast<int>(m_lessonTimerMs) - note.timeMs);
         if (timeDistance > lesson.judgeWindowMs)
@@ -511,8 +604,22 @@ void SceneTutorial::HandleMouseInput(float screenX, float screenY)
 
     if (bestIndex >= 0)
     {
-        m_runtimeNotes[bestIndex].completed = true;
-        sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::Circle);
+        auto& runtimeNote = m_runtimeNotes[bestIndex];
+        if (runtimeNote.note.type == sakura::game::NoteType::Circle)
+        {
+            runtimeNote.completed = true;
+            sakura::audio::AudioManager::GetInstance().PlayHitsound(
+                sakura::audio::HitsoundType::Circle);
+        }
+        else if (runtimeNote.note.type == sakura::game::NoteType::Slider)
+        {
+            runtimeNote.started = true;
+            runtimeNote.sliderNextWaypointIndex = 0;
+            if (runtimeNote.note.sliderPath.empty())
+                runtimeNote.completed = true;
+            sakura::audio::AudioManager::GetInstance().PlayHitsound(
+                sakura::audio::HitsoundType::SliderStart);
+        }
     }
 }
 
@@ -801,15 +908,70 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
     for (const auto& runtimeNote : m_runtimeNotes)
     {
         const auto& note = runtimeNote.note;
-        if (runtimeNote.completed || note.type != sakura::game::NoteType::Circle)
+        if (runtimeNote.completed)
             continue;
 
         float cx = MOUSE_X + note.x * MOUSE_W;
         float cy = MOUSE_Y + note.y * MOUSE_H;
-        renderer.DrawCircleFilled(cx, cy, 0.020f, { 255, 175, 205, 235 }, 28);
-        renderer.DrawCircleOutline(cx, cy,
-            0.020f * CalcCircleScale(note.timeMs, displayTimeMs),
-            { 255, 230, 245, 160 }, 0.0025f, 48);
+        if (note.type == sakura::game::NoteType::Circle)
+        {
+            renderer.DrawCircleFilled(cx, cy, 0.020f, { 255, 175, 205, 235 }, 28);
+            renderer.DrawCircleOutline(cx, cy,
+                0.020f * CalcCircleScale(note.timeMs, displayTimeMs),
+                { 255, 230, 245, 160 }, 0.0025f, 48);
+        }
+        else if (note.type == sakura::game::NoteType::Slider)
+        {
+            float prevX = cx;
+            float prevY = cy;
+            for (int pointIndex = 0; pointIndex < static_cast<int>(note.sliderPath.size()); ++pointIndex)
+            {
+                const auto& point = note.sliderPath[pointIndex];
+                float pointX = MOUSE_X + point.first * MOUSE_W;
+                float pointY = MOUSE_Y + point.second * MOUSE_H;
+                renderer.DrawLine(prevX, prevY, pointX, pointY,
+                    { 120, 220, 255, 210 }, 0.004f);
+
+                bool reached = runtimeNote.started
+                    && pointIndex < runtimeNote.sliderNextWaypointIndex;
+                bool nextPoint = runtimeNote.started && !runtimeNote.completed
+                    && pointIndex == runtimeNote.sliderNextWaypointIndex;
+                sakura::core::Color pointColor = reached
+                    ? sakura::core::Color{ 255, 222, 140, 235 }
+                    : (nextPoint
+                        ? sakura::core::Color{ 120, 245, 255, 240 }
+                        : sakura::core::Color{ 185, 235, 255, 190 });
+                renderer.DrawCircleFilled(pointX, pointY,
+                    nextPoint ? 0.014f : 0.011f,
+                    pointColor, 24);
+
+                prevX = pointX;
+                prevY = pointY;
+            }
+
+            renderer.DrawCircleFilled(cx, cy, 0.020f, { 255, 175, 205, 235 }, 28);
+            renderer.DrawCircleOutline(cx, cy,
+                0.020f * CalcCircleScale(note.timeMs, displayTimeMs),
+                { 255, 230, 245, 160 }, 0.0025f, 48);
+
+            if (runtimeNote.started && !runtimeNote.completed)
+            {
+                renderer.DrawRoundedRect({ 0.58f, 0.89f, 0.24f, 0.018f },
+                    0.006f, { 36, 32, 58, 220 }, true);
+                float progress = 0.0f;
+                if (!note.sliderPath.empty())
+                {
+                    progress = static_cast<float>(runtimeNote.sliderNextWaypointIndex)
+                        / static_cast<float>(note.sliderPath.size());
+                }
+                renderer.DrawRoundedRect({ 0.58f, 0.89f, 0.24f * std::clamp(progress, 0.0f, 1.0f), 0.018f },
+                    0.006f, { 120, 220, 255, 230 }, true);
+                renderer.DrawText(m_fontSmall, "Slide 路径进度",
+                    0.58f, 0.865f, 0.018f,
+                    { 170, 210, 230, 220 },
+                    sakura::core::TextAlign::Left);
+            }
+        }
     }
 
     auto [mouseX, mouseY] = sakura::core::Input::GetMousePosition();
@@ -820,8 +982,13 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
             { 230, 235, 255, 220 }, 0.002f, 24);
     }
 
+    bool hasSlider = std::any_of(m_runtimeNotes.begin(), m_runtimeNotes.end(),
+        [](const RuntimeNote& runtimeNote)
+        {
+            return runtimeNote.note.type == sakura::game::NoteType::Slider;
+        });
     renderer.DrawText(m_fontSmall,
-        "Circle 容差：0.10",
+        hasSlider ? "Slide 节点容差：0.10" : "Circle 容差：0.10",
         MOUSE_X, MOUSE_Y + MOUSE_H + 0.03f, 0.018f,
         { 175, 190, 215, 210 },
         sakura::core::TextAlign::Left);
@@ -841,7 +1008,7 @@ void SceneTutorial::RenderPrompt(sakura::core::Renderer& renderer)
         sakura::core::TextAlign::Center);
 
     renderer.DrawText(m_fontText,
-        "教程共 5 课，会依次说明 Tap / Hold / Drag / Circle / 综合配合。",
+        "教程共 6 课，会依次说明 Tap / Hold / Drag / Circle / Slide / 综合配合。",
         0.50f, 0.45f, 0.022f,
         { 220, 215, 230, 220 },
         sakura::core::TextAlign::Center);

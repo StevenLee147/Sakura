@@ -14,6 +14,7 @@ enum class TutorialLessonType
     KeyboardHold,
     KeyboardDrag,
     MouseCircle,
+    MouseSlide,
     Mixed,
 };
 
@@ -26,6 +27,7 @@ struct TutorialLessonNote
     int      durationMs = 0;
     float    x          = 0.5f;
     float    y          = 0.5f;
+    std::vector<std::pair<float, float>> sliderPath;
 };
 
 struct TutorialLesson
