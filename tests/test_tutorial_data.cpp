@@ -6,16 +6,15 @@
 
 using namespace sakura::game;
 
-TEST_CASE("教程共六课且顺序正确", "[tutorial][data]")
+TEST_CASE("教程共五课且顺序正确", "[tutorial][data]")
 {
     auto lessons = BuildTutorialLessons();
-    REQUIRE(lessons.size() == 6);
+    REQUIRE(lessons.size() == 5);
     REQUIRE(lessons[0].type == TutorialLessonType::KeyboardTap);
     REQUIRE(lessons[1].type == TutorialLessonType::KeyboardHold);
-    REQUIRE(lessons[2].type == TutorialLessonType::KeyboardDrag);
-    REQUIRE(lessons[3].type == TutorialLessonType::MouseCircle);
-    REQUIRE(lessons[4].type == TutorialLessonType::MouseSlide);
-    REQUIRE(lessons[5].type == TutorialLessonType::Mixed);
+    REQUIRE(lessons[2].type == TutorialLessonType::MouseCircle);
+    REQUIRE(lessons[3].type == TutorialLessonType::MouseSlide);
+    REQUIRE(lessons[4].type == TutorialLessonType::Mixed);
 }
 
 TEST_CASE("教程脚本满足需求中的音符数量与容差", "[tutorial][spec]")
@@ -32,18 +31,10 @@ TEST_CASE("教程脚本满足需求中的音符数量与容差", "[tutorial][spe
         REQUIRE(note.durationMs > 0);
     }
 
-    REQUIRE(lessons[2].notes.size() == 2);
+    REQUIRE(lessons[2].notes.size() == 5);
+    REQUIRE(lessons[2].usesMouse == true);
+    REQUIRE(lessons[2].mouseTolerance == 0.1f);
     for (const auto& note : lessons[2].notes)
-    {
-        REQUIRE(note.type == NoteType::Drag);
-        REQUIRE(note.targetLane >= 0);
-        REQUIRE(note.targetLane != note.lane);
-    }
-
-    REQUIRE(lessons[3].notes.size() == 5);
-    REQUIRE(lessons[3].usesMouse == true);
-    REQUIRE(lessons[3].mouseTolerance == 0.1f);
-    for (const auto& note : lessons[3].notes)
     {
         REQUIRE(note.type == NoteType::Circle);
         REQUIRE(note.x >= 0.0f);
@@ -52,11 +43,11 @@ TEST_CASE("教程脚本满足需求中的音符数量与容差", "[tutorial][spe
         REQUIRE(note.y <= 1.0f);
     }
 
-    REQUIRE(lessons[4].notes.size() == 2);
-    REQUIRE(lessons[4].usesKeyboard == false);
-    REQUIRE(lessons[4].usesMouse == true);
-    REQUIRE(lessons[4].mouseTolerance == 0.1f);
-    for (const auto& note : lessons[4].notes)
+    REQUIRE(lessons[3].notes.size() == 2);
+    REQUIRE(lessons[3].usesKeyboard == false);
+    REQUIRE(lessons[3].usesMouse == true);
+    REQUIRE(lessons[3].mouseTolerance == 0.1f);
+    for (const auto& note : lessons[3].notes)
     {
         REQUIRE(note.type == NoteType::Slider);
         REQUIRE(note.durationMs > 0);
@@ -70,7 +61,7 @@ TEST_CASE("教程脚本满足需求中的音符数量与容差", "[tutorial][spe
         }
     }
 
-    REQUIRE(lessons[5].notes.size() == 6);
-    REQUIRE(lessons[5].usesKeyboard == true);
-    REQUIRE(lessons[5].usesMouse == true);
+    REQUIRE(lessons[4].notes.size() == 6);
+    REQUIRE(lessons[4].usesKeyboard == true);
+    REQUIRE(lessons[4].usesMouse == true);
 }

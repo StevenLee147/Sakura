@@ -62,9 +62,8 @@ private:
     sakura::game::ChartInfo m_chartInfo;
     int                     m_difficultyIndex;
 
-    // Hold/Drag/Slider 活跃状态
+    // Hold/Slider 活跃状态
     std::vector<sakura::game::HoldState>   m_holdStates;
-    std::vector<sakura::game::DragState>   m_dragStates;
     std::vector<sakura::game::SliderState> m_sliderStates;
 
     // 判定闪现

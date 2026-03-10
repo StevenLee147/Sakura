@@ -8,16 +8,15 @@
 
 创建：`src/scene/scene_tutorial.h`, `src/scene/scene_tutorial.cpp`
 
-> [PROMPT] SceneTutorial 分 5 课：
+> [PROMPT] SceneTutorial 分 4 课：
 > 1. 键盘 Tap — 4个超慢大间隔, 大判定窗口(±200ms), 箭头+按键标注
 > 2. 键盘 Hold — 3个, 持续按住进度可视化
-> 3. 键盘 Drag — 2个, 箭头指示方向
-> 4. 鼠标 Circle — 5个大间隔, 大距离容差(0.1)
-> 5. 综合配合 — Tap+Circle 简单交替
-> 每课：说明文字→空格开始→失败可重试→进度"1/5"→完成祝贺→回主菜单。
+> 3. 鼠标 Circle — 5个大间隔, 大距离容差(0.1)
+> 4. 综合配合 — Tap+Circle 简单交替
+> 每课：说明文字→空格开始→失败可重试→进度"1/4"→完成祝贺→回主菜单。
 > 首次运行弹出"是否进入教程?"
 
-**验收：** 5 课全部完成，引导清晰。
+**验收：** 4 课全部完成，引导清晰。
 
 ---
 
@@ -27,7 +26,7 @@
 > 1. **tutorial_song** (BPM100) — Easy Lv.1.0, 纯 Tap 20个
 > 2. **spring_breeze** (BPM130) — Normal Lv.3.0(40个) + Hard Lv.5.5(80个)
 > 3. **cherry_blossom** (BPM155) — Normal Lv.4.0(50个) + Hard Lv.7.0(100个全类型) + Expert Lv.10.0(200个+SV)
-> 4. **digital_dream** (BPM175) — Hard Lv.8.5(120个Drag+Slider) + Expert Lv.12.0(250个+BPM变化)
+> 4. **digital_dream** (BPM175) — Hard Lv.8.5(120个Hold+Slider) + Expert Lv.12.0(250个+BPM变化)
 > 5. **sakura_storm** (BPM200) — Expert Lv.14.0(300+个极限+复杂SV+BPM变化)
 > 音乐用静音 WAV 占位(长度匹配)，每首配占位 cover.png。
 

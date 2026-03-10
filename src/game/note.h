@@ -15,7 +15,6 @@ enum class NoteType
 {
     Tap,        // 单击（键盘端普通按键）
     Hold,       // 长按（有持续时长）
-    Drag,       // 滑动（从一个轨道到另一个轨道）
     Circle,     // 鼠标端圆圈（点击即可）
     Slider      // 鼠标端滑条（沿路径跟踪）
 };
@@ -49,8 +48,7 @@ struct KeyboardNote
     int        time        = 0;              // 判定时间（毫秒）
     int        lane        = 0;              // 轨道索引（0~3）
     NoteType   type        = NoteType::Tap;  // 音符类型
-    int        duration    = 0;              // Hold/Drag 持续时长（毫秒），Tap=0
-    int        dragToLane  = -1;             // Drag 目标轨道，-1=不适用
+    int        duration    = 0;              // Hold 持续时长（毫秒），Tap=0
 
     // 运行时状态（不参与序列化）
     bool       isJudged    = false;

@@ -148,8 +148,8 @@ resources/charts/{chart_id}/
         {
             "time": 3000,
             "lane": 2,
-            "type": "drag",
-            "drag_to_lane": 3
+            "type": "hold",
+            "duration": 600
         }
     ],
     
@@ -202,9 +202,8 @@ resources/charts/{chart_id}/
 |------|------|------|------|
 | `time` | int | 是 | 触发时间（毫秒） |
 | `lane` | int | 是 | 轨道编号（0-3，对应 A/S/D/F） |
-| `type` | string | 是 | 音符类型：`"tap"` / `"hold"` / `"drag"` |
+| `type` | string | 是 | 音符类型：`"tap"` / `"hold"` |
 | `duration` | int | Hold 专用 | Hold 音符持续时间（毫秒） |
-| `drag_to_lane` | int | Drag 专用 | Drag 音符目标轨道 |
 
 ### mouse_notes — 鼠标端音符
 

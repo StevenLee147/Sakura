@@ -419,7 +419,6 @@ void AudioManager::PlayHitsoundForNote(sakura::game::NoteType noteType)
     switch (noteType)
     {
         case sakura::game::NoteType::Hold:   ht = HitsoundType::HoldStart;   break;
-        case sakura::game::NoteType::Drag:   ht = HitsoundType::Tap;          break;
         case sakura::game::NoteType::Circle: ht = HitsoundType::Circle;       break;
         case sakura::game::NoteType::Slider: ht = HitsoundType::SliderStart;  break;
         default:                             ht = HitsoundType::Tap;          break;

@@ -21,7 +21,7 @@ namespace sakura::scene
 {
 
 // SceneEditor — 编辑器场景
-// 快捷键：空格=播放/暂停, 1-5=音符工具, Delete=删除选中, Ctrl+S=保存, ESC=退出
+// 快捷键：空格=播放/暂停, 1-4=音符工具, Delete=删除选中, Ctrl+S=保存, ESC=退出
 class SceneEditor final : public Scene
 {
 public:
@@ -53,8 +53,8 @@ private:
     sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
 
     // ── 工具栏 UI ─────────────────────────────────────────────────────────────
-    // 音符工具按钮（1-5）：Tap/Hold/Drag/Circle/Slider
-    static constexpr int TOOL_COUNT = 5;
+    // 音符工具按钮（1-4）：Tap/Hold/Circle/Slider
+    static constexpr int TOOL_COUNT = 4;
     std::array<std::unique_ptr<sakura::ui::Button>, TOOL_COUNT> m_toolBtns;
 
     // 播放/暂停按钮

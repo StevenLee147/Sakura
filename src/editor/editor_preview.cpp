@@ -266,8 +266,6 @@ void EditorPreview::DrawNotes(sakura::core::Renderer& renderer)
         sakura::core::Color noteColor{ 80, 130, 255, 220 };
         if (pn.note.type == sakura::game::NoteType::Hold)
             noteColor = { 80, 220, 120, 220 };
-        else if (pn.note.type == sakura::game::NoteType::Drag)
-            noteColor = { 255, 170, 60, 220 };
 
         if (pn.hit)
         {
@@ -294,20 +292,6 @@ void EditorPreview::DrawNotes(sakura::core::Renderer& renderer)
                                    LANE_W * 0.90f, NOTE_H * 2.0f },
             noteColor);
 
-        // Drag 箭头
-        if (pn.note.type == sakura::game::NoteType::Drag
-            && pn.note.dragToLane >= 0 && pn.note.dragToLane != pn.note.lane)
-        {
-            float xSrc = x + LANE_W * 0.5f;
-            float xDst = LaneToX(pn.note.dragToLane) + LANE_W * 0.5f;
-            renderer.DrawLine(xSrc, y, xDst, y,
-                sakura::core::Color{ 255, 200, 80, 200 }, 0.002f);
-            float dir = (xDst > xSrc) ? 1.0f : -1.0f;
-            renderer.DrawLine(xDst, y, xDst - dir * 0.01f, y - 0.007f,
-                sakura::core::Color{ 255, 200, 80, 200 }, 0.002f);
-            renderer.DrawLine(xDst, y, xDst - dir * 0.01f, y + 0.007f,
-                sakura::core::Color{ 255, 200, 80, 200 }, 0.002f);
-        }
     }
 }
 

@@ -224,9 +224,8 @@ namespace sakura::game
     {
         int time;            // 触发时间 (ms)
         int lane;            // 轨道 (0-3)
-        NoteType type;       // Tap/Hold/Drag
+        NoteType type;       // Tap/Hold
         int duration = 0;    // Hold 持续时间
-        int dragToLane = -1; // Drag 目标轨道
 
         // 运行时状态
         bool isJudged = false;
