@@ -69,9 +69,9 @@ std::vector<TutorialLesson> BuildTutorialLessons()
         false,
         true,
         {
-            { NoteType::Slider, 1400, 0, -1, 1800, 0.18f, 0.24f,
+            { NoteType::Slider, 1400, 0, 1800, 0.18f, 0.24f,
                 { { 0.40f, 0.30f }, { 0.68f, 0.48f }, { 0.80f, 0.72f } } },
-            { NoteType::Slider, 4700, 0, -1, 1700, 0.78f, 0.26f,
+            { NoteType::Slider, 4700, 0, 1700, 0.78f, 0.26f,
                 { { 0.64f, 0.40f }, { 0.40f, 0.60f }, { 0.22f, 0.78f } } },
         }
     });

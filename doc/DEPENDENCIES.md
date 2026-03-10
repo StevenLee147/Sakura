@@ -101,3 +101,4 @@ cmake --build --preset debug
 2. **GPU API Shader**：SDL3 GPU API 使用平台无关的 Shader 格式，通过 `SDL_CreateGPUShader` 加载。开发时可用 HLSL/GLSL 编写，通过 SDL 工具编译。
 3. **SQLite3**：vcpkg 中的包名为 `sqlite3`，CMake target 为 `unofficial::sqlite3::sqlite3`。
 4. **spdlog**：默认 header-only 模式。如需编译模式，在 vcpkg triplet 中配置。
+5. **Linux / 沙箱测试构建**：当 `nlohmann_json` 或 `sqlite3` 的 vcpkg CMake config 不可用时，项目会回退到头文件/系统库查找；若 `spdlog` 缺失，则仅对无 UI 的测试路径启用 no-op logger 以避免配置阶段被阻塞。

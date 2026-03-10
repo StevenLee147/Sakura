@@ -1,17 +1,22 @@
 #include "logger.h"
 
+#if SAKURA_HAS_SPDLOG
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/sink.h>
+#endif
 #include <filesystem>
 
 namespace sakura::utils
 {
 
+#if SAKURA_HAS_SPDLOG
 std::shared_ptr<spdlog::logger> Logger::s_logger;
+#endif
 
 void Logger::Init(const std::string& logFilePath)
 {
+#if SAKURA_HAS_SPDLOG
     // 确保日志目录存在
     std::filesystem::path logPath(logFilePath);
     if (logPath.has_parent_path())
@@ -44,11 +49,21 @@ void Logger::Init(const std::string& logFilePath)
     spdlog::set_default_logger(s_logger);
 
     LOG_INFO("Logger initialized. Log file: {}", logFilePath);
+#else
+    std::filesystem::path logPath(logFilePath);
+    if (logPath.has_parent_path())
+    {
+        std::filesystem::create_directories(logPath.parent_path());
+    }
+    (void)logFilePath;
+#endif
 }
 
 void Logger::Shutdown()
 {
+#if SAKURA_HAS_SPDLOG
     spdlog::shutdown();
+#endif
 }
 
 } // namespace sakura::utils
