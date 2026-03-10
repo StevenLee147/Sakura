@@ -27,6 +27,20 @@ namespace sakura::scene
 namespace
 {
 
+// 将判定结果映射为点击选 note 时的优先级：值越小表示时间判定越好。
+int JudgePriority(sakura::game::JudgeResult result)
+{
+    switch (result)
+    {
+    case sakura::game::JudgeResult::Perfect: return 0;
+    case sakura::game::JudgeResult::Great:   return 1;
+    case sakura::game::JudgeResult::Good:    return 2;
+    case sakura::game::JudgeResult::Bad:     return 3;
+    case sakura::game::JudgeResult::Miss:    return 4;
+    default:                                  return 5;
+    }
+}
+
 std::vector<int> BuildDragPathLanes(int startLane, int endLane)
 {
     std::vector<int> lanes;
@@ -362,28 +376,39 @@ void SceneGame::HandleMouseClick(float normX, float normY)
 
     // 优先选取空间距离最近且在时间窗口内的未判定音符
     // （鼠标区音符分布在二维空间，空间优先比时间优先更准确）
-    int   bestIdx   = -1;
-    float bestDist  = FLT_MAX;
-    int   bestTDist = INT_MAX;
+    int   bestIdx      = -1;
+    int   bestPriority = INT_MAX;
+    float bestDist     = FLT_MAX;
+    int   bestTDist    = INT_MAX;
     for (auto& n : activeMs)
     {
         if (n.isJudged) continue;
-        // 排除时间上完全超前（还未进入判定窗口）的音符
+        // 排除时间上完全超前（还未进入判定窗口）或已经彻底过期的音符，
+        // 避免点击被尚未可打/已经 Miss 的鼠标音符抢走。
         int timeDiff = now - n.time;
-        if (timeDiff < -m_judge.GetWindows().miss) continue;
+        if (timeDiff < -m_judge.GetWindows().miss ||
+            timeDiff > m_judge.GetWindows().miss) continue;
 
         float dx = mouseX - n.x;
         float dy = mouseY - n.y;
         float dist = std::sqrt(dx * dx + dy * dy);
-        int   absT = std::abs(timeDiff);
+        float tolerance = sakura::game::Judge::GetMouseHitTolerance(n);
+        if (dist > tolerance) continue;
 
-        // 空间最近优先，距离相同时取时间差最小的
-        if (dist < bestDist - 1e-4f ||
-            (dist < bestDist + 1e-4f && absT < bestTDist))
+        int   absT = std::abs(timeDiff);
+        int   priority = JudgePriority(m_judge.GetResultByTimeDiff(absT));
+
+        // 仅在点击真正落入音符头部范围后再比较优先级：
+        // 先取时间判定更好的目标，再用空间距离/时间差打破平局。
+        if (priority < bestPriority ||
+            (priority == bestPriority &&
+             (dist < bestDist - 1e-4f ||
+              (dist < bestDist + 1e-4f && absT < bestTDist))))
         {
-            bestDist  = dist;
-            bestTDist = absT;
-            bestIdx = static_cast<int>(&n - msNotes.data());
+            bestPriority = priority;
+            bestDist     = dist;
+            bestTDist    = absT;
+            bestIdx      = static_cast<int>(&n - msNotes.data());
         }
     }
     if (bestIdx < 0) return;
