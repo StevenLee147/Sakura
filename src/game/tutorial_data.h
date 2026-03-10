@@ -12,7 +12,6 @@ enum class TutorialLessonType
 {
     KeyboardTap,
     KeyboardHold,
-    KeyboardDrag,
     MouseCircle,
     MouseSlide,
     Mixed,
@@ -23,7 +22,6 @@ struct TutorialLessonNote
     NoteType type       = NoteType::Tap;
     int      timeMs     = 0;
     int      lane       = 0;
-    int      targetLane = -1;
     int      durationMs = 0;
     float    x          = 0.5f;
     float    y          = 0.5f;
