@@ -16,7 +16,6 @@ std::shared_ptr<spdlog::logger> Logger::s_logger;
 
 void Logger::Init(const std::string& logFilePath)
 {
-#if SAKURA_HAS_SPDLOG
     // 确保日志目录存在
     std::filesystem::path logPath(logFilePath);
     if (logPath.has_parent_path())
@@ -24,6 +23,7 @@ void Logger::Init(const std::string& logFilePath)
         std::filesystem::create_directories(logPath.parent_path());
     }
 
+#if SAKURA_HAS_SPDLOG
     std::vector<spdlog::sink_ptr> sinks;
 
     // 彩色控制台输出 sink
@@ -49,13 +49,6 @@ void Logger::Init(const std::string& logFilePath)
     spdlog::set_default_logger(s_logger);
 
     LOG_INFO("Logger initialized. Log file: {}", logFilePath);
-#else
-    std::filesystem::path logPath(logFilePath);
-    if (logPath.has_parent_path())
-    {
-        std::filesystem::create_directories(logPath.parent_path());
-    }
-    (void)logFilePath;
 #endif
 }
 

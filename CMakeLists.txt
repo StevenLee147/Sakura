@@ -58,11 +58,14 @@ enable_testing()
 # ============================================================================
 # vcpkg 依赖查找
 # ============================================================================
-function(sakura_find_nlohmann_json)
-    if(TARGET nlohmann_json::nlohmann_json)
-        return()
-    endif()
+# Linux 沙箱中的 Conda 通常安装在 /usr/share/miniconda，加入提示路径可避免仅因缺少
+# CMAKE_PREFIX_PATH 而找不到 header-only 依赖。
+set(SAKURA_PACKAGE_HINTS
+    "$ENV{CONDA_PREFIX}"
+    "/usr/share/miniconda"
+)
 
+function(sakura_find_nlohmann_json)
     find_package(nlohmann_json CONFIG QUIET)
     if(TARGET nlohmann_json::nlohmann_json)
         return()
@@ -70,9 +73,7 @@ function(sakura_find_nlohmann_json)
 
     find_path(SAKURA_NLOHMANN_JSON_INCLUDE_DIR
         NAMES nlohmann/json.hpp
-        HINTS
-            "$ENV{CONDA_PREFIX}"
-            "/usr/share/miniconda"
+        HINTS ${SAKURA_PACKAGE_HINTS}
         PATH_SUFFIXES include
     )
 
@@ -92,16 +93,12 @@ function(sakura_find_nlohmann_json)
 endfunction()
 
 function(sakura_find_sqlite3)
-    if(TARGET unofficial::sqlite3::sqlite3)
-        return()
-    endif()
-
     find_package(unofficial-sqlite3 CONFIG QUIET)
     if(TARGET unofficial::sqlite3::sqlite3)
         return()
     endif()
 
-    find_package(SQLite3 REQUIRED)
+    find_package(SQLite3 QUIET)
     if(TARGET SQLite::SQLite3)
         add_library(unofficial::sqlite3::sqlite3 INTERFACE IMPORTED)
         set_target_properties(unofficial::sqlite3::sqlite3 PROPERTIES
@@ -117,11 +114,6 @@ function(sakura_find_sqlite3)
 endfunction()
 
 function(sakura_find_spdlog)
-    if(TARGET spdlog::spdlog)
-        set(SAKURA_HAS_SPDLOG ON PARENT_SCOPE)
-        return()
-    endif()
-
     find_package(spdlog CONFIG QUIET)
     if(TARGET spdlog::spdlog)
         set(SAKURA_HAS_SPDLOG ON PARENT_SCOPE)
@@ -130,9 +122,7 @@ function(sakura_find_spdlog)
 
     find_path(SAKURA_SPDLOG_INCLUDE_DIR
         NAMES spdlog/spdlog.h
-        HINTS
-            "$ENV{CONDA_PREFIX}"
-            "/usr/share/miniconda"
+        HINTS ${SAKURA_PACKAGE_HINTS}
         PATH_SUFFIXES include
     )
 
