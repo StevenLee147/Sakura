@@ -40,10 +40,11 @@ private:
     struct RuntimeNote
     {
         sakura::game::TutorialLessonNote note;
-        bool started   = false;
+        bool started = false;
         bool completed = false;
         std::vector<int> dragPathLanes;
         int dragNextLaneIndex = 1;
+        int sliderNextWaypointIndex = 0;
     };
 
     SceneManager& m_manager;

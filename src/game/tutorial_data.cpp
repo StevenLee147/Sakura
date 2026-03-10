@@ -6,7 +6,7 @@ namespace sakura::game
 std::vector<TutorialLesson> BuildTutorialLessons()
 {
     std::vector<TutorialLesson> lessons;
-    lessons.reserve(5);
+    lessons.reserve(6);
 
     lessons.push_back(TutorialLesson{
         TutorialLessonType::KeyboardTap,
@@ -75,10 +75,27 @@ std::vector<TutorialLesson> BuildTutorialLessons()
     });
 
     lessons.push_back(TutorialLesson{
+        TutorialLessonType::MouseSlide,
+        "第 5 课 - 鼠标 Slide",
+        "先在起点按下鼠标左键，再按住不放，沿着路径依次滑过每个发光节点。",
+        "很好，鼠标 Slide 的按住与跟踪也掌握了。",
+        200,
+        0.1f,
+        false,
+        true,
+        {
+            { NoteType::Slider, 1400, 0, -1, 1800, 0.18f, 0.24f,
+                { { 0.40f, 0.30f }, { 0.68f, 0.48f }, { 0.80f, 0.72f } } },
+            { NoteType::Slider, 4700, 0, -1, 1700, 0.78f, 0.26f,
+                { { 0.64f, 0.40f }, { 0.40f, 0.60f }, { 0.22f, 0.78f } } },
+        }
+    });
+
+    lessons.push_back(TutorialLesson{
         TutorialLessonType::Mixed,
-        "第 5 课 - 综合配合",
+        "第 6 课 - 综合配合",
         "左侧 Tap 与右侧 Circle 交替出现，照着节奏切换注意力即可。",
-        "恭喜，五课全部完成。已经可以开始正式游玩了。",
+        "恭喜，六课全部完成。已经可以开始正式游玩了。",
         200,
         0.1f,
         true,
