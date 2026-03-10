@@ -201,7 +201,7 @@ bool EditorTimeline::HandleEvent(const SDL_Event& event)
             }
             else
             {
-                // Tap/Drag/Circle/Slider：单击放置或选中
+                // Tap/Circle/Slider：单击放置或选中
                 int found = m_core.FindKeyboardNote(snapTime, lane);
                 if (found >= 0)
                 {

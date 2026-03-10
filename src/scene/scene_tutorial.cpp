@@ -644,7 +644,7 @@ void SceneTutorial::RenderPrompt(sakura::core::Renderer& renderer)
         sakura::core::TextAlign::Center);
 
     renderer.DrawText(m_fontText,
-        "教程共 4 课，会依次说明 Tap / Hold / Circle / 综合配合。",
+        "教程共 4 课，会依次说明 Tap、Hold、Circle 音符，以及综合配合。",
         0.50f, 0.45f, 0.022f,
         { 220, 215, 230, 220 },
         sakura::core::TextAlign::Center);
