@@ -136,7 +136,9 @@ function(sakura_find_spdlog)
         return()
     endif()
 
-    message(WARNING "spdlog not found; building with the no-op logger fallback.")
+    message(WARNING
+        "spdlog not found; using the expected no-op logger fallback for test/sandbox builds."
+    )
     set(SAKURA_HAS_SPDLOG OFF PARENT_SCOPE)
 endfunction()
 

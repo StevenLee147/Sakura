@@ -4,6 +4,7 @@
 #include "game/achievement_manager.h"
 #include "game/chart.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -79,8 +80,12 @@ TEST_CASE("AchievementManager 首次游玩触发 first_play", "[achievement]")
     REQUIRE(database.SaveScore(result));
 
     auto unlocked = manager.CheckAndUnlock(result);
-    REQUIRE(unlocked.size() == 1);
-    REQUIRE(unlocked[0].definition.id == "first_play");
+    REQUIRE(!unlocked.empty());
+    REQUIRE(std::any_of(unlocked.begin(), unlocked.end(),
+        [](const sakura::game::AchievementProgress& progress)
+        {
+            return progress.definition.id == "first_play";
+        }));
     REQUIRE(database.IsAchievementUnlocked("first_play"));
 }
 

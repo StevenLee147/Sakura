@@ -20,7 +20,7 @@
             "name": "Normal",
             "level": 5,
             "chart_file": "normal.json",
-            "note_count": 15,
+            "note_count": 13,
             "hold_count": 2,
             "mouse_note_count": 3
         }
