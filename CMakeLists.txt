@@ -58,9 +58,93 @@ enable_testing()
 # ============================================================================
 # vcpkg 依赖查找
 # ============================================================================
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
+# Linux 沙箱中的 Conda 通常安装在 /usr/share/miniconda，加入提示路径可避免仅因缺少
+# CMAKE_PREFIX_PATH 而找不到 header-only 依赖。
+set(SAKURA_PACKAGE_HINTS
+    "$ENV{CONDA_PREFIX}"
+    "/usr/share/miniconda"
+)
+
+function(sakura_find_nlohmann_json)
+    find_package(nlohmann_json CONFIG QUIET)
+    if(TARGET nlohmann_json::nlohmann_json)
+        return()
+    endif()
+
+    find_path(SAKURA_NLOHMANN_JSON_INCLUDE_DIR
+        NAMES nlohmann/json.hpp
+        HINTS ${SAKURA_PACKAGE_HINTS}
+        PATH_SUFFIXES include
+    )
+
+    if(SAKURA_NLOHMANN_JSON_INCLUDE_DIR)
+        add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
+        set_target_properties(nlohmann_json::nlohmann_json PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${SAKURA_NLOHMANN_JSON_INCLUDE_DIR}"
+        )
+        message(STATUS "Using header-only nlohmann_json from ${SAKURA_NLOHMANN_JSON_INCLUDE_DIR}")
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "Could not find nlohmann_json via CMake package config or header lookup. "
+        "Install the dependency with vcpkg, set nlohmann_json_DIR, or provide a prefix/include path."
+    )
+endfunction()
+
+function(sakura_find_sqlite3)
+    find_package(unofficial-sqlite3 CONFIG QUIET)
+    if(TARGET unofficial::sqlite3::sqlite3)
+        return()
+    endif()
+
+    find_package(SQLite3 QUIET)
+    if(TARGET SQLite::SQLite3)
+        add_library(unofficial::sqlite3::sqlite3 INTERFACE IMPORTED)
+        set_target_properties(unofficial::sqlite3::sqlite3 PROPERTIES
+            INTERFACE_LINK_LIBRARIES SQLite::SQLite3
+        )
+        message(STATUS "Using system SQLite3 target ${SQLite3_VERSION}")
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "Could not find SQLite3 via vcpkg config or CMake's built-in FindSQLite3 module."
+    )
+endfunction()
+
+function(sakura_find_spdlog)
+    find_package(spdlog CONFIG QUIET)
+    if(TARGET spdlog::spdlog)
+        set(SAKURA_HAS_SPDLOG ON PARENT_SCOPE)
+        return()
+    endif()
+
+    find_path(SAKURA_SPDLOG_INCLUDE_DIR
+        NAMES spdlog/spdlog.h
+        HINTS ${SAKURA_PACKAGE_HINTS}
+        PATH_SUFFIXES include
+    )
+
+    if(SAKURA_SPDLOG_INCLUDE_DIR)
+        add_library(spdlog::spdlog INTERFACE IMPORTED)
+        set_target_properties(spdlog::spdlog PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${SAKURA_SPDLOG_INCLUDE_DIR}"
+        )
+        message(STATUS "Using header-only spdlog from ${SAKURA_SPDLOG_INCLUDE_DIR}")
+        set(SAKURA_HAS_SPDLOG ON PARENT_SCOPE)
+        return()
+    endif()
+
+    message(WARNING
+        "spdlog not found; using the expected no-op logger fallback for test/sandbox builds."
+    )
+    set(SAKURA_HAS_SPDLOG OFF PARENT_SCOPE)
+endfunction()
+
+sakura_find_nlohmann_json()
+sakura_find_sqlite3()
+sakura_find_spdlog()
 
 if(SAKURA_BUILD_APP)
     find_package(SDL3 CONFIG REQUIRED)
@@ -106,6 +190,9 @@ if(SAKURA_BUILD_APP)
     target_include_directories(${PROJECT_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        SAKURA_HAS_SPDLOG=$<BOOL:${SAKURA_HAS_SPDLOG}>
+    )
 
     # ========================================================================
     # 链接库
@@ -116,8 +203,10 @@ if(SAKURA_BUILD_APP)
         SDL3_ttf::SDL3_ttf
         nlohmann_json::nlohmann_json
         unofficial::sqlite3::sqlite3
-        spdlog::spdlog
     )
+    if(TARGET spdlog::spdlog)
+        target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
+    endif()
 
     # ========================================================================
     # 资源文件复制
@@ -188,11 +277,16 @@ if(SAKURA_BUILD_TESTS)
     target_include_directories(sakura-game-logic PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
+    target_compile_definitions(sakura-game-logic PUBLIC
+        SAKURA_HAS_SPDLOG=$<BOOL:${SAKURA_HAS_SPDLOG}>
+    )
     target_link_libraries(sakura-game-logic PUBLIC
         nlohmann_json::nlohmann_json
         unofficial::sqlite3::sqlite3
-        spdlog::spdlog
     )
+    if(TARGET spdlog::spdlog)
+        target_link_libraries(sakura-game-logic PUBLIC spdlog::spdlog)
+    endif()
     target_compile_features(sakura-game-logic PUBLIC cxx_std_20)
 
     add_subdirectory(tests)

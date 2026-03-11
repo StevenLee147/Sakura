@@ -1,14 +1,18 @@
 #include "logger.h"
 
+#if SAKURA_HAS_SPDLOG
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/sink.h>
+#endif
 #include <filesystem>
 
 namespace sakura::utils
 {
 
+#if SAKURA_HAS_SPDLOG
 std::shared_ptr<spdlog::logger> Logger::s_logger;
+#endif
 
 void Logger::Init(const std::string& logFilePath)
 {
@@ -19,6 +23,7 @@ void Logger::Init(const std::string& logFilePath)
         std::filesystem::create_directories(logPath.parent_path());
     }
 
+#if SAKURA_HAS_SPDLOG
     std::vector<spdlog::sink_ptr> sinks;
 
     // 彩色控制台输出 sink
@@ -44,11 +49,14 @@ void Logger::Init(const std::string& logFilePath)
     spdlog::set_default_logger(s_logger);
 
     LOG_INFO("Logger initialized. Log file: {}", logFilePath);
+#endif
 }
 
 void Logger::Shutdown()
 {
+#if SAKURA_HAS_SPDLOG
     spdlog::shutdown();
+#endif
 }
 
 } // namespace sakura::utils
