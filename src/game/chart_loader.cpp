@@ -16,6 +16,11 @@ namespace sakura::game
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
+static std::string NormalizeGenericPath(const fs::path& path)
+{
+    return path.lexically_normal().generic_string();
+}
+
 // 安全获取 JSON 字段，缺失时使用默认值
 template<typename T>
 static T SafeGet(const json& j, const std::string& key, T defaultVal)
@@ -140,7 +145,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
     }
 
     // 填充文件夹路径
-    info.folderPath = fs::path(infoJsonPath).parent_path().string();
+    info.folderPath = NormalizeGenericPath(fs::path(infoJsonPath).parent_path());
 
     LOG_INFO("加载谱面信息成功: {} ({}) [{}难度]",
              info.title, info.id, info.difficulties.size());
