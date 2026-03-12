@@ -16,7 +16,7 @@ namespace sakura::game
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
-static std::string NormalizeGenericPath(const fs::path& path)
+static std::string ToGenericString(const fs::path& path)
 {
     return path.lexically_normal().generic_string();
 }
@@ -145,7 +145,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
     }
 
     // 填充文件夹路径
-    info.folderPath = NormalizeGenericPath(fs::path(infoJsonPath).parent_path());
+    info.folderPath = ToGenericString(fs::path(infoJsonPath).parent_path());
 
     LOG_INFO("加载谱面信息成功: {} ({}) [{}难度]",
              info.title, info.id, info.difficulties.size());
