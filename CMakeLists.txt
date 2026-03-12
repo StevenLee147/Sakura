@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 0.5.1
+    VERSION 0.5.2
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
