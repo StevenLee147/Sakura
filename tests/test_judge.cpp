@@ -131,12 +131,43 @@ TEST_CASE("JudgeMouseNote 对 Slider 头部使用更宽容的点击范围", "[ju
     slider.type = NoteType::Slider;
 
     REQUIRE(Judge::GetMouseHitTolerance(slider) >= Judge::GetMouseHitTolerance(circle));
+    REQUIRE(Judge::GetMouseHitTolerance(slider) == 0.10f);
 
-    const float hitX = slider.x + 0.07f;
+    // 取接近 0.10f Slider 容差边界的点，验证正式游戏已与教程的 Slide 手感对齐。
+    const float hitX = slider.x + 0.095f;
     const float hitY = slider.y;
 
     REQUIRE(judge.JudgeMouseNote(circle, 1000, hitX, hitY) == JudgeResult::None);
     REQUIRE(judge.JudgeMouseNote(slider, 1000, hitX, hitY) == JudgeResult::Perfect);
+}
+
+TEST_CASE("UpdateSliderTracking 使用与教程一致的路径容差", "[judge][slider]")
+{
+    Judge judge;
+
+    MouseNote slider;
+    slider.time           = 1000;
+    slider.type           = NoteType::Slider;
+    slider.sliderDuration = 300;
+    slider.sliderPath     = { { 0.60f, 0.50f } };
+
+    SliderState state;
+    state.headJudged = true;
+
+    REQUIRE(judge.UpdateSliderTracking(state, slider, 1300, 0.695f, 0.50f, true)
+            == JudgeResult::Perfect);
+    REQUIRE(state.nextWaypointIndex == 1);
+    REQUIRE(state.finalized == true);
+    REQUIRE(state.isMissed == false);
+
+    SliderState missState;
+    missState.headJudged = true;
+
+    REQUIRE(judge.UpdateSliderTracking(missState, slider, 1381, 0.705f, 0.50f, true)
+            == JudgeResult::Miss);
+    REQUIRE(missState.nextWaypointIndex == 1);
+    REQUIRE(missState.finalized == true);
+    REQUIRE(missState.isMissed == true);
 }
 
 TEST_CASE("UpdateSliderTracking 允许在拐点后短时间内修正轨迹", "[judge][slider]")

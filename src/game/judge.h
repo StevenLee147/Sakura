@@ -49,7 +49,8 @@ struct SliderState
     bool  isMissed           = false; // 已进入 miss 状态，后续拐点全判 Miss
     bool  finalized          = false; // 所有拐点判定完毕，可从活跃列表移除
     int   lastDownTimeMs     = -1;    // 最近一次检测到鼠标按住的时刻
-    static constexpr float PATH_TOLERANCE = 0.08f;  // 拐点命中容差（归一化）
+    // 与教程关卡的 Slide 容差对齐，避免正式游戏中 Slider 头部/路径过于苛刻
+    static constexpr float PATH_TOLERANCE = 0.10f;  // 拐点命中容差（归一化）
     // Slider 容错略大于 Hold：鼠标路径跟踪对瞬时抖动更敏感，给 35ms 抗短断触
     static constexpr int INPUT_GAP_TOLERANCE_MS = 35;
 };
