@@ -266,6 +266,7 @@ if(SAKURA_BUILD_TESTS)
     add_library(sakura-game-logic STATIC
         src/core/config.cpp
         src/data/database.cpp
+        src/game/approach_visuals.cpp
         src/game/achievement_manager.cpp
         src/game/chart_loader.cpp
         src/game/pp_calculator.cpp

@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.25)
 add_executable(SakuraTests
     test_main.cpp
     test_achievement_manager.cpp
+    test_approach_visuals.cpp
     test_chart_loader_builtin.cpp
     test_frame_input_buffer.cpp
     test_pp_calculator.cpp

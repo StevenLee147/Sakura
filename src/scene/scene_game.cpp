@@ -7,6 +7,7 @@
 #include "core/input.h"
 #include "core/config.h"
 #include "audio/audio_visualizer.h"
+#include "game/approach_visuals.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "audio/audio_manager.h"
@@ -39,6 +40,11 @@ int JudgePriority(sakura::game::JudgeResult result)
     case sakura::game::JudgeResult::Miss:    return 4;
     default:                                  return 5;
     }
+}
+
+sakura::core::Color ToCoreColor(const sakura::game::GuidanceColor& color)
+{
+    return { color.r, color.g, color.b, color.a };
 }
 }
 // ── 构造 ──────────────────────────────────────────────────────────────────────
@@ -865,6 +871,44 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
     int now = m_gameState.GetCurrentTime();
     auto activeNotes = m_gameState.GetActiveMouseNotes();
 
+    auto drawGradientApproachRing = [&](float sx,
+                                        float sy,
+                                        float radius,
+                                        float thickness,
+                                        const sakura::core::Color& noteColor,
+                                        const sakura::game::GuidanceColor& startAccent,
+                                        const sakura::game::GuidanceColor& endAccent,
+                                        uint8_t ringAlpha,
+                                        int noteTimeMs)
+    {
+        auto gradient = sakura::game::BuildApproachGradient(
+            noteTimeMs,
+            now,
+            static_cast<int>(BASE_APPROACH_RANGE),
+            { noteColor.r, noteColor.g, noteColor.b, ringAlpha },
+            startAccent,
+            endAccent);
+
+        constexpr int kRingSegments = 56;
+        for (int seg = 0; seg < kRingSegments; ++seg)
+        {
+            float t0 = static_cast<float>(seg) / static_cast<float>(kRingSegments);
+            float t1 = static_cast<float>(seg + 1) / static_cast<float>(kRingSegments);
+            float midT = (t0 + t1) * 0.5f;
+            auto segColor = ToCoreColor(
+                sakura::game::LerpGuidanceColor(gradient.startColor, gradient.endColor, midT));
+            renderer.DrawArc(
+                sx,
+                sy,
+                radius,
+                -90.0f + t0 * 360.0f,
+                -90.0f + t1 * 360.0f,
+                segColor,
+                thickness,
+                2);
+        }
+    };
+
     for (const auto& note : activeNotes)
     {
         if (note.isJudged && note.alpha <= 0.01f) continue;
@@ -879,13 +923,20 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             // 将鼠标区局部坐标转换为屏幕坐标
             float sx = MOUSE_X + note.x * MOUSE_W;
             float sy = MOUSE_Y + note.y * MOUSE_H;
+            const sakura::core::Color noteColor{ 200, 150, 255, alpha };
             // 接近圈（外圈从大到小）
-            renderer.DrawCircleOutline(sx, sy, 0.028f * scale,
-                sakura::core::Color{ 220, 170, 255, static_cast<uint8_t>(alpha * 0.7f) },
-                0.002f, 48);
+            drawGradientApproachRing(
+                sx,
+                sy,
+                0.028f * scale,
+                0.0024f,
+                noteColor,
+                { 90, 225, 255, static_cast<uint8_t>(alpha * 0.78f) },
+                { 255, 200, 120, static_cast<uint8_t>(alpha * 0.78f) },
+                static_cast<uint8_t>(alpha * 0.78f),
+                note.time);
             // 核心圆
-            renderer.DrawCircleFilled(sx, sy, 0.025f,
-                sakura::core::Color{ 200, 150, 255, alpha });
+            renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
             // 边缘
             renderer.DrawCircleOutline(sx, sy, 0.025f,
                 sakura::core::Color{ 255, 220, 255, alpha }, 0.002f, 48);
@@ -953,12 +1004,20 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             if (!isActive)
             {
                 // 未激活：绘制接近圈（由大缩小）和起点核心圆
-                renderer.DrawCircleOutline(sx, sy, 0.030f * scale,
-                    sakura::core::Color{ 180, 255, 200,
-                        static_cast<uint8_t>(alpha * 0.6f) },
-                    0.002f, 48);
-                renderer.DrawCircleFilled(sx, sy, 0.025f,
-                    sakura::core::Color{ 100, 220, 140, alpha });
+                const sakura::core::Color noteColor{ 100, 220, 140, alpha };
+                drawGradientApproachRing(
+                    sx,
+                    sy,
+                    0.030f * scale,
+                    0.0024f,
+                    noteColor,
+                    { 255, 215, 120, static_cast<uint8_t>(alpha * 0.72f) },
+                    { 110, 245, 225, static_cast<uint8_t>(alpha * 0.72f) },
+                    static_cast<uint8_t>(alpha * 0.72f),
+                    note.time);
+                renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
+                renderer.DrawCircleOutline(sx, sy, 0.025f,
+                    sakura::core::Color{ 220, 255, 235, alpha }, 0.002f, 48);
             }
             else
             {
