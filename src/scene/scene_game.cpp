@@ -431,6 +431,16 @@ void SceneGame::OnUpdate(float dt)
 
     int now = m_gameState.GetCurrentTime();
 
+    // 按帧消费输入缓冲，避免同帧多个键鼠按下互相覆盖。
+    for (const auto& keyPress : sakura::core::Input::GetKeyPressEvents())
+        HandleKeyPress(static_cast<SDL_Scancode>(keyPress.scancode));
+
+    for (const auto& mousePress : sakura::core::Input::GetMouseButtonPressEvents())
+    {
+        if (mousePress.button == SDL_BUTTON_LEFT)
+            HandleMouseClick(mousePress.normX, mousePress.normY);
+    }
+
     // ── 自动 Miss 检测 ─────────────────────────────────────────────────────────
     {
         int misses = m_judge.CheckMisses(
@@ -623,14 +633,10 @@ void SceneGame::OnEvent(const SDL_Event& event)
                 TransitionType::Fade, 0.3f);
             return;
         }
-        // 游戏按键判定
-        HandleKeyPress(event.key.scancode);
         break;
 
     case SDL_EVENT_KEY_UP:
     {
-        int now = m_gameState.GetCurrentTime();
-
         // 检测 Hold 松开 → 记录松开时刻
         for (auto& hs : m_holdStates)
         {
@@ -649,15 +655,6 @@ void SceneGame::OnEvent(const SDL_Event& event)
 
         break;
     }
-
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if (event.button.button == SDL_BUTTON_LEFT)
-        {
-            auto [mx, my] = sakura::core::Input::GetMousePosition();
-            HandleMouseClick(mx, my);
-        }
-        break;
-
     default:
         break;
     }

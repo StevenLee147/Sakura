@@ -21,6 +21,7 @@ int          Input::s_screenHeight  = 1080;
 float        Input::s_wheelDelta    = 0.0f;
 SDL_Scancode Input::s_lastPressedKey = SDL_SCANCODE_UNKNOWN;
 std::string  Input::s_textInput;
+FrameInputBuffer Input::s_frameInputBuffer;
 bool         Input::s_debugLog      = false;
 
 // ── 事件处理 ──────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ void Input::ProcessEvent(const SDL_Event& event)
             {
                 s_currKeys[code]  = true;
                 s_lastPressedKey  = code;
+                s_frameInputBuffer.PushKeyPress(static_cast<int>(code));
 
                 if (s_debugLog)
                 {
@@ -74,15 +76,25 @@ void Input::ProcessEvent(const SDL_Event& event)
             // 使用按键事件本身携带的坐标，避免依赖可能陈旧的 MOTION 事件位置
             s_mousePixelX = event.button.x;
             s_mousePixelY = event.button.y;
+            const float normX = (s_screenWidth > 0)
+                ? s_mousePixelX / static_cast<float>(s_screenWidth)
+                : 0.0f;
+            const float normY = (s_screenHeight > 0)
+                ? s_mousePixelY / static_cast<float>(s_screenHeight)
+                : 0.0f;
+            s_frameInputBuffer.PushMouseButtonPress(
+                btn,
+                normX,
+                normY,
+                s_mousePixelX,
+                s_mousePixelY);
 
             if (s_debugLog)
             {
-                const float nx = (s_screenWidth  > 0) ? s_mousePixelX / static_cast<float>(s_screenWidth)  : 0.0f;
-                const float ny = (s_screenHeight > 0) ? s_mousePixelY / static_cast<float>(s_screenHeight) : 0.0f;
                 LOG_DEBUG("[Input] 鼠标键按下: {} @ 像素({},{}) 归一化({:.3f},{:.3f})",
                     btn,
                     static_cast<int>(s_mousePixelX), static_cast<int>(s_mousePixelY),
-                    nx, ny);
+                    normX, normY);
             }
             break;
         }
@@ -145,6 +157,7 @@ void Input::Update()
     s_wheelDelta     = 0.0f;
     s_lastPressedKey = SDL_SCANCODE_UNKNOWN;
     s_textInput.clear();
+    s_frameInputBuffer.Clear();
 }
 
 // ── 屏幕尺寸 ──────────────────────────────────────────────────────────────────

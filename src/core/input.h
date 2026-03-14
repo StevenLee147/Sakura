@@ -1,6 +1,9 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include "frame_input_buffer.h"
+
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -68,6 +71,12 @@ public:
     // 本帧最后一次按下的键（无则 SDL_SCANCODE_UNKNOWN）
     static SDL_Scancode GetLastPressedKey()           { return s_lastPressedKey; }
 
+    // 本帧收到的全部非 repeat 键盘按下事件（按到达顺序保留）
+    static std::span<const KeyPressFrameEvent> GetKeyPressEvents()
+    {
+        return s_frameInputBuffer.GetKeyPresses();
+    }
+
     // SDL 键名（英文）— 用于调试输出 / 按键绑定 UI
     static const char*  GetKeyName(SDL_Scancode code) { return SDL_GetScancodeName(code); }
 
@@ -79,6 +88,12 @@ public:
 
     // 任意鼠标键本帧刚按下
     static bool IsAnyMouseButtonPressed();
+
+    // 本帧收到的全部鼠标按下事件（按到达顺序保留）
+    static std::span<const MouseButtonFrameEvent> GetMouseButtonPressEvents()
+    {
+        return s_frameInputBuffer.GetMouseButtonPresses();
+    }
 
     // ── 鼠标位置与增量 ────────────────────────────────────────────────────────
 
@@ -139,6 +154,9 @@ private:
 
     // 文字输入缓冲（每帧清空）
     static std::string  s_textInput;
+
+    // 同帧按下事件缓冲，避免多个键鼠输入互相覆盖
+    static FrameInputBuffer s_frameInputBuffer;
 
     // 调试日志开关
     static bool         s_debugLog;
