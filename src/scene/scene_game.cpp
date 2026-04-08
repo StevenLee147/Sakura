@@ -426,6 +426,7 @@ void SceneGame::OnUpdate(float dt)
             m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
                 ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f
         );
+        result.difficultyIndex = m_difficultyIndex;
         result.playTimeSeconds = std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0);
         m_manager.SwitchScene(
             std::make_unique<SceneResult>(m_manager, result, m_chartInfo),

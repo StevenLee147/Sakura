@@ -85,6 +85,7 @@ struct GameResult
     std::string chartTitle;         // 曲目名称（显示用）
     std::string difficulty;         // 难度名称
     float       difficultyLevel = 0.0f;
+    int         difficultyIndex = 0;    // 难度索引（用于重玩时保持难度选择）
 
     int     score       = 0;        // 最终分数（0~1,000,000+）
     float   accuracy    = 0.0f;     // 准确率（0.0~100.0%）

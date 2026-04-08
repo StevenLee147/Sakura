@@ -69,7 +69,7 @@ void SceneResult::OnEnter()
         // 重新构造同一谱面的 SceneGame（使用与本局相同的难度）
         m_manager.SwitchScene(
             std::make_unique<SceneGame>(m_manager, m_chartInfo,
-                                        0 /* difficulty index — TODO: preserve */),
+                                        m_result.difficultyIndex),
             sakura::scene::TransitionType::Fade, 0.4f);
     });
 

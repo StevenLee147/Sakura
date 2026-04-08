@@ -51,6 +51,7 @@ void SceneEditor::OnEnter()
     m_fontSmall   = rm.GetDefaultFontHandle();
 
     m_ctrlHeld    = false;
+    m_shiftHeld   = false;
 
     // 加载或新建谱面
     if (!m_initFolderPath.empty())
