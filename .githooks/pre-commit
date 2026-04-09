@@ -7,12 +7,12 @@ REPO_VENV_PY="$ROOT/.venv/Scripts/python.exe"
 REPO_VENV_PY_UNIX="$ROOT/.venv/bin/python"
 
 if [ -f "$LOCAL_SCRIPT" ]; then
-    if [ -x "$REPO_VENV_PY" ]; then
+    if [ -f "$REPO_VENV_PY" ]; then
         VERSION_HOOK_REPO_ROOT="$ROOT" "$REPO_VENV_PY" "$LOCAL_SCRIPT" pre-commit
         exit $?
     fi
 
-    if [ -x "$REPO_VENV_PY_UNIX" ]; then
+    if [ -f "$REPO_VENV_PY_UNIX" ]; then
         VERSION_HOOK_REPO_ROOT="$ROOT" "$REPO_VENV_PY_UNIX" "$LOCAL_SCRIPT" pre-commit
         exit $?
     fi

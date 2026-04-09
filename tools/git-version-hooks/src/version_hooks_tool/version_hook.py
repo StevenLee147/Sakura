@@ -18,6 +18,7 @@ DEFAULT_VERSION = "v0.1.0"
 DEFAULT_CONFIG_FILE = "VERSION_HOOKS.json"
 DEFAULT_VERSION_FILE = "VERSION.json"
 DEFAULT_TAGS = ["dev", "alpha", "beta"]
+GUI_CANCELLED = "__gui_cancelled__"
 VALID_BUMPS = {"major", "minor", "patch"}
 NO_BUMP_CHOICES = {"no-bump", "none", "skip"}
 VALID_CHOICES = VALID_BUMPS | NO_BUMP_CHOICES
@@ -236,8 +237,12 @@ def choose_bump_type_gui(current_version: str, active_tag: str) -> Optional[str]
     except ImportError:
         return None
 
-    selection = {"value": None}
-    root = tk.Tk()
+    selection = {"value": GUI_CANCELLED}
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        return None
+
     root.title("选择版本升级类型")
     root.resizable(False, False)
     root.attributes("-topmost", True)
@@ -300,9 +305,10 @@ def choose_bump_type(current_version: str, active_tag: str) -> str:
         gui_choice = choose_bump_type_gui(current_version, active_tag)
         if gui_choice in VALID_CHOICES:
             return "no-bump" if gui_choice in NO_BUMP_CHOICES else gui_choice
-        raise RuntimeError(
-            "当前提交环境不可交互，且未完成图形化版本选择。请重试，或先设置 VERSION_HOOK_BUMP=major|minor|patch|no-bump。"
-        )
+        if gui_choice == GUI_CANCELLED:
+            raise RuntimeError("已取消版本选择，本次提交已中止。")
+        print("[version-hook] 当前提交环境不可交互，且图形界面不可用，默认按 no-bump 继续。", file=sys.stderr)
+        return "no-bump"
 
     channel_label = active_tag or "stable"
     prompt = (
@@ -437,12 +443,12 @@ def hook_script(command: str, local_script_relpath: str) -> str:
             "REPO_VENV_PY_UNIX=\"$ROOT/.venv/bin/python\"",
             "",
             "if [ -f \"$LOCAL_SCRIPT\" ]; then",
-            "    if [ -x \"$REPO_VENV_PY\" ]; then",
+            "    if [ -f \"$REPO_VENV_PY\" ]; then",
             f"        VERSION_HOOK_REPO_ROOT=\"$ROOT\" \"$REPO_VENV_PY\" \"$LOCAL_SCRIPT\" {command}",
             "        exit $?",
             "    fi",
             "",
-            "    if [ -x \"$REPO_VENV_PY_UNIX\" ]; then",
+            "    if [ -f \"$REPO_VENV_PY_UNIX\" ]; then",
             f"        VERSION_HOOK_REPO_ROOT=\"$ROOT\" \"$REPO_VENV_PY_UNIX\" \"$LOCAL_SCRIPT\" {command}",
             "        exit $?",
             "    fi",
