@@ -304,6 +304,21 @@ cmake --build --preset debug
 
 ## 10. 推送到 GitHub
 
+### 10.1 安装版本 Hook
+
+首次提交前，先在仓库根目录安装版本 Hook：
+
+```powershell
+python scripts/install_version_hooks.py
+```
+
+安装后：
+
+- `VERSION.json` 成为仓库版本单一来源
+- `VERSION_HOOKS.json` 管理当前发布通道（如 `alpha` / `beta`）
+- 提交时选择 `major` / `minor` / `patch` / `no-bump`
+- 版本变更会自动同步到 `CMakeLists.txt`、`vcpkg.json` 和 `doc/ROADMAP.md`
+
 ```powershell
 cd I:\Projects\Sakura
 git add -A

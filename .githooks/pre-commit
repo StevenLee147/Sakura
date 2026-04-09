@@ -1,0 +1,52 @@
+#!/bin/sh
+set -e
+
+ROOT=$(git rev-parse --show-toplevel)
+LOCAL_SCRIPT="$ROOT/scripts/version_hook_entry.py"
+REPO_VENV_PY="$ROOT/.venv/Scripts/python.exe"
+REPO_VENV_PY_UNIX="$ROOT/.venv/bin/python"
+
+if [ -f "$LOCAL_SCRIPT" ]; then
+    if [ -x "$REPO_VENV_PY" ]; then
+        VERSION_HOOK_REPO_ROOT="$ROOT" "$REPO_VENV_PY" "$LOCAL_SCRIPT" pre-commit
+        exit $?
+    fi
+
+    if [ -x "$REPO_VENV_PY_UNIX" ]; then
+        VERSION_HOOK_REPO_ROOT="$ROOT" "$REPO_VENV_PY_UNIX" "$LOCAL_SCRIPT" pre-commit
+        exit $?
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        VERSION_HOOK_REPO_ROOT="$ROOT" python "$LOCAL_SCRIPT" pre-commit
+        exit $?
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        VERSION_HOOK_REPO_ROOT="$ROOT" python3 "$LOCAL_SCRIPT" pre-commit
+        exit $?
+    fi
+
+    if command -v py >/dev/null 2>&1; then
+        VERSION_HOOK_REPO_ROOT="$ROOT" py -3 "$LOCAL_SCRIPT" pre-commit
+        exit $?
+    fi
+fi
+
+if command -v python >/dev/null 2>&1; then
+    VERSION_HOOK_REPO_ROOT="$ROOT" python -m version_hooks_tool.version_hook pre-commit
+    exit $?
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    VERSION_HOOK_REPO_ROOT="$ROOT" python3 -m version_hooks_tool.version_hook pre-commit
+    exit $?
+fi
+
+if command -v py >/dev/null 2>&1; then
+    VERSION_HOOK_REPO_ROOT="$ROOT" py -3 -m version_hooks_tool.version_hook pre-commit
+    exit $?
+fi
+
+echo "未找到可用的 Python，无法执行版本 Hook。" >&2
+exit 1

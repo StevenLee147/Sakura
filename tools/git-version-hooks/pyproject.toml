@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-version-hooks"
+version = "0.2.0"
+description = "A reusable Git hook tool for automated semantic version bumps and release tags."
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.scripts]
+version-hooks = "version_hooks_tool.version_hook:cli"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]

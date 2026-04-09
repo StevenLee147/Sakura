@@ -1,0 +1,9 @@
+{
+  "version_file": "VERSION.json",
+  "available_tags": [
+    "dev",
+    "alpha",
+    "beta"
+  ],
+  "active_tag": "alpha"
+}
