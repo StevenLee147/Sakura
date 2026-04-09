@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -231,7 +234,7 @@ def bump_semver(version: str, bump_type: str) -> str:
     return f"v{major}.{minor}.{patch}"
 
 
-def choose_bump_type_gui(current_version: str, active_tag: str) -> Optional[str]:
+def choose_bump_type_tkinter(current_version: str, active_tag: str) -> Optional[str]:
     try:
         import tkinter as tk
     except ImportError:
@@ -294,6 +297,158 @@ def choose_bump_type_gui(current_version: str, active_tag: str) -> Optional[str]
     return selection["value"]
 
 
+def choose_bump_type_powershell(current_version: str, active_tag: str) -> Optional[str]:
+    executable = shutil.which("powershell") or shutil.which("pwsh")
+    if not executable:
+        return None
+
+    version_label = current_version.replace("'", "''")
+    channel_label = (active_tag or "stable").replace("'", "''")
+    cancel_marker = GUI_CANCELLED.replace("'", "''")
+    powershell_script = textwrap.dedent(
+        f"""
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+        [System.Windows.Forms.Application]::EnableVisualStyles()
+
+        $form = New-Object System.Windows.Forms.Form
+        $form.Text = '选择版本升级类型'
+        $form.StartPosition = 'CenterScreen'
+        $form.Size = New-Object System.Drawing.Size(420, 320)
+        $form.FormBorderStyle = 'FixedDialog'
+        $form.MaximizeBox = $false
+        $form.MinimizeBox = $false
+        $form.TopMost = $true
+
+        $versionLabel = New-Object System.Windows.Forms.Label
+        $versionLabel.AutoSize = $true
+        $versionLabel.Location = New-Object System.Drawing.Point(18, 18)
+        $versionLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
+        $versionLabel.Text = '当前版本: {version_label}'
+        $form.Controls.Add($versionLabel)
+
+        $channelInfo = New-Object System.Windows.Forms.Label
+        $channelInfo.AutoSize = $true
+        $channelInfo.Location = New-Object System.Drawing.Point(18, 48)
+        $channelInfo.Text = '当前发布通道: {channel_label}'
+        $form.Controls.Add($channelInfo)
+
+        $promptLabel = New-Object System.Windows.Forms.Label
+        $promptLabel.AutoSize = $true
+        $promptLabel.Location = New-Object System.Drawing.Point(18, 78)
+        $promptLabel.Text = '请选择本次提交对应的版本动作：'
+        $form.Controls.Add($promptLabel)
+
+        $optionsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+        $optionsPanel.Location = New-Object System.Drawing.Point(18, 106)
+        $optionsPanel.Size = New-Object System.Drawing.Size(368, 108)
+        $optionsPanel.FlowDirection = 'TopDown'
+        $optionsPanel.WrapContents = $false
+        $form.Controls.Add($optionsPanel)
+
+        $optionItems = @(
+            @{{ Text = 'major  大版本升级'; Value = 'major' }},
+            @{{ Text = 'minor  小版本升级'; Value = 'minor' }},
+            @{{ Text = 'patch  修复版本升级'; Value = 'patch' }},
+            @{{ Text = 'no-bump  不更新版本'; Value = 'no-bump' }}
+        )
+
+        foreach ($item in $optionItems) {{
+            $radio = New-Object System.Windows.Forms.RadioButton
+            $radio.AutoSize = $true
+            $radio.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 8)
+            $radio.Text = $item.Text
+            $radio.Tag = $item.Value
+            if ($item.Value -eq 'patch') {{
+                $radio.Checked = $true
+            }}
+            [void]$optionsPanel.Controls.Add($radio)
+        }}
+
+        $hintLabel = New-Object System.Windows.Forms.Label
+        $hintLabel.AutoSize = $true
+        $hintLabel.Location = New-Object System.Drawing.Point(18, 220)
+        $hintLabel.Text = "major: 破坏性变更`nminor: 新功能或增强`npatch: 修复或小改动`nno-bump: 不改版本文件，也不创建 tag"
+        $hintLabel.ForeColor = [System.Drawing.Color]::DimGray
+        $form.Controls.Add($hintLabel)
+
+        $confirmButton = New-Object System.Windows.Forms.Button
+        $confirmButton.Text = '确认'
+        $confirmButton.Location = New-Object System.Drawing.Point(188, 250)
+        $confirmButton.Size = New-Object System.Drawing.Size(90, 28)
+        $form.Controls.Add($confirmButton)
+
+        $cancelButton = New-Object System.Windows.Forms.Button
+        $cancelButton.Text = '取消'
+        $cancelButton.Location = New-Object System.Drawing.Point(296, 250)
+        $cancelButton.Size = New-Object System.Drawing.Size(90, 28)
+        $form.Controls.Add($cancelButton)
+
+        $script:selectedValue = $null
+        $confirmButton.Add_Click({{
+            foreach ($control in $optionsPanel.Controls) {{
+                if ($control -is [System.Windows.Forms.RadioButton] -and $control.Checked) {{
+                    $script:selectedValue = [string]$control.Tag
+                    break
+                }}
+            }}
+            if (-not $script:selectedValue) {{
+                $script:selectedValue = 'patch'
+            }}
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+        }})
+
+        $cancelButton.Add_Click({{
+            $script:selectedValue = '{cancel_marker}'
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+            $form.Close()
+        }})
+
+        $form.AcceptButton = $confirmButton
+        $form.CancelButton = $cancelButton
+        $form.Add_Shown({{ $form.Activate() }})
+        [void]$form.ShowDialog()
+
+        if ($script:selectedValue) {{
+            Write-Output $script:selectedValue
+            exit 0
+        }}
+
+        exit 1
+        """
+    )
+    encoded_command = base64.b64encode(powershell_script.encode("utf-16le")).decode("ascii")
+
+    command = [executable, "-NoProfile"]
+    if Path(executable).name.lower().startswith("powershell"):
+        command.extend(["-ExecutionPolicy", "Bypass"])
+    command.extend(["-EncodedCommand", encoded_command])
+
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    except OSError:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    output_lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not output_lines:
+        return None
+    choice = output_lines[-1]
+    if choice in VALID_CHOICES or choice == GUI_CANCELLED:
+        return choice
+    return None
+
+
+def choose_bump_type_gui(current_version: str, active_tag: str) -> Optional[str]:
+    tkinter_choice = choose_bump_type_tkinter(current_version, active_tag)
+    if tkinter_choice is not None:
+        return tkinter_choice
+    return choose_bump_type_powershell(current_version, active_tag)
+
+
 def choose_bump_type(current_version: str, active_tag: str) -> str:
     env_choice = os.getenv("VERSION_HOOK_BUMP", "").strip().lower()
     if env_choice in VALID_BUMPS:
@@ -307,8 +462,9 @@ def choose_bump_type(current_version: str, active_tag: str) -> str:
             return "no-bump" if gui_choice in NO_BUMP_CHOICES else gui_choice
         if gui_choice == GUI_CANCELLED:
             raise RuntimeError("已取消版本选择，本次提交已中止。")
-        print("[version-hook] 当前提交环境不可交互，且图形界面不可用，默认按 no-bump 继续。", file=sys.stderr)
-        return "no-bump"
+        raise RuntimeError(
+            "当前提交环境不可交互，且无法打开版本选择窗口。请检查 PowerShell/图形环境，或先设置 VERSION_HOOK_BUMP=major|minor|patch|no-bump。"
+        )
 
     channel_label = active_tag or "stable"
     prompt = (
