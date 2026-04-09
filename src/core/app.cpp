@@ -12,6 +12,40 @@
 #include "effects/shader_manager.h"
 #include "ui/button.h"
 
+#include <cstdlib>
+#include <string>
+
+namespace
+{
+std::string ReadEnvironmentVariable(const char* name)
+{
+#if defined(_MSC_VER)
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || !value)
+        return {};
+
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+#endif
+}
+
+std::string ResolveDatabasePath()
+{
+    std::string envPath = ReadEnvironmentVariable("SAKURA_DB_PATH");
+    if (!envPath.empty())
+        return envPath;
+
+    return sakura::core::Config::GetInstance().Get<std::string>(
+        std::string(sakura::core::ConfigKeys::kDatabasePath),
+        "data/sakura.db");
+}
+}
+
 namespace sakura::core
 {
 
@@ -36,7 +70,7 @@ bool App::Initialize()
     Config::GetInstance().Load("config/settings.json");
 
     // ── 数据库 ───────────────────────────────────────────────────────────────────
-    if (!sakura::data::Database::GetInstance().Initialize("data/sakura.db"))
+    if (!sakura::data::Database::GetInstance().Initialize(ResolveDatabasePath()))
     {
         LOG_WARN("Database 初始化失败（非致命）");
     }
@@ -63,6 +97,8 @@ bool App::Initialize()
     {
         return false;
     }
+    Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
+
     // ── 资源管理器 ───────────────────────────────────────────────────────────
     if (!ResourceManager::GetInstance().Initialize(m_renderer.GetSDLRenderer()))
     {
@@ -231,6 +267,7 @@ void App::ProcessEvents()
                 break;
             case SDL_EVENT_WINDOW_RESIZED:
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
                 // 通知 ShaderManager 屏幕尺寸变化
                 sakura::effects::ShaderManager::GetInstance().OnResize(
                     m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());

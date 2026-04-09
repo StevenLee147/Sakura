@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
@@ -20,6 +21,23 @@ namespace sakura::data
 
 namespace
 {
+
+std::string ReadEnvironmentVariable(const char* name)
+{
+#if defined(_MSC_VER)
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || !value)
+        return {};
+
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+#endif
+}
 
 constexpr const char* SQL_CREATE_SCORES = R"sql(
 CREATE TABLE IF NOT EXISTS scores (
@@ -137,6 +155,18 @@ long long NowTimestamp()
     );
 }
 
+std::string ResolveDatabasePath(std::string_view dbPath)
+{
+    if (!dbPath.empty())
+        return std::string(dbPath);
+
+    std::string envPath = ReadEnvironmentVariable("SAKURA_DB_PATH");
+    if (!envPath.empty())
+        return envPath;
+
+    return "data/sakura.db";
+}
+
 } // namespace (anonymous)
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -153,7 +183,7 @@ Database& Database::GetInstance()
 // Initialize / Shutdown
 // ═════════════════════════════════════════════════════════════════════════════
 
-bool Database::Initialize(const std::string& dbPath)
+bool Database::Initialize(std::string_view dbPath)
 {
     if (m_db)
     {
@@ -161,12 +191,12 @@ bool Database::Initialize(const std::string& dbPath)
         return true;
     }
 
-    m_path = dbPath;
+    m_path = ResolveDatabasePath(dbPath);
 
     // 确保父目录存在
     try
     {
-        std::filesystem::path p(dbPath);
+        std::filesystem::path p(m_path);
         if (p.has_parent_path())
             std::filesystem::create_directories(p.parent_path());
     }
@@ -175,10 +205,10 @@ bool Database::Initialize(const std::string& dbPath)
         LOG_WARN("[Database] 创建目录失败: {}", e.what());
     }
 
-    int rc = sqlite3_open(dbPath.c_str(), &m_db);
+    int rc = sqlite3_open(m_path.c_str(), &m_db);
     if (rc != SQLITE_OK)
     {
-        LOG_ERROR("[Database] 无法打开数据库 {}: {}", dbPath, sqlite3_errmsg(m_db));
+        LOG_ERROR("[Database] 无法打开数据库 {}: {}", m_path, sqlite3_errmsg(m_db));
         sqlite3_close(m_db);
         m_db = nullptr;
         return false;
@@ -196,7 +226,7 @@ bool Database::Initialize(const std::string& dbPath)
         return false;
     }
 
-    LOG_INFO("[Database] 数据库已打开: {}", dbPath);
+    LOG_INFO("[Database] 数据库已打开: {}", m_path);
     return true;
 }
 

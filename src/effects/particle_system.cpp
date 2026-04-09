@@ -1,6 +1,7 @@
 #include "particle_system.h"
 #include "utils/logger.h"
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -15,6 +16,19 @@ namespace sakura::effects
 static std::mt19937 s_rng{ std::random_device{}() };
 static constexpr float kDegToRad = std::numbers::pi_v<float> / 180.0f;
 static constexpr float kBlossomProbability = 0.30f;
+struct BlossomUnitOffset
+{
+    float x;
+    float y;
+};
+
+static constexpr std::array<BlossomUnitOffset, 5> kBlossomPetalOffsets = {{
+    { 1.0000000f,  0.0000000f },
+    { 0.3090170f,  0.9510565f },
+    {-0.8090170f,  0.5877852f },
+    {-0.8090170f, -0.5877852f },
+    { 0.3090170f, -0.9510565f },
+}};
 
 static float RandFloat(float lo, float hi)
 {
@@ -230,16 +244,17 @@ static void DrawSakuraBlossom(sakura::core::Renderer& renderer, const Particle& 
     static constexpr float kBlossomPetalOffsetRatio = 0.68f;
     static constexpr float kBlossomVerticalSquash = 0.82f;
     static constexpr float kBlossomCoreRadiusRatio = 0.36f;
-    static constexpr float kBlossomAngleStep = 360.0f / 5.0f;
     const float petalR = sz * kBlossomPetalRadiusRatio;
     const float offset = sz * kBlossomPetalOffsetRatio;
     const float baseRad = p.rotation * kDegToRad;
-    const float stepRad = kBlossomAngleStep * kDegToRad;
-    for (int i = 0; i < 5; ++i)
+    const float baseCos = std::cos(baseRad);
+    const float baseSin = std::sin(baseRad);
+    for (const auto& unit : kBlossomPetalOffsets)
     {
-        float a = baseRad + stepRad * static_cast<float>(i);
-        renderer.DrawCircleFilled(p.x + std::cos(a) * offset,
-                                  p.y + std::sin(a) * offset * kBlossomVerticalSquash,
+        const float rotatedX = baseCos * unit.x - baseSin * unit.y;
+        const float rotatedY = baseSin * unit.x + baseCos * unit.y;
+        renderer.DrawCircleFilled(p.x + rotatedX * offset,
+                                  p.y + rotatedY * offset * kBlossomVerticalSquash,
                                   petalR, col, 10);
     }
     renderer.DrawCircleFilled(p.x, p.y, sz * kBlossomCoreRadiusRatio,

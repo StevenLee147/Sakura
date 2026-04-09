@@ -1,10 +1,16 @@
 #include "glow.h"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 
 namespace sakura::effects
 {
+
+namespace
+{
+constexpr float kTwoPi = std::numbers::pi_v<float> * 2.0f;
+}
 
 // ============================================================================
 // 内部辅助
@@ -54,7 +60,7 @@ void GlowEffect::PulseGlow(sakura::core::Renderer& renderer,
                             int layers)
 {
     // sin 波形：0~1 之间
-    float wave   = (std::sin(phase * frequency * 2.0f * 3.14159265f) + 1.0f) * 0.5f;
+    float wave   = (std::sin(phase * frequency * kTwoPi) + 1.0f) * 0.5f;
     float radius = sizeMin + (sizeMax - sizeMin) * wave;
     float range  = radius * 0.6f;
 

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace sakura::scene
 {
@@ -173,7 +174,7 @@ void SceneLoading::RenderSpinner(sakura::core::Renderer& renderer,
                      0.004f, 48);
 
     // 弧头的亮点（位于弧末端，即 m_spinAngle + 270°）
-    float headRad = ((m_spinAngle + 270.0f) * 3.14159265f / 180.0f);
+    float headRad = ((m_spinAngle + 270.0f) * std::numbers::pi_v<float> / 180.0f);
     float dotX = cx + radius * std::cos(headRad);
     float dotY = cy + radius * std::sin(headRad);
     renderer.DrawCircleFilled(dotX, dotY, 0.008f,

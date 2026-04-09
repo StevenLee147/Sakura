@@ -38,6 +38,12 @@ namespace ConfigKeys
     inline constexpr std::string_view kKeyRetry       = "input.key_retry";         // int
     inline constexpr std::string_view kKeyBack        = "input.key_back";          // int
 
+    // ── 数据 ─────────────────────────────────────────────────────────────────
+    inline constexpr std::string_view kDatabasePath   = "data.database_path";      // string
+
+    // ── 编辑器 ───────────────────────────────────────────────────────────────
+    inline constexpr std::string_view kEditorMaxHistory = "editor.max_history";    // int
+
     // ── 图形 ─────────────────────────────────────────────────────────────────
     inline constexpr std::string_view kParticles      = "graphics.particles";      // bool
     inline constexpr std::string_view kBloom          = "graphics.bloom";           // bool

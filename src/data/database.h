@@ -8,6 +8,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // 前向声明 sqlite3 句柄，避免污染全局命名空间
@@ -35,8 +36,8 @@ public:
     // ── 生命周期 ──────────────────────────────────────────────────────────────
 
     // 打开（或创建）数据库，自动建表
-    // dbPath：相对于可执行文件目录的路径（默认 "data/sakura.db"）
-    bool Initialize(const std::string& dbPath = "data/sakura.db");
+    // dbPath：相对于可执行文件目录的路径；为空时优先读取环境变量 SAKURA_DB_PATH，再退回默认路径
+    bool Initialize(std::string_view dbPath = {});
     void Shutdown();
 
     bool IsOpen() const { return m_db != nullptr; }

@@ -16,8 +16,8 @@ float        Input::s_mousePixelX   = 0.0f;
 float        Input::s_mousePixelY   = 0.0f;
 float        Input::s_mouseDeltaX   = 0.0f;
 float        Input::s_mouseDeltaY   = 0.0f;
-int          Input::s_screenWidth   = 1920;
-int          Input::s_screenHeight  = 1080;
+int          Input::s_screenWidth   = 0;
+int          Input::s_screenHeight  = 0;
 float        Input::s_wheelDelta    = 0.0f;
 SDL_Scancode Input::s_lastPressedKey = SDL_SCANCODE_UNKNOWN;
 std::string  Input::s_textInput;
@@ -240,6 +240,9 @@ bool Input::IsAnyMouseButtonPressed()
 
 MousePos Input::GetMousePosition()
 {
+    if (s_screenWidth <= 0 || s_screenHeight <= 0)
+        return { 0.0f, 0.0f };
+
     return {
         s_mousePixelX / static_cast<float>(s_screenWidth),
         s_mousePixelY / static_cast<float>(s_screenHeight)
@@ -256,6 +259,9 @@ MousePixelPos Input::GetMousePixelPosition()
 
 MousePos Input::GetMouseDelta()
 {
+    if (s_screenWidth <= 0 || s_screenHeight <= 0)
+        return { 0.0f, 0.0f };
+
     return {
         s_mouseDeltaX / static_cast<float>(s_screenWidth),
         s_mouseDeltaY / static_cast<float>(s_screenHeight)

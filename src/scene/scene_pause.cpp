@@ -40,7 +40,7 @@ void ScenePause::OnEnter()
     constexpr float BH = 0.055f;
 
     m_btnResume = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{BX, 0.43f, BW, BH}, "继 续", m_fontUI);
+        sakura::core::NormRect{BX, 0.43f, BW, BH}, "继续", m_fontUI);
     m_btnRestart = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{BX, 0.53f, BW, BH}, "重新开始", m_fontUI);
     m_btnBack = std::make_unique<sakura::ui::Button>(

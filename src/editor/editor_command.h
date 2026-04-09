@@ -173,12 +173,12 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CommandHistory — 双端队列式撤销/重做历史（最大 200 步）
+// CommandHistory — 双端队列式撤销/重做历史（上限可配置）
 // ─────────────────────────────────────────────────────────────────────────────
 class CommandHistory
 {
 public:
-    static constexpr int MAX_HISTORY = 200;
+    static constexpr int DEFAULT_MAX_HISTORY = 200;
 
     CommandHistory() = default;
 

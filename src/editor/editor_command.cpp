@@ -1,6 +1,7 @@
 // editor_command.cpp — EditorCommand 系列实现 + CommandHistory
 
 #include "editor_command.h"
+#include "core/config.h"
 #include "editor_core.h"
 #include "utils/logger.h"
 
@@ -8,6 +9,18 @@
 
 namespace sakura::editor
 {
+
+namespace
+{
+int GetHistoryLimit()
+{
+    return std::max(
+        1,
+        sakura::core::Config::GetInstance().Get<int>(
+            std::string(sakura::core::ConfigKeys::kEditorMaxHistory),
+            CommandHistory::DEFAULT_MAX_HISTORY));
+}
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PlaceNoteCommand
@@ -242,6 +255,8 @@ std::string DeleteMouseNoteCommand::GetDescription() const
 
 void CommandHistory::Execute(std::unique_ptr<EditorCommand> cmd, EditorCore& core)
 {
+    const int historyLimit = GetHistoryLimit();
+
     cmd->Execute(core);
 
     // 新操作发生时清空 redo 栈
@@ -251,7 +266,7 @@ void CommandHistory::Execute(std::unique_ptr<EditorCommand> cmd, EditorCore& cor
     m_undoStack.push_back(std::move(cmd));
 
     // 超出上限时从头部移除最旧的记录
-    while (static_cast<int>(m_undoStack.size()) > MAX_HISTORY)
+    while (static_cast<int>(m_undoStack.size()) > historyLimit)
         m_undoStack.pop_front();
 }
 
@@ -269,6 +284,8 @@ void CommandHistory::Undo(EditorCore& core)
 
 void CommandHistory::Redo(EditorCore& core)
 {
+    const int historyLimit = GetHistoryLimit();
+
     if (m_redoStack.empty()) return;
 
     auto cmd = std::move(m_redoStack.back());
@@ -279,7 +296,7 @@ void CommandHistory::Redo(EditorCore& core)
     m_undoStack.push_back(std::move(cmd));
 
     // 保持上限
-    while (static_cast<int>(m_undoStack.size()) > MAX_HISTORY)
+    while (static_cast<int>(m_undoStack.size()) > historyLimit)
         m_undoStack.pop_front();
 }
 

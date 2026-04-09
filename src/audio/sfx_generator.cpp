@@ -7,11 +7,17 @@
 #include <cstdint>
 #include <fstream>
 #include <filesystem>
+#include <numbers>
 #include <vector>
 #include <string>
 
 namespace sakura::audio
 {
+
+namespace
+{
+constexpr float kTwoPi = std::numbers::pi_v<float> * 2.0f;
+}
 
 // ── WAV 文件写入辅助 ──────────────────────────────────────────────────────────
 
@@ -65,7 +71,7 @@ bool SfxGenerator::WriteWav(std::string_view path,
             env *= static_cast<float>(i) / static_cast<float>(attackSamples);
         }
 
-        float sample = env * std::sinf(2.0f * 3.14159265f * frequency * t);
+        float sample = env * std::sinf(kTwoPi * frequency * t);
         samples[i] = static_cast<int16_t>(sample * 32767.0f);
     }
 
@@ -124,7 +130,7 @@ bool SfxGenerator::WriteSweepWav(std::string_view path,
                        static_cast<float>(numSamples - fadeStart);
             env *= (1.0f - ft);
         }
-        phase += 2.0f * 3.14159265f * freq / static_cast<float>(SAMPLE_RATE);
+        phase += kTwoPi * freq / static_cast<float>(SAMPLE_RATE);
         samples[i] = static_cast<int16_t>(env * std::sinf(phase) * 32767.0f);
     }
 

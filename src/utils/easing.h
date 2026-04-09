@@ -5,6 +5,7 @@
 // 参考：https://easings.net/
 
 #include <cmath>
+#include <numbers>
 
 namespace sakura::utils
 {
@@ -12,7 +13,7 @@ namespace sakura::utils
 // ── 数学常量 ──────────────────────────────────────────────────────────────────
 namespace detail
 {
-    inline constexpr float kPi    = 3.14159265358979323846f;
+    inline constexpr float kPi    = std::numbers::pi_v<float>;
     inline constexpr float kPi2   = kPi * 2.0f;
     inline constexpr float kHalfPi = kPi * 0.5f;
 }

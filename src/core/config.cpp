@@ -40,6 +40,12 @@ void Config::ApplyDefaults()
     setDefault(ConfigKeys::kKeyRetry,     21);   // SDL_SCANCODE_R
     setDefault(ConfigKeys::kKeyBack,      41);   // SDL_SCANCODE_ESCAPE
 
+    // 数据
+    setDefault(ConfigKeys::kDatabasePath, std::string("data/sakura.db"));
+
+    // 编辑器
+    setDefault(ConfigKeys::kEditorMaxHistory, 200);
+
     // 图形
     setDefault(ConfigKeys::kParticles,    true);
     setDefault(ConfigKeys::kBloom,        false);
