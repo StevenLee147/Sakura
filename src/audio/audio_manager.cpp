@@ -187,13 +187,16 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     return true;
 }
 
-bool AudioManager::PlayMusicFromHandle(sakura::core::MusicHandle /*handle*/, int loops)
+bool AudioManager::PlayMusicFromHandle(sakura::core::MusicHandle handle, int loops)
 {
-    // ResourceManager 存储的是 ma_decoder，不能直接用于 ma_engine 播放
-    // 直接通过文件路径播放更可靠；这个接口预留
-    LOG_WARN("PlayMusicFromHandle: 暂不支持（请使用 PlayMusic(path)）");
-    (void)loops;
-    return false;
+    auto path = sakura::core::ResourceManager::GetInstance().GetMusicPath(handle);
+    if (!path)
+    {
+        LOG_WARN("PlayMusicFromHandle: 无效 MusicHandle {}", handle);
+        return false;
+    }
+
+    return PlayMusic(*path, loops);
 }
 
 void AudioManager::PauseMusic()
@@ -315,11 +318,16 @@ void AudioManager::PlaySFX(const std::string& path)
     }
 }
 
-void AudioManager::PlaySFXFromHandle(sakura::core::SoundHandle /*handle*/)
+void AudioManager::PlaySFXFromHandle(sakura::core::SoundHandle handle)
 {
-    // ResourceManager 存储的是 ma_decoder，不能直接用于 ma_engine 播放
-    // 暂不支持，需要文件路径
-    LOG_WARN("PlaySFXFromHandle: 暂不支持（请使用 PlaySFX(path)）");
+    auto path = sakura::core::ResourceManager::GetInstance().GetSoundPath(handle);
+    if (!path)
+    {
+        LOG_WARN("PlaySFXFromHandle: 无效 SoundHandle {}", handle);
+        return;
+    }
+
+    PlaySFX(*path);
 }
 
 // ── 音量控制 ──────────────────────────────────────────────────────────────────

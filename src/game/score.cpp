@@ -134,12 +134,15 @@ Grade ScoreCalculator::GetGrade() const
 GameResult ScoreCalculator::GetResult(const std::string& chartId,
                                        const std::string& chartTitle,
                                        const std::string& difficultyName,
-                                       float              difficultyLevel) const
+                                       int                difficultyIndex,
+                                       float              difficultyLevel,
+                                       double             playTimeSeconds) const
 {
     GameResult result;
     result.chartId         = chartId;
     result.chartTitle      = chartTitle;
     result.difficulty      = difficultyName;
+    result.difficultyIndex = difficultyIndex;
     result.difficultyLevel = difficultyLevel;
 
     result.score       = m_score;
@@ -155,6 +158,7 @@ GameResult ScoreCalculator::GetResult(const std::string& chartId,
 
     result.isFullCombo  = IsFullCombo();
     result.isAllPerfect = IsAllPerfect();
+    result.playTimeSeconds = playTimeSeconds;
     result.playedAt     = static_cast<long long>(std::time(nullptr));
     result.hitErrors    = m_hitErrors;
 

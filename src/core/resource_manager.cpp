@@ -77,6 +77,7 @@ void ResourceManager::ReleaseAll()
     }
     m_textures.clear();
     m_texturePaths.clear();
+    m_texturePathsByHandle.clear();
 
     for (auto& [handle, font] : m_fonts)
     {
@@ -84,6 +85,7 @@ void ResourceManager::ReleaseAll()
     }
     m_fonts.clear();
     m_fontKeys.clear();
+    m_fontKeysByHandle.clear();
 
     for (auto& [handle, dec] : m_sounds)
     {
@@ -95,6 +97,7 @@ void ResourceManager::ReleaseAll()
     }
     m_sounds.clear();
     m_soundPaths.clear();
+    m_soundPathsByHandle.clear();
 
     for (auto& [handle, dec] : m_musics)
     {
@@ -106,6 +109,7 @@ void ResourceManager::ReleaseAll()
     }
     m_musics.clear();
     m_musicPaths.clear();
+    m_musicPathsByHandle.clear();
 
     m_defaultFontHandle = INVALID_HANDLE;
     m_nextHandle        = INVALID_HANDLE;
@@ -142,6 +146,7 @@ std::optional<TextureHandle> ResourceManager::LoadTexture(const std::string& pat
     TextureHandle handle = NextHandle();
     m_texturePaths[path]    = handle;
     m_textures[handle]      = tex;
+    m_texturePathsByHandle[handle] = path;
 
     LOG_DEBUG("纹理已加载: {} (handle={})", path, handle);
     return handle;
@@ -161,13 +166,11 @@ void ResourceManager::UnloadTexture(TextureHandle handle)
     if (it->second) SDL_DestroyTexture(it->second);
     m_textures.erase(it);
 
-    for (auto pit = m_texturePaths.begin(); pit != m_texturePaths.end(); ++pit)
+    auto pathIt = m_texturePathsByHandle.find(handle);
+    if (pathIt != m_texturePathsByHandle.end())
     {
-        if (pit->second == handle)
-        {
-            m_texturePaths.erase(pit);
-            break;
-        }
+        m_texturePaths.erase(pathIt->second);
+        m_texturePathsByHandle.erase(pathIt);
     }
 }
 
@@ -200,6 +203,7 @@ std::optional<FontHandle> ResourceManager::LoadFont(const std::string& path, int
     FontHandle handle = NextHandle();
     m_fontKeys[key]   = handle;
     m_fonts[handle]   = font;
+    m_fontKeysByHandle[handle] = key;
 
     LOG_DEBUG("字体已加载: {}:{}pt (handle={})", path, ptSize, handle);
     return handle;
@@ -219,13 +223,11 @@ void ResourceManager::UnloadFont(FontHandle handle)
     if (it->second) TTF_CloseFont(it->second);
     m_fonts.erase(it);
 
-    for (auto pit = m_fontKeys.begin(); pit != m_fontKeys.end(); ++pit)
+    auto keyIt = m_fontKeysByHandle.find(handle);
+    if (keyIt != m_fontKeysByHandle.end())
     {
-        if (pit->second == handle)
-        {
-            m_fontKeys.erase(pit);
-            break;
-        }
+        m_fontKeys.erase(keyIt->second);
+        m_fontKeysByHandle.erase(keyIt);
     }
 }
 
@@ -258,6 +260,7 @@ std::optional<SoundHandle> ResourceManager::LoadSound(const std::string& path)
     SoundHandle handle = NextHandle();
     m_soundPaths[path] = handle;
     m_sounds[handle]   = dec;
+    m_soundPathsByHandle[handle] = path;
 
     LOG_DEBUG("音效已加载: {} (handle={})", path, handle);
     return handle;
@@ -267,6 +270,14 @@ ma_decoder* ResourceManager::GetSound(SoundHandle handle) const
 {
     auto it = m_sounds.find(handle);
     return (it != m_sounds.end()) ? it->second : nullptr;
+}
+
+std::optional<std::string> ResourceManager::GetSoundPath(SoundHandle handle) const
+{
+    auto it = m_soundPathsByHandle.find(handle);
+    if (it == m_soundPathsByHandle.end())
+        return std::nullopt;
+    return it->second;
 }
 
 void ResourceManager::UnloadSound(SoundHandle handle)
@@ -281,13 +292,11 @@ void ResourceManager::UnloadSound(SoundHandle handle)
     }
     m_sounds.erase(it);
 
-    for (auto pit = m_soundPaths.begin(); pit != m_soundPaths.end(); ++pit)
+    auto pathIt = m_soundPathsByHandle.find(handle);
+    if (pathIt != m_soundPathsByHandle.end())
     {
-        if (pit->second == handle)
-        {
-            m_soundPaths.erase(pit);
-            break;
-        }
+        m_soundPaths.erase(pathIt->second);
+        m_soundPathsByHandle.erase(pathIt);
     }
 }
 
@@ -320,6 +329,7 @@ std::optional<MusicHandle> ResourceManager::LoadMusic(const std::string& path)
     MusicHandle handle = NextHandle();
     m_musicPaths[path] = handle;
     m_musics[handle]   = dec;
+    m_musicPathsByHandle[handle] = path;
 
     LOG_DEBUG("音乐已加载: {} (handle={})", path, handle);
     return handle;
@@ -329,6 +339,14 @@ ma_decoder* ResourceManager::GetMusic(MusicHandle handle) const
 {
     auto it = m_musics.find(handle);
     return (it != m_musics.end()) ? it->second : nullptr;
+}
+
+std::optional<std::string> ResourceManager::GetMusicPath(MusicHandle handle) const
+{
+    auto it = m_musicPathsByHandle.find(handle);
+    if (it == m_musicPathsByHandle.end())
+        return std::nullopt;
+    return it->second;
 }
 
 void ResourceManager::UnloadMusic(MusicHandle handle)
@@ -343,13 +361,11 @@ void ResourceManager::UnloadMusic(MusicHandle handle)
     }
     m_musics.erase(it);
 
-    for (auto pit = m_musicPaths.begin(); pit != m_musicPaths.end(); ++pit)
+    auto pathIt = m_musicPathsByHandle.find(handle);
+    if (pathIt != m_musicPathsByHandle.end())
     {
-        if (pit->second == handle)
-        {
-            m_musicPaths.erase(pit);
-            break;
-        }
+        m_musicPaths.erase(pathIt->second);
+        m_musicPathsByHandle.erase(pathIt);
     }
 }
 

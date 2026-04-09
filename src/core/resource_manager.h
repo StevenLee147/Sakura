@@ -55,11 +55,13 @@ public:
 
     std::optional<SoundHandle> LoadSound(const std::string& path);
     ma_decoder* GetSound(SoundHandle handle) const;
+    std::optional<std::string> GetSoundPath(SoundHandle handle) const;
 
     // ── 音乐（长音频，流式解码）──────────────────────────────────────────────
 
     std::optional<MusicHandle> LoadMusic(const std::string& path);
     ma_decoder* GetMusic(MusicHandle handle) const;
+    std::optional<std::string> GetMusicPath(MusicHandle handle) const;
 
     // ── 主动卸载 ──────────────────────────────────────────────────────────────
 
@@ -93,15 +95,19 @@ private:
     // 资源映射（path/key → handle, handle → resource）
     std::unordered_map<std::string, TextureHandle>  m_texturePaths;
     std::unordered_map<TextureHandle, SDL_Texture*> m_textures;
+    std::unordered_map<TextureHandle, std::string>  m_texturePathsByHandle;
 
     std::unordered_map<std::string, FontHandle>     m_fontKeys;
     std::unordered_map<FontHandle, TTF_Font*>       m_fonts;
+    std::unordered_map<FontHandle, std::string>     m_fontKeysByHandle;
 
     std::unordered_map<std::string, SoundHandle>    m_soundPaths;
     std::unordered_map<SoundHandle, ma_decoder*>    m_sounds;
+    std::unordered_map<SoundHandle, std::string>    m_soundPathsByHandle;
 
     std::unordered_map<std::string, MusicHandle>    m_musicPaths;
     std::unordered_map<MusicHandle, ma_decoder*>    m_musics;
+    std::unordered_map<MusicHandle, std::string>    m_musicPathsByHandle;
 
     uint32_t   m_nextHandle      = INVALID_HANDLE;
     FontHandle m_defaultFontHandle = INVALID_HANDLE;

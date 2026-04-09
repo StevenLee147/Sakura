@@ -84,6 +84,7 @@ struct GameResult
     std::string chartId;            // 谱面 ID
     std::string chartTitle;         // 曲目名称（显示用）
     std::string difficulty;         // 难度名称
+    int         difficultyIndex = 0;
     float       difficultyLevel = 0.0f;
 
     int     score       = 0;        // 最终分数（0~1,000,000+）

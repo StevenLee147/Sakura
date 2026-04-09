@@ -58,18 +58,18 @@ void SceneResult::OnEnter()
     // ── 按钮 ──────────────────────────────────────────────────────────────────
     m_btnRetry = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{0.27f, 0.935f, 0.18f, 0.048f},
-        "重 玩", m_fontUI);
+        "重玩", m_fontUI);
 
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{0.55f, 0.935f, 0.18f, 0.048f},
-        "返 回", m_fontUI);
+        "返回", m_fontUI);
 
     m_btnRetry->SetOnClick([this]()
     {
         // 重新构造同一谱面的 SceneGame（使用与本局相同的难度）
         m_manager.SwitchScene(
             std::make_unique<SceneGame>(m_manager, m_chartInfo,
-                                        0 /* difficulty index — TODO: preserve */),
+                                        m_result.difficultyIndex),
             sakura::scene::TransitionType::Fade, 0.4f);
     });
 

@@ -423,10 +423,11 @@ void SceneGame::OnUpdate(float dt)
             m_chartInfo.title,
             m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
                 ? m_chartInfo.difficulties[m_difficultyIndex].name : "Unknown",
+            m_difficultyIndex,
             m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
-                ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f
+                ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f,
+            std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0)
         );
-        result.playTimeSeconds = std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0);
         m_manager.SwitchScene(
             std::make_unique<SceneResult>(m_manager, result, m_chartInfo),
             TransitionType::Fade, 0.5f);

@@ -2,8 +2,11 @@
 
 #include <SDL3/SDL.h>
 #include "resource_manager.h"
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace sakura::core
 {
@@ -217,8 +220,26 @@ public:
     bool IsValid() const { return m_renderer != nullptr; }
 
 private:
+    struct TextCacheEntry
+    {
+        SDL_Texture* texture = nullptr;
+        float width = 0.0f;
+        float height = 0.0f;
+        uint64_t lastUsed = 0;
+    };
+
+    TextCacheEntry* GetOrCreateTextCacheEntry(FontHandle fontHandle,
+                                              std::string_view text,
+                                              int pixelFontSize);
+    void TrimTextCache();
+    void ClearTextCache();
+
+    static constexpr std::size_t MAX_TEXT_CACHE_ENTRIES = 256;
+
     SDL_Renderer* m_renderer = nullptr;
     SDL_Window*   m_window   = nullptr;
+    std::unordered_map<std::string, TextCacheEntry> m_textCache;
+    uint64_t m_textCacheUseCounter = 0;
 
     // 屏幕震动用 viewport 偏移（像素）
     int m_shakeOffsetX = 0;

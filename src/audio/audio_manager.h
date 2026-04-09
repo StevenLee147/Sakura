@@ -69,7 +69,7 @@ public:
     // startPositionSeconds: 起播位置（秒），在 ma_sound_start 前 seek，避免竞争
     bool PlayMusic(const std::string& path, int loops = 0, double startPositionSeconds = 0.0);
 
-    // 使用已加载的 MusicHandle 播放（不重新加载文件）
+    // 使用已加载的 MusicHandle 播放（通过句柄反查原始路径）
     bool PlayMusicFromHandle(sakura::core::MusicHandle handle, int loops = 0);
 
     void PauseMusic();
@@ -95,6 +95,7 @@ public:
 
     // 一次性播放音效（不循环）
     void PlaySFX(const std::string& path);
+    // 使用已加载的 SoundHandle 播放（通过句柄反查原始路径）
     void PlaySFXFromHandle(sakura::core::SoundHandle handle);
 
     // ── 音量控制 ──────────────────────────────────────────────────────────────

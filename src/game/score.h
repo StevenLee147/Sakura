@@ -58,7 +58,9 @@ public:
     GameResult GetResult(const std::string& chartId,
                          const std::string& chartTitle,
                          const std::string& difficultyName,
-                         float              difficultyLevel) const;
+                         int                difficultyIndex,
+                         float              difficultyLevel,
+                         double             playTimeSeconds) const;
 
     const std::vector<int>& GetHitErrors() const { return m_hitErrors; }
 

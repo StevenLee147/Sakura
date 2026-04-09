@@ -5,6 +5,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,8 @@ bool Renderer::Initialize(SDL_Window* window)
 
 void Renderer::Destroy()
 {
+    ClearTextCache();
+
     if (m_renderer)
     {
         SDL_DestroyRenderer(m_renderer);
@@ -268,56 +271,14 @@ void Renderer::DrawText(FontHandle fontHandle,
 {
     if (!m_renderer || text.empty()) return;
 
-    TTF_Font* font = ResourceManager::GetInstance().GetFont(fontHandle);
-    if (!font)
-    {
-        LOG_WARN("Renderer::DrawText: 无效 FontHandle {}", fontHandle);
-        return;
-    }
-
     const int screenH = GetScreenHeight();
     const int screenW = GetScreenWidth();
+    const int pixelFontSize = std::max(1, static_cast<int>(std::lround(
+        normFontSize * static_cast<float>(screenH))));
 
-    // 目标像素字号（相对屏幕高度）
-    const float targetPixelSize = normFontSize * static_cast<float>(screenH);
-
-    // 暂时改字号（记录原始值以便还原）
-    const float originalSize = TTF_GetFontSize(font);
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, targetPixelSize);
-    }
-
-    // 渲染到 SDL_Surface（支持 UTF-8）
-    SDL_Color sdlColor = { color.r, color.g, color.b, color.a };
-    std::string textStr(text);
-    SDL_Surface* surface = TTF_RenderText_Blended(font, textStr.c_str(), 0, sdlColor);
-
-    // 还原字号
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, originalSize);
-    }
-
-    if (!surface)
-    {
-        LOG_WARN("TTF_RenderText_Blended 失败: {}", SDL_GetError());
+    TextCacheEntry* entry = GetOrCreateTextCacheEntry(fontHandle, text, pixelFontSize);
+    if (!entry || !entry->texture)
         return;
-    }
-
-    // Surface → GPU Texture
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
-    SDL_DestroySurface(surface);
-
-    if (!texture)
-    {
-        LOG_WARN("SDL_CreateTextureFromSurface 失败: {}", SDL_GetError());
-        return;
-    }
-
-    // 获取纹理尺寸
-    float texW = 0.0f, texH = 0.0f;
-    SDL_GetTextureSize(texture, &texW, &texH);
 
     // 根据对齐方式计算左上角像素坐标
     float pxX = normX * static_cast<float>(screenW);
@@ -326,20 +287,22 @@ void Renderer::DrawText(FontHandle fontHandle,
     switch (align)
     {
         case TextAlign::Center:
-            pxX -= texW * 0.5f;
+            pxX -= entry->width * 0.5f;
             break;
         case TextAlign::Right:
-            pxX -= texW;
+            pxX -= entry->width;
             break;
         case TextAlign::Left:
         default:
             break;
     }
 
-    SDL_FRect dest = { pxX, pxY, texW, texH };
-    SDL_SetTextureAlphaMod(texture, color.a);
-    SDL_RenderTexture(m_renderer, texture, nullptr, &dest);
-    SDL_DestroyTexture(texture);
+    SDL_FRect dest = { pxX, pxY, entry->width, entry->height };
+    SDL_SetTextureColorMod(entry->texture, color.r, color.g, color.b);
+    SDL_SetTextureAlphaMod(entry->texture, color.a);
+    SDL_RenderTexture(m_renderer, entry->texture, nullptr, &dest);
+    SDL_SetTextureColorMod(entry->texture, 255, 255, 255);
+    SDL_SetTextureAlphaMod(entry->texture, 255);
 }
 
 float Renderer::MeasureTextWidth(FontHandle fontHandle,
@@ -369,6 +332,123 @@ float Renderer::MeasureTextWidth(FontHandle fontHandle,
     }
 
     return static_cast<float>(w) / static_cast<float>(GetScreenWidth());
+}
+
+Renderer::TextCacheEntry* Renderer::GetOrCreateTextCacheEntry(FontHandle fontHandle,
+                                                              std::string_view text,
+                                                              int pixelFontSize)
+{
+    if (!m_renderer || text.empty())
+        return nullptr;
+
+    std::string key = std::to_string(fontHandle);
+    key.push_back('|');
+    key += std::to_string(pixelFontSize);
+    key.push_back('|');
+    key.append(text.data(), text.size());
+
+    auto it = m_textCache.find(key);
+    if (it != m_textCache.end())
+    {
+        it->second.lastUsed = ++m_textCacheUseCounter;
+        return &it->second;
+    }
+
+    TTF_Font* font = ResourceManager::GetInstance().GetFont(fontHandle);
+    if (!font)
+    {
+        LOG_WARN("Renderer::DrawText: 无效 FontHandle {}", fontHandle);
+        return nullptr;
+    }
+
+    const float originalSize = TTF_GetFontSize(font);
+    const float targetPixelSize = static_cast<float>(pixelFontSize);
+    if (std::abs(targetPixelSize - originalSize) > 0.5f)
+    {
+        TTF_SetFontSize(font, targetPixelSize);
+    }
+
+    SDL_Color white = { 255, 255, 255, 255 };
+    std::string textStr(text);
+    SDL_Surface* surface = TTF_RenderText_Blended(font, textStr.c_str(), 0, white);
+
+    if (std::abs(targetPixelSize - originalSize) > 0.5f)
+    {
+        TTF_SetFontSize(font, originalSize);
+    }
+
+    if (!surface)
+    {
+        LOG_WARN("TTF_RenderText_Blended 失败: {}", SDL_GetError());
+        return nullptr;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+    SDL_DestroySurface(surface);
+
+    if (!texture)
+    {
+        LOG_WARN("SDL_CreateTextureFromSurface 失败: {}", SDL_GetError());
+        return nullptr;
+    }
+
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
+    float texW = 0.0f;
+    float texH = 0.0f;
+    SDL_GetTextureSize(texture, &texW, &texH);
+
+    TrimTextCache();
+
+    auto [insertedIt, inserted] = m_textCache.emplace(std::move(key), TextCacheEntry{
+        texture,
+        texW,
+        texH,
+        ++m_textCacheUseCounter
+    });
+    if (!inserted)
+    {
+        SDL_DestroyTexture(texture);
+        insertedIt->second.lastUsed = ++m_textCacheUseCounter;
+    }
+
+    return &insertedIt->second;
+}
+
+void Renderer::TrimTextCache()
+{
+    while (m_textCache.size() >= MAX_TEXT_CACHE_ENTRIES)
+    {
+        auto oldestIt = m_textCache.end();
+        uint64_t oldestUse = std::numeric_limits<uint64_t>::max();
+
+        for (auto it = m_textCache.begin(); it != m_textCache.end(); ++it)
+        {
+            if (it->second.lastUsed < oldestUse)
+            {
+                oldestUse = it->second.lastUsed;
+                oldestIt = it;
+            }
+        }
+
+        if (oldestIt == m_textCache.end())
+            break;
+
+        if (oldestIt->second.texture)
+            SDL_DestroyTexture(oldestIt->second.texture);
+        m_textCache.erase(oldestIt);
+    }
+}
+
+void Renderer::ClearTextCache()
+{
+    for (auto& [key, entry] : m_textCache)
+    {
+        if (entry.texture)
+            SDL_DestroyTexture(entry.texture);
+    }
+    m_textCache.clear();
+    m_textCacheUseCounter = 0;
 }
 
 // ============================================================================

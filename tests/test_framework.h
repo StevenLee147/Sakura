@@ -142,3 +142,5 @@ inline void RequireThat(double actual, const TMatcher& matcher,
     [&]() { \
         ::sakura::tests::RequireThat(static_cast<double>(actual), matcher, #actual, __FILE__, __LINE__); \
     }()
+
+// End of lightweight test framework.
