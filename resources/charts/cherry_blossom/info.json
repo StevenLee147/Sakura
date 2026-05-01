@@ -1,0 +1,45 @@
+{
+    "version": 2,
+    "id": "cherry_blossom",
+    "title": "Cherry Blossom",
+    "artist": "Sakura Starter",
+    "charter": "Sakura Dev",
+    "source": "Phase 4 official test pack",
+    "tags": [
+        "official",
+        "mixed",
+        "sv"
+    ],
+    "music_file": "music.wav",
+    "cover_file": "cover.png",
+    "background_file": "cover.png",
+    "preview_time": 18000,
+    "bpm": 155.0,
+    "offset": 0,
+    "difficulties": [
+        {
+            "name": "Normal",
+            "level": 4.0,
+            "chart_file": "normal.json",
+            "note_count": 38,
+            "hold_count": 5,
+            "mouse_note_count": 12
+        },
+        {
+            "name": "Hard",
+            "level": 7.0,
+            "chart_file": "hard.json",
+            "note_count": 65,
+            "hold_count": 16,
+            "mouse_note_count": 35
+        },
+        {
+            "name": "Expert",
+            "level": 10.0,
+            "chart_file": "expert.json",
+            "note_count": 125,
+            "hold_count": 31,
+            "mouse_note_count": 75
+        }
+    ]
+}

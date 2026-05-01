@@ -1,0 +1,29 @@
+{
+    "version": 2,
+    "id": "tutorial_song",
+    "title": "Tutorial Song",
+    "artist": "Sakura Starter",
+    "charter": "Sakura Dev",
+    "source": "Phase 4 official test pack",
+    "tags": [
+        "official",
+        "tutorial",
+        "easy"
+    ],
+    "music_file": "music.wav",
+    "cover_file": "cover.png",
+    "background_file": "cover.png",
+    "preview_time": 4000,
+    "bpm": 100.0,
+    "offset": 0,
+    "difficulties": [
+        {
+            "name": "Easy",
+            "level": 1.0,
+            "chart_file": "easy.json",
+            "note_count": 20,
+            "hold_count": 0,
+            "mouse_note_count": 0
+        }
+    ]
+}

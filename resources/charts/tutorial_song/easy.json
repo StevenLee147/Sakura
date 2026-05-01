@@ -1,0 +1,117 @@
+{
+    "version": 2,
+    "timing_points": [
+        {
+            "time": 0,
+            "bpm": 100.0,
+            "time_signature": [
+                4,
+                4
+            ]
+        }
+    ],
+    "sv_points": [],
+    "keyboard_notes": [
+        {
+            "time": 1000,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 2150,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 3300,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 4450,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 5600,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 6750,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 7900,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 9050,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 10200,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 11350,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 12500,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 13650,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 14800,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 15950,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 17100,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 18250,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 19400,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 20550,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 21700,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 22850,
+            "lane": 3,
+            "type": "tap"
+        }
+    ],
+    "mouse_notes": []
+}

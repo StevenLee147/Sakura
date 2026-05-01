@@ -37,7 +37,7 @@ v0.5 Content ──→ v0.6 Data ──→ v0.7 Polish ──→ v1.0 Release
 | v0.2 | Phase 1 — 核心玩法 | 完整可玩流程：选歌→游戏→结算 | ✅ 已完成 |
 | v0.3 | Phase 2 — 编辑器与设置 | 谱面编辑器、设置系统、本地存储 | ✅ 已完成 |
 | v0.4 | Phase 3 — 视觉与音频 | 粒子/Shader/主题/音效/背景 | ✅ 已完成 |
-| v0.5 | Phase 4 — 内容与体验 | 教程、测试谱面、成就、统计、PP | 🔲 待开发 |
+| v0.5 | Phase 4 — 内容与体验 | 教程、测试谱面、成就、统计、PP | ✅ 已完成 |
 | v0.6 | Phase 5 — 数据与回放 | Replay系统、数据导出导入、详细报告 | 🔲 待开发 |
 | v0.7 | Phase 6 — 打磨优化 | 性能、背景视频、自动更新、打包 | 🔲 待开发 |
 | v1.0 | Phase 7 — 发布 | 最终测试、安装程序、正式发布 | 🔲 待开发 |
@@ -52,12 +52,12 @@ v0.5 Content ──→ v0.6 Data ──→ v0.7 Polish ──→ v1.0 Release
 | 文件 | 内容 |
 |------|------|
 | [old_reference/ROADMAP_v2_phases0-3.md](old_reference/ROADMAP_v2_phases0-3.md) | Phase 0~3 完整开发记录（已归档） |
+| [roadmap/PHASE4_CONTENT.md](roadmap/PHASE4_CONTENT.md) | Phase 4 — 内容与体验（已验收归档） |
 
 ### 待开发阶段
 
 | 文件 | 阶段 | 版本 |
 |------|------|------|
-| [roadmap/PHASE4_CONTENT.md](roadmap/PHASE4_CONTENT.md) | Phase 4 — 内容与体验 | v0.5 |
 | [roadmap/PHASE5_DATA.md](roadmap/PHASE5_DATA.md) | Phase 5 — 数据与回放 | v0.6 |
 | [roadmap/PHASE6_POLISH.md](roadmap/PHASE6_POLISH.md) | Phase 6 — 打磨优化 | v0.7 |
 | [roadmap/PHASE7_RELEASE.md](roadmap/PHASE7_RELEASE.md) | Phase 7 — 发布 | v1.0 |
@@ -75,7 +75,7 @@ v0.5 Content ──→ v0.6 Data ──→ v0.7 Polish ──→ v1.0 Release
 
 - **当前版本：** v0.5.3-alpha
 - **下一目标：** Phase 5 — 数据与回放 (v0.6)
-- **已实现模块：** 引擎核心 / 游戏玩法 / 编辑器 / 设置 / 视觉特效 / 音效系统 / 主题 / 数据库
+- **已实现模块：** 引擎核心 / 游戏玩法 / 编辑器 / 设置 / 视觉特效 / 音效系统 / 主题 / 数据库 / 教程 / 官方测试谱面 / 成就 / PP / 统计 / 音频可视化
 
 Sketch:
 加一点别的键？。加个组合技什么的 比如鼠标点击+按键盘上特定的按键（

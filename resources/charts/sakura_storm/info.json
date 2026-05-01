@@ -1,0 +1,31 @@
+{
+    "version": 2,
+    "id": "sakura_storm",
+    "title": "Sakura Storm",
+    "artist": "Sakura Synth",
+    "charter": "Sakura Dev",
+    "source": "Phase 4 official test pack",
+    "tags": [
+        "official",
+        "expert",
+        "storm",
+        "sv",
+        "bpm-change"
+    ],
+    "music_file": "music.wav",
+    "cover_file": "cover.png",
+    "background_file": "cover.png",
+    "preview_time": 32000,
+    "bpm": 200.0,
+    "offset": 0,
+    "difficulties": [
+        {
+            "name": "Expert",
+            "level": 14.0,
+            "chart_file": "expert.json",
+            "note_count": 200,
+            "hold_count": 50,
+            "mouse_note_count": 120
+        }
+    ]
+}

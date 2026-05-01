@@ -1,0 +1,230 @@
+{
+    "version": 2,
+    "timing_points": [
+        {
+            "time": 0,
+            "bpm": 130.0,
+            "time_signature": [
+                4,
+                4
+            ]
+        }
+    ],
+    "sv_points": [],
+    "keyboard_notes": [
+        {
+            "time": 900,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 1680,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 2460,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 3240,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 4020,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 4800,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 5580,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 6360,
+            "lane": 3,
+            "type": "hold",
+            "duration": 770
+        },
+        {
+            "time": 7140,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 7920,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 8700,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 9480,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 10260,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 11040,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 11820,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 12600,
+            "lane": 3,
+            "type": "hold",
+            "duration": 650
+        },
+        {
+            "time": 13380,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 14160,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 14940,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 15720,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 16500,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 17280,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 18060,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 18840,
+            "lane": 3,
+            "type": "hold",
+            "duration": 890
+        },
+        {
+            "time": 19620,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 20400,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 21180,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 21960,
+            "lane": 3,
+            "type": "tap"
+        },
+        {
+            "time": 22740,
+            "lane": 0,
+            "type": "tap"
+        },
+        {
+            "time": 23520,
+            "lane": 1,
+            "type": "tap"
+        },
+        {
+            "time": 24300,
+            "lane": 2,
+            "type": "tap"
+        },
+        {
+            "time": 25080,
+            "lane": 3,
+            "type": "hold",
+            "duration": 770
+        }
+    ],
+    "mouse_notes": [
+        {
+            "time": 1300,
+            "x": 0.78,
+            "y": 0.52,
+            "type": "circle"
+        },
+        {
+            "time": 4420,
+            "x": 0.254,
+            "y": 0.689,
+            "type": "circle"
+        },
+        {
+            "time": 7540,
+            "x": 0.531,
+            "y": 0.251,
+            "type": "circle"
+        },
+        {
+            "time": 10660,
+            "x": 0.71,
+            "y": 0.725,
+            "type": "circle"
+        },
+        {
+            "time": 13780,
+            "x": 0.207,
+            "y": 0.481,
+            "type": "circle"
+        },
+        {
+            "time": 16900,
+            "x": 0.703,
+            "y": 0.423,
+            "type": "circle"
+        },
+        {
+            "time": 20020,
+            "x": 0.447,
+            "y": 0.668,
+            "type": "circle"
+        },
+        {
+            "time": 23140,
+            "x": 0.405,
+            "y": 0.383,
+            "type": "circle"
+        }
+    ]
+}
