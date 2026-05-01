@@ -6,6 +6,7 @@
 #include "core/resource_manager.h"
 #include "utils/logger.h"
 #include "ui/toast.h"
+#include "ui/visual_style.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -118,30 +119,16 @@ void SceneChartWizard::SetupFields()
 
 void SceneChartWizard::SetupButtons()
 {
-    // "创建谱面" 按钮
-    sakura::ui::ButtonColors createColors;
-    createColors.normal  = { 40, 120, 80,  220 };
-    createColors.hover   = { 60, 160, 110, 235 };
-    createColors.pressed = { 25, 90,  55,  245 };
-    createColors.text    = sakura::core::Color::White;
-
     m_btnCreate = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.38f, 0.745f, 0.20f, 0.055f },
         "创建谱面", m_fontTitle, 0.022f, 0.010f);
-    m_btnCreate->SetColors(createColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCreate.get(), sakura::ui::ButtonVariant::Primary);
     m_btnCreate->SetOnClick([this]() { ValidateAndCreate(); });
-
-    // "取消" 按钮
-    sakura::ui::ButtonColors cancelColors;
-    cancelColors.normal  = { 80, 40, 50,  200 };
-    cancelColors.hover   = { 110, 55, 70, 220 };
-    cancelColors.pressed = { 55, 25, 35,  240 };
-    cancelColors.text    = sakura::core::Color::White;
 
     m_btnCancel = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.60f, 0.745f, 0.20f, 0.055f },
         "取消", m_fontTitle, 0.022f, 0.010f);
-    m_btnCancel->SetColors(cancelColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCancel.get(), sakura::ui::ButtonVariant::Danger);
     m_btnCancel->SetOnClick([this]() {
         m_manager.SwitchScene(
             std::make_unique<SceneMenu>(m_manager),
@@ -156,6 +143,7 @@ void SceneChartWizard::SetupButtons()
         m_btnPickResource[i] = std::make_unique<sakura::ui::Button>(
             sakura::core::NormRect{ btnX[i], btnY[i], 0.08f, 0.044f },
             "添加", m_fontLabel, 0.018f, 0.007f);
+        sakura::ui::VisualStyle::ApplyButton(m_btnPickResource[i].get(), sakura::ui::ButtonVariant::Accent);
         m_btnPickResource[i]->SetOnClick([this, i]()
         {
             OpenResourceFileDialog(FIELD_MUSIC_SRC + i);
@@ -198,9 +186,8 @@ void SceneChartWizard::OnUpdate(float dt)
 
 void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
 {
-    // 背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 8, 6, 18, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.145f, 0.66f, 0.70f }, false, true);
 
     // 标题
     if (m_fontTitle != sakura::core::INVALID_HANDLE)

@@ -1,6 +1,6 @@
 {
     "name": "sakura",
-    "version-string": "0.5.3",
+    "version-string": "0.5.4",
     "description": "Sakura-樱 混合模式音乐节奏游戏",
     "dependencies": [
         {

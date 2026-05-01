@@ -11,6 +11,7 @@
 #include "game/achievement_manager.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
+#include "ui/visual_style.h"
 
 #include <sstream>
 #include <iomanip>
@@ -63,6 +64,9 @@ void SceneResult::OnEnter()
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{0.55f, 0.935f, 0.18f, 0.048f},
         "返回", m_fontUI);
+
+    sakura::ui::VisualStyle::ApplyButton(m_btnRetry.get(), sakura::ui::ButtonVariant::Primary);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
 
     m_btnRetry->SetOnClick([this]()
     {
@@ -208,9 +212,8 @@ const char* SceneResult::GradeText(sakura::game::Grade grade)
 
 void SceneResult::OnRender(sakura::core::Renderer& renderer)
 {
-    // 背景
-    renderer.DrawFilledRect({0.0f, 0.0f, 1.0f, 1.0f},
-                            sakura::core::Color{10, 8, 22, 255});
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.30f, 0.64f, 0.58f }, false, true);
 
     // ── 元素 0：标题 "RESULT" ─────────────────────────────────────────────────
     {

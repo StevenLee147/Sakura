@@ -4,6 +4,7 @@
 
 #include "scene_menu.h"
 #include "data/database.h"
+#include "ui/visual_style.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,21 +14,7 @@
 namespace sakura::scene
 {
 
-namespace
-{
-
 constexpr std::array<const char*, 6> kGradeLabels = { "SS", "S", "A", "B", "C", "D" };
-
-void DrawPanel(sakura::core::Renderer& renderer,
-               sakura::core::NormRect rect,
-               sakura::core::Color fill,
-               sakura::core::Color border)
-{
-    renderer.DrawRoundedRect(rect, 0.012f, fill, true);
-    renderer.DrawRoundedRect(rect, 0.012f, border, false, 12, 0.0015f);
-}
-
-} // namespace
 
 SceneStats::SceneStats(SceneManager& mgr)
     : m_manager(mgr)
@@ -41,22 +28,10 @@ void SceneStats::OnEnter()
     m_fontBody  = rm.GetDefaultFontHandle();
     m_fontSmall = rm.GetDefaultFontHandle();
 
-    sakura::ui::ButtonColors primary;
-    primary.normal  = { 55, 40, 95, 220 };
-    primary.hover   = { 85, 65, 140, 235 };
-    primary.pressed = { 35, 25, 70, 240 };
-    primary.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors accent;
-    accent.normal  = { 95, 70, 30, 220 };
-    accent.hover   = { 135, 100, 45, 235 };
-    accent.pressed = { 70, 50, 20, 240 };
-    accent.text    = sakura::core::Color::White;
-
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.04f, 0.93f, 0.18f, 0.05f },
         "返回", m_fontBody, 0.025f, 0.010f);
-    m_btnBack->SetColors(primary);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         m_manager.SwitchScene(
@@ -67,7 +42,7 @@ void SceneStats::OnEnter()
     m_btnAchievements = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.78f, 0.93f, 0.18f, 0.05f },
         "成就列表", m_fontBody, 0.025f, 0.010f);
-    m_btnAchievements->SetColors(accent);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAchievements.get(), sakura::ui::ButtonVariant::Accent);
     m_btnAchievements->SetOnClick([this]()
     {
         m_showAchievements = true;
@@ -77,7 +52,7 @@ void SceneStats::OnEnter()
     m_btnCloseOverlay = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.66f, 0.18f, 0.16f, 0.045f },
         "关闭", m_fontBody, 0.022f, 0.010f);
-    m_btnCloseOverlay->SetColors(primary);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCloseOverlay.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnCloseOverlay->SetOnClick([this]()
     {
         m_showAchievements = false;
@@ -86,10 +61,7 @@ void SceneStats::OnEnter()
     m_achievementList = std::make_unique<sakura::ui::ScrollList>(
         sakura::core::NormRect{ 0.20f, 0.24f, 0.60f, 0.52f },
         m_fontSmall, 0.055f, 0.020f);
-    m_achievementList->SetBgColor({ 18, 15, 36, 220 });
-    m_achievementList->SetNormalColor({ 30, 28, 58, 220 });
-    m_achievementList->SetHoverColor({ 55, 48, 92, 230 });
-    m_achievementList->SetSelectedColor({ 85, 70, 130, 235 });
+    sakura::ui::VisualStyle::ApplyScrollList(m_achievementList.get());
 
     RefreshData();
 }
@@ -112,10 +84,7 @@ void SceneStats::OnUpdate(float dt)
 
 void SceneStats::OnRender(sakura::core::Renderer& renderer)
 {
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f }, { 10, 8, 20, 255 });
-    renderer.DrawGradientRect({ 0.0f, 0.0f, 1.0f, 0.28f },
-        { 26, 20, 54, 255 }, { 38, 22, 72, 255 },
-        { 14, 12, 28, 255 }, { 20, 16, 34, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     renderer.DrawText(m_fontTitle, "玩家统计",
         0.06f, 0.04f, 0.040f, { 230, 220, 255, 240 }, sakura::core::TextAlign::Left);
@@ -127,10 +96,10 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
     const sakura::core::NormRect cardBottomLeft { 0.04f, 0.46f, 0.42f, 0.36f };
     const sakura::core::NormRect cardBottomRight { 0.52f, 0.46f, 0.42f, 0.36f };
 
-    DrawPanel(renderer, cardTopLeft, { 18, 16, 34, 220 }, { 94, 78, 132, 220 });
-    DrawPanel(renderer, cardTopRight, { 18, 16, 34, 220 }, { 94, 78, 132, 220 });
-    DrawPanel(renderer, cardBottomLeft, { 18, 16, 34, 220 }, { 94, 78, 132, 220 });
-    DrawPanel(renderer, cardBottomRight, { 18, 16, 34, 220 }, { 94, 78, 132, 220 });
+    sakura::ui::VisualStyle::DrawPanel(renderer, cardTopLeft, false, true);
+    sakura::ui::VisualStyle::DrawPanel(renderer, cardTopRight, false, true);
+    sakura::ui::VisualStyle::DrawPanel(renderer, cardBottomLeft);
+    sakura::ui::VisualStyle::DrawPanel(renderer, cardBottomRight);
 
     renderer.DrawText(m_fontBody, "总览",
         0.07f, 0.16f, 0.026f, { 245, 220, 150, 240 }, sakura::core::TextAlign::Left);
@@ -221,8 +190,8 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
 
     if (m_showAchievements)
     {
-        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f }, { 0, 0, 0, 160 });
-        DrawPanel(renderer, { 0.16f, 0.16f, 0.68f, 0.64f }, { 16, 14, 32, 245 }, { 170, 140, 80, 230 });
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.62f);
+        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.16f, 0.16f, 0.68f, 0.64f }, true, true);
         renderer.DrawText(m_fontTitle, "成就列表",
             0.20f, 0.18f, 0.032f, { 255, 232, 165, 245 }, sakura::core::TextAlign::Left);
         if (m_btnCloseOverlay) m_btnCloseOverlay->Render(renderer);

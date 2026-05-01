@@ -3,6 +3,7 @@
 #include "background.h"
 #include "shader_manager.h"
 #include "core/config.h"
+#include "core/theme.h"
 #include "utils/logger.h"
 
 #include <cmath>
@@ -75,9 +76,8 @@ void BackgroundRenderer::Render(sakura::core::Renderer& renderer)
     }
     else
     {
-        // 无图片：黑色背景
         renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-                                sakura::core::Color{ 10, 8, 22, 255 });
+                    sakura::core::Theme::GetInstance().BgColor());
     }
 
     // 暗化遮罩
@@ -126,7 +126,13 @@ sakura::core::Color DefaultBackground::CalcBgColor(float phase) const
     uint8_t g = static_cast<uint8_t>( 8 + t1 * 2  + t2 * 4);
     uint8_t b = static_cast<uint8_t>(22 + t1 * 8  + t2 * 4);
 
-    return { r, g, b, 255 };
+    auto base = sakura::core::Theme::GetInstance().BgColor();
+    return {
+        static_cast<uint8_t>(std::clamp<int>(base.r + r - 10, 0, 255)),
+        static_cast<uint8_t>(std::clamp<int>(base.g + g - 8, 0, 255)),
+        static_cast<uint8_t>(std::clamp<int>(base.b + b - 22, 0, 255)),
+        255
+    };
 }
 
 void DefaultBackground::Render(sakura::core::Renderer& renderer)

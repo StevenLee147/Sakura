@@ -1,6 +1,7 @@
 // scene_splash.cpp — 启动画面
 
 #include "scene_splash.h"
+#include "ui/visual_style.h"
 #include "scene_loading.h"
 #include "scene_menu.h"
 #include "scene_tutorial.h"
@@ -149,9 +150,7 @@ void SceneSplash::GoToNextScene()
 
 void SceneSplash::OnRender(sakura::core::Renderer& renderer)
 {
-    // 深色背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 10, 8, 20, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
 

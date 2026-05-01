@@ -22,6 +22,14 @@ struct ButtonColors
     sakura::core::Color border   = { 255, 255, 255, 153 }; // 60% opacity for border
 };
 
+enum class ButtonVariant
+{
+    Primary,
+    Secondary,
+    Accent,
+    Danger
+};
+
 // Button — 可点击按钮组件
 // 支持悬停变色（150ms EaseOutCubic）和点击缩放弹回动画（100ms EaseOutBack）
 class Button : public UIBase
@@ -42,6 +50,7 @@ public:
     void SetTextPadding(float padding)              { m_textPadding = padding; }
     void SetTextAlign(sakura::core::TextAlign align) { m_textAlign = align; }
     void SetOnClick(std::function<void()> onClick)  { m_onClick = std::move(onClick); }
+    void ApplyThemeVariant(ButtonVariant variant, bool applyMetrics = false);
 
     // ── 全局 UI 音效回调（由 AudioManager 注册，无需逐按钮设置）────────────
     static void SetGlobalHoverSFX(std::function<void()> cb) { s_hoverSFX = std::move(cb); }

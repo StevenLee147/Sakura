@@ -1,6 +1,7 @@
 // scene_editor.cpp — 谱面编辑器场景实现
 
 #include "scene_editor.h"
+#include "ui/visual_style.h"
 #include "scene_menu.h"
 #include "core/resource_manager.h"
 #include "audio/audio_manager.h"
@@ -106,19 +107,13 @@ void SceneEditor::SetupToolbar()
 {
     const char* toolLabels[TOOL_COUNT] = { "Tap", "Hold", "Circle", "Slider" };
 
-    sakura::ui::ButtonColors toolColors;
-    toolColors.normal   = { 30, 25, 60, 200 };
-    toolColors.hover    = { 60, 50, 110, 230 };
-    toolColors.pressed  = { 20, 15, 45, 240 };
-    toolColors.text     = sakura::core::Color::White;
-
     for (int i = 0; i < TOOL_COUNT; ++i)
     {
         float x = 0.01f + i * 0.075f;
         m_toolBtns[i] = std::make_unique<sakura::ui::Button>(
             sakura::core::NormRect{ x, 0.005f, 0.068f, 0.048f },
             toolLabels[i], m_fontUI, 0.020f, 0.008f);
-        m_toolBtns[i]->SetColors(toolColors);
+        sakura::ui::VisualStyle::ApplyButton(m_toolBtns[i].get(), sakura::ui::ButtonVariant::Secondary);
         m_toolBtns[i]->SetTextAlign(sakura::core::TextAlign::Center);
         m_toolBtns[i]->SetTextPadding(0.0f);
 
@@ -138,6 +133,7 @@ void SceneEditor::SetupToolbar()
         "▶ 播放", m_fontUI, 0.020f, 0.008f);
     m_btnPlay->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnPlay->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnPlay.get(), sakura::ui::ButtonVariant::Primary);
     m_btnPlay->SetOnClick([this]()
     {
         TogglePlayback();
@@ -149,6 +145,7 @@ void SceneEditor::SetupToolbar()
         "↩ 撤销", m_fontUI, 0.020f, 0.008f);
     m_btnUndo->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnUndo->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnUndo.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnUndo->SetOnClick([this]()
     {
         m_core.Undo();
@@ -164,6 +161,7 @@ void SceneEditor::SetupToolbar()
         "↪ 重做", m_fontUI, 0.020f, 0.008f);
     m_btnRedo->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnRedo->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnRedo.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnRedo->SetOnClick([this]()
     {
         m_core.Redo();
@@ -179,6 +177,7 @@ void SceneEditor::SetupToolbar()
         "💾 保存", m_fontUI, 0.020f, 0.008f);
     m_btnSave->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnSave->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSave.get(), sakura::ui::ButtonVariant::Accent);
     m_btnSave->SetOnClick([this]() { DoSave(); });
 
     // 退出
@@ -187,6 +186,7 @@ void SceneEditor::SetupToolbar()
         "← 退出", m_fontUI, 0.020f, 0.008f);
     m_btnBack->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnBack->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         if (m_core.IsDirty())
@@ -205,6 +205,7 @@ void SceneEditor::SetupToolbar()
         "1/↓", m_fontUI, 0.018f, 0.006f);
     m_btnSnapDec->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnSnapDec->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSnapDec.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnSnapDec->SetOnClick([this]()
     {
         int cur = m_core.GetBeatSnap();
@@ -220,6 +221,7 @@ void SceneEditor::SetupToolbar()
         "1/↑", m_fontUI, 0.018f, 0.006f);
     m_btnSnapInc->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnSnapInc->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSnapInc.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnSnapInc->SetOnClick([this]()
     {
         int cur = m_core.GetBeatSnap();
@@ -231,16 +233,10 @@ void SceneEditor::SetupToolbar()
     });
 
     // 难度管理按钮（在属性面板区域内）
-    sakura::ui::ButtonColors diffColors;
-    diffColors.normal  = { 30, 25, 65, 200 };
-    diffColors.hover   = { 55, 45, 110, 225 };
-    diffColors.pressed = { 20, 15, 45, 240 };
-    diffColors.text    = sakura::core::Color{ 200, 190, 240, 210 };
-
     m_btnDiffPrev = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.425f, 0.696f, 0.048f, 0.034f },
         "◀", m_fontUI, 0.018f, 0.005f);
-    m_btnDiffPrev->SetColors(diffColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDiffPrev.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnDiffPrev->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnDiffPrev->SetTextPadding(0.0f);
     m_btnDiffPrev->SetOnClick([this]()
@@ -253,7 +249,7 @@ void SceneEditor::SetupToolbar()
     m_btnDiffNext = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.697f, 0.696f, 0.048f, 0.034f },
         "▶", m_fontUI, 0.018f, 0.005f);
-    m_btnDiffNext->SetColors(diffColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDiffNext.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnDiffNext->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnDiffNext->SetTextPadding(0.0f);
     m_btnDiffNext->SetOnClick([this]()
@@ -266,7 +262,7 @@ void SceneEditor::SetupToolbar()
     m_btnDiffAdd = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.597f, 0.696f, 0.048f, 0.034f },
         "+ 难度", m_fontUI, 0.015f, 0.005f);
-    m_btnDiffAdd->SetColors(diffColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDiffAdd.get(), sakura::ui::ButtonVariant::Accent);
     m_btnDiffAdd->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnDiffAdd->SetTextPadding(0.0f);
     m_btnDiffAdd->SetOnClick([this]() { AddNewDifficulty(); });
@@ -283,17 +279,12 @@ void SceneEditor::UpdateToolButtons()
         sakura::ui::ButtonColors c;
         if (i == current)
         {
-            c.normal  = { 70, 100, 220, 235 };  // 选中：亮蓝
-            c.hover   = { 90, 120, 255, 245 };
-            c.pressed = { 50, 80, 180, 255 };
+            c = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Primary);
         }
         else
         {
-            c.normal  = { 30, 25, 60, 200 };
-            c.hover   = { 60, 50, 110, 230 };
-            c.pressed = { 20, 15, 45, 240 };
+            c = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Secondary);
         }
-        c.text = sakura::core::Color::White;
         m_toolBtns[i]->SetColors(c);
     }
 }
@@ -500,9 +491,7 @@ void SceneEditor::OnUpdate(float dt)
 
 void SceneEditor::OnRender(sakura::core::Renderer& renderer)
 {
-    // 全屏背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 8, 6, 18, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     // 1. 工具栏（预览中也显示，但用红色边框区分状态）
     RenderToolbar(renderer);
@@ -575,8 +564,7 @@ void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
 void SceneEditor::RenderMouseArea(sakura::core::Renderer& renderer)
 {
     // 占位面板：(0.42, 0.06, 0.33, 0.60)
-    renderer.DrawFilledRect({ 0.42f, 0.06f, 0.33f, 0.60f },
-        sakura::core::Color{ 10, 8, 24, 200 });
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.42f, 0.06f, 0.33f, 0.60f });
     renderer.DrawLine(0.42f, 0.06f, 0.75f, 0.06f,
         sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
     renderer.DrawLine(0.42f, 0.06f, 0.42f, 0.66f,
@@ -604,8 +592,7 @@ void SceneEditor::RenderMouseArea(sakura::core::Renderer& renderer)
 void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
 {
     // 属性面板：(0.42, 0.68, 0.33, 0.32)
-    renderer.DrawFilledRect({ 0.42f, 0.68f, 0.33f, 0.32f },
-        sakura::core::Color{ 10, 8, 24, 200 });
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.42f, 0.68f, 0.33f, 0.32f });
     renderer.DrawLine(0.42f, 0.68f, 0.75f, 0.68f,
         sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
     renderer.DrawLine(0.42f, 0.68f, 0.42f, 1.00f,

@@ -7,6 +7,7 @@
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
+#include "ui/visual_style.h"
 
 #include <algorithm>
 #include <cmath>
@@ -27,41 +28,23 @@ SceneCalibration::SceneCalibration(SceneManager& mgr)
 
 void SceneCalibration::SetupButtons()
 {
-    sakura::ui::ButtonColors applyColors;
-    applyColors.normal  = { 50, 130, 80,  220 };
-    applyColors.hover   = { 70, 170, 110, 235 };
-    applyColors.pressed = { 35,  95,  55, 240 };
-    applyColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors retryColors;
-    retryColors.normal  = { 80, 60, 110, 220 };
-    retryColors.hover   = { 110, 85, 150, 235 };
-    retryColors.pressed = { 55,  40,  80, 240 };
-    retryColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors backColors;
-    backColors.normal  = { 45, 45, 70,  220 };
-    backColors.hover   = { 70, 65, 105, 235 };
-    backColors.pressed = { 25, 25, 50,  240 };
-    backColors.text    = sakura::core::Color::White;
-
     m_btnApply = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.30f, 0.72f, 0.18f, 0.055f },
         "应用", m_font, 0.026f, 0.012f);
-    m_btnApply->SetColors(applyColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnApply.get(), sakura::ui::ButtonVariant::Primary);
     m_btnApply->SetEnabled(false);
     m_btnApply->SetOnClick([this]() { ApplyResult(); });
 
     m_btnRetry = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.52f, 0.72f, 0.18f, 0.055f },
         "重试", m_font, 0.026f, 0.012f);
-    m_btnRetry->SetColors(retryColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnRetry.get(), sakura::ui::ButtonVariant::Accent);
     m_btnRetry->SetOnClick([this]() { Retry(); });
 
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.39f, 0.90f, 0.22f, 0.055f },
         "返回设置", m_font, 0.026f, 0.012f);
-    m_btnBack->SetColors(backColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         m_manager.SwitchScene(
@@ -230,7 +213,8 @@ void SceneCalibration::OnEvent(const SDL_Event& event)
 
 void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
 {
-    renderer.Clear(sakura::core::Color::DarkBlue);
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.11f, 0.64f, 0.76f }, false, true);
 
     // 标题
     renderer.DrawText(m_font, "延迟校准",

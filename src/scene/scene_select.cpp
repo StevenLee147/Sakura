@@ -10,6 +10,7 @@
 #include "audio/audio_manager.h"
 #include "game/chart_loader.h"
 #include "data/database.h"
+#include "ui/visual_style.h"
 
 #include <algorithm>
 #include <sstream>
@@ -72,10 +73,7 @@ void SceneSelect::SetupUI()
         sakura::core::NormRect{ 0.02f, 0.10f, 0.45f, 0.80f },
         m_fontUI, 0.065f, 0.026f);
 
-    m_songList->SetBgColor({ 15, 12, 30, 200 });
-    m_songList->SetNormalColor({ 25, 20, 50, 200 });
-    m_songList->SetHoverColor({ 50, 40, 90, 220 });
-    m_songList->SetSelectedColor({ 85, 60, 135, 240 });
+    sakura::ui::VisualStyle::ApplyScrollList(m_songList.get());
 
     m_songList->SetOnSelectionChanged([this](int idx) { OnSongSelected(idx); });
     m_songList->SetOnDoubleClick([this](int idx)
@@ -86,17 +84,10 @@ void SceneSelect::SetupUI()
         // Step 1.11 完成后：切换到 SceneGame
     });
 
-    // 返回按钮
-    sakura::ui::ButtonColors btnColors;
-    btnColors.normal  = { 35, 30, 65, 210 };
-    btnColors.hover   = { 60, 50, 105, 230 };
-    btnColors.pressed = { 20, 15, 45, 240 };
-    btnColors.text    = sakura::core::Color::White;
-
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.04f, 0.926f, 0.18f, 0.055f },
         "返回", m_fontUI, 0.026f, 0.010f);
-    m_btnBack->SetColors(btnColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         StopPreview();
@@ -105,17 +96,10 @@ void SceneSelect::SetupUI()
             TransitionType::SlideRight, 0.4f);
     });
 
-    // 开始按钮
-    sakura::ui::ButtonColors startColors;
-    startColors.normal  = { 100, 55, 155, 220 };
-    startColors.hover   = { 130, 80, 190, 235 };
-    startColors.pressed = { 70, 35, 120, 240 };
-    startColors.text    = sakura::core::Color::White;
-
     m_btnStart = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.78f, 0.926f, 0.18f, 0.055f },
         "开始游戏", m_fontUI, 0.026f, 0.010f);
-    m_btnStart->SetColors(startColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnStart.get(), sakura::ui::ButtonVariant::Primary);
     m_btnStart->SetEnabled(!m_charts.empty());
     m_btnStart->SetOnClick([this]()
     {
@@ -203,25 +187,13 @@ void SceneSelect::RefreshDifficultyButtons()
         float x = startX + i * stride;
         sakura::core::NormRect bounds = { x, btnY, btnW, btnH };
 
-        sakura::ui::ButtonColors c;
-        if (i == m_selectedDifficulty)
-        {
-            c.normal  = { 120, 70, 180, 235 };
-            c.hover   = { 140, 90, 200, 245 };
-            c.pressed = { 90, 50, 150, 245 };
-        }
-        else
-        {
-            c.normal  = { 35, 30, 65, 200 };
-            c.hover   = { 60, 50, 105, 220 };
-            c.pressed = { 20, 15, 45, 235 };
-        }
-        c.text = sakura::core::Color::White;
-
         auto btn = std::make_unique<sakura::ui::Button>(
             bounds, label.str(), m_fontSmall, 0.018f, 0.008f);
         btn->SetTextAlign(sakura::core::TextAlign::Center);
-        btn->SetColors(c);
+        sakura::ui::VisualStyle::ApplyButton(
+            btn.get(),
+            i == m_selectedDifficulty ? sakura::ui::ButtonVariant::Primary
+                                      : sakura::ui::ButtonVariant::Secondary);
 
         int idx = i;
         btn->SetOnClick([this, idx]()
@@ -390,13 +362,7 @@ void SceneSelect::OnUpdate(float dt)
 
 void SceneSelect::RenderDetailPanel(sakura::core::Renderer& renderer)
 {
-    // 面板背景
-    renderer.DrawRoundedRect(
-        { 0.50f, 0.10f, 0.48f, 0.80f }, 0.012f,
-        sakura::core::Color{ 15, 12, 30, 210 }, true);
-    renderer.DrawRoundedRect(
-        { 0.50f, 0.10f, 0.48f, 0.80f }, 0.012f,
-        sakura::core::Color{ 80, 60, 130, 100 }, false);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.50f, 0.10f, 0.48f, 0.80f }, false, true);
 
     if (m_selectedChart < 0 || m_selectedChart >= static_cast<int>(m_charts.size()))
     {
@@ -549,9 +515,7 @@ void SceneSelect::RenderDetailPanel(sakura::core::Renderer& renderer)
 
 void SceneSelect::OnRender(sakura::core::Renderer& renderer)
 {
-    // 背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 10, 8, 22, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     // 标题
     if (m_fontUI != sakura::core::INVALID_HANDLE)

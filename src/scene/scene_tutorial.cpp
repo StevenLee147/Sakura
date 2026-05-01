@@ -7,6 +7,7 @@
 #include "core/config.h"
 #include "core/input.h"
 #include "utils/logger.h"
+#include "ui/visual_style.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,9 +17,6 @@ namespace sakura::scene
 {
 namespace
 {
-
-constexpr sakura::core::Color kBgTop    = { 20, 16, 36, 255 };
-constexpr sakura::core::Color kBgBottom = { 10, 8, 20, 255 };
 
 int CalcSliderWaypointTimeMs(const sakura::game::TutorialLessonNote& note,
                              int waypointCount,
@@ -72,29 +70,17 @@ void SceneTutorial::OnExit()
 
 void SceneTutorial::SetupPromptButtons()
 {
-    sakura::ui::ButtonColors yesColors;
-    yesColors.normal  = { 70, 120, 85, 220 };
-    yesColors.hover   = { 95, 155, 110, 235 };
-    yesColors.pressed = { 55, 90, 65, 245 };
-    yesColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors noColors;
-    noColors.normal  = { 75, 60, 110, 220 };
-    noColors.hover   = { 105, 85, 145, 235 };
-    noColors.pressed = { 55, 40, 80, 245 };
-    noColors.text    = sakura::core::Color::White;
-
     m_btnPromptYes = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.34f, 0.56f, 0.14f, 0.055f },
         "进入教程", m_fontText, 0.024f, 0.010f);
-    m_btnPromptYes->SetColors(yesColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnPromptYes.get(), sakura::ui::ButtonVariant::Primary);
     m_btnPromptYes->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnPromptYes->SetOnClick([this]() { ResolvePrompt(true); });
 
     m_btnPromptNo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.52f, 0.56f, 0.14f, 0.055f },
         "暂时跳过", m_fontText, 0.024f, 0.010f);
-    m_btnPromptNo->SetColors(noColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnPromptNo.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnPromptNo->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnPromptNo->SetOnClick([this]() { ResolvePrompt(false); });
 }
@@ -583,10 +569,7 @@ void SceneTutorial::RenderLessonOverlay(sakura::core::Renderer& renderer) const
 {
     if (m_phase == Phase::Prompt) return;
 
-    renderer.DrawRoundedRect({ 0.08f, 0.15f, 0.80f, 0.07f },
-        0.010f, { 28, 24, 48, 220 }, true);
-    renderer.DrawRoundedRect({ 0.08f, 0.15f, 0.80f, 0.07f },
-        0.010f, { 105, 90, 145, 120 }, false);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.08f, 0.15f, 0.80f, 0.07f });
 
     renderer.DrawText(m_fontSmall, CurrentLesson().instruction,
         0.10f, 0.176f, 0.021f,
@@ -798,11 +781,8 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
 
 void SceneTutorial::RenderPrompt(sakura::core::Renderer& renderer)
 {
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f }, { 0, 0, 0, 140 });
-    renderer.DrawRoundedRect({ 0.24f, 0.30f, 0.52f, 0.38f },
-        0.018f, { 24, 20, 42, 248 }, true);
-    renderer.DrawRoundedRect({ 0.24f, 0.30f, 0.52f, 0.38f },
-        0.018f, { 120, 102, 170, 150 }, false);
+    sakura::ui::VisualStyle::DrawScrim(renderer);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.24f, 0.30f, 0.52f, 0.38f }, true, true);
 
     renderer.DrawText(m_fontTitle, "是否进入教程？",
         0.50f, 0.38f, 0.040f,
@@ -826,11 +806,7 @@ void SceneTutorial::RenderPrompt(sakura::core::Renderer& renderer)
 
 void SceneTutorial::OnRender(sakura::core::Renderer& renderer)
 {
-    renderer.DrawGradientRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        kBgTop, kBgTop, kBgBottom, kBgBottom);
-    renderer.DrawGradientRect({ 0.0f, 0.0f, 1.0f, 0.45f },
-        { 255, 150, 190, 26 }, { 255, 150, 190, 0 },
-        { 70, 110, 220, 0 }, { 70, 110, 220, 0 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     RenderHeader(renderer);
     RenderLessonOverlay(renderer);

@@ -14,6 +14,7 @@
 #include "utils/easing.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
+#include "ui/visual_style.h"
 
 // version.h 由 CMake 生成
 #if __has_include("version.h")
@@ -99,22 +100,17 @@ void SceneMenu::SetupButtons()
         "开始游戏", "教程", "统计", "谱面编辑器", "设置", "退出"
     };
 
-    sakura::ui::ButtonColors colors;
-    // 使用玻璃质感
-    colors.normal   = { 255, 240, 245, 20 };
-    colors.hover    = { 255, 255, 255, 45 };
-    colors.pressed  = { 255, 255, 255, 15 };
-    colors.disabled = { 100, 100, 100, 30 };
-    colors.text     = sakura::core::Color::White;
-    // 边框留默认的高亮
-
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         float y = BTN_Y0 + i * BTN_GAP;
         sakura::core::NormRect bounds = { BTN_X, y, BTN_W, BTN_H };
         m_buttons[i] = std::make_unique<sakura::ui::Button>(
             bounds, labels[i], m_fontButton, 0.028f, 0.012f);
-        m_buttons[i]->SetColors(colors);
+        sakura::ui::VisualStyle::ApplyButton(
+            m_buttons[i].get(),
+            i == 0 ? sakura::ui::ButtonVariant::Primary
+                   : (i == BUTTON_COUNT - 1 ? sakura::ui::ButtonVariant::Danger
+                                            : sakura::ui::ButtonVariant::Secondary));
         m_buttons[i]->SetTextAlign(sakura::core::TextAlign::Left);
         m_buttons[i]->SetTextPadding(0.02f);
     }
@@ -175,32 +171,11 @@ void SceneMenu::SetupButtons()
 
 void SceneMenu::SetupEditorMenuButtons()
 {
-    sakura::ui::ButtonColors openColors;
-    openColors.normal   = { 40, 70, 110, 220 };
-    openColors.hover    = { 60, 100, 150, 235 };
-    openColors.pressed  = { 25,  50,  80, 240 };
-    openColors.disabled = { 30,  45,  60, 120 };
-    openColors.text     = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors newColors;
-    newColors.normal   = { 50, 80,  50, 220 };
-    newColors.hover    = { 70, 110,  70, 235 };
-    newColors.pressed  = { 30,  55,  30, 240 };
-    newColors.disabled = { 30,  45,  30, 120 };
-    newColors.text     = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors cancelColors;
-    cancelColors.normal   = { 45, 45, 70, 220 };
-    cancelColors.hover    = { 70, 65, 105, 235 };
-    cancelColors.pressed  = { 25, 25,  50, 240 };
-    cancelColors.disabled = { 30, 30,  50, 120 };
-    cancelColors.text     = sakura::core::Color::White;
-
     // 面板区域：x=0.30, y=0.28, w=0.40, h=0.44；按钮居中布局
     m_btnEditorOpen = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.355f, 0.455f, 0.29f, 0.055f },
         "打开已有谱面", m_fontButton, 0.026f, 0.010f);
-    m_btnEditorOpen->SetColors(openColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnEditorOpen.get(), sakura::ui::ButtonVariant::Primary);
     m_btnEditorOpen->SetOnClick([this]()
     {
         if (m_customCharts.empty())
@@ -219,7 +194,7 @@ void SceneMenu::SetupEditorMenuButtons()
     m_btnEditorNew = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.355f, 0.525f, 0.29f, 0.055f },
         "新建谱面", m_fontButton, 0.026f, 0.010f);
-    m_btnEditorNew->SetColors(newColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnEditorNew.get(), sakura::ui::ButtonVariant::Accent);
     m_btnEditorNew->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：新建谱面向导");
@@ -232,7 +207,7 @@ void SceneMenu::SetupEditorMenuButtons()
     m_btnEditorCancel = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.355f, 0.600f, 0.29f, 0.050f },
         "关 闭", m_fontButton, 0.024f, 0.010f);
-    m_btnEditorCancel->SetColors(cancelColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnEditorCancel.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnEditorCancel->SetOnClick([this]()
     {
         m_showEditorMenu = false;
@@ -289,26 +264,12 @@ void SceneMenu::OpenEditorForChart(int idx)
 
 void SceneMenu::SetupConfirmButtons()
 {
-    sakura::ui::ButtonColors yesColors;
-    yesColors.normal   = { 160,  40,  60, 220 };
-    yesColors.hover    = { 200,  60,  80, 235 };
-    yesColors.pressed  = { 120,  25,  40, 240 };
-    yesColors.disabled = {  60,  20,  30, 120 };
-    yesColors.text     = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors noColors;
-    noColors.normal   = {  40,  40,  80, 220 };
-    noColors.hover    = {  70,  60, 120, 235 };
-    noColors.pressed  = {  25,  25,  55, 240 };
-    noColors.disabled = {  30,  30,  50, 120 };
-    noColors.text     = sakura::core::Color::White;
-
     // 确认框内两个按钮，居中布局
     // 面板: x=0.32 y=0.35 w=0.36 h=0.26
     m_btnConfirmYes = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.348f, 0.505f, 0.13f, 0.055f },
         "确认退出", m_fontButton, 0.026f, 0.010f);
-    m_btnConfirmYes->SetColors(yesColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnConfirmYes.get(), sakura::ui::ButtonVariant::Danger);
     m_btnConfirmYes->SetOnClick([]()
     {
         LOG_INFO("[SceneMenu] 确认退出");
@@ -320,7 +281,7 @@ void SceneMenu::SetupConfirmButtons()
     m_btnConfirmNo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.502f, 0.505f, 0.13f, 0.055f },
         "取 消", m_fontButton, 0.026f, 0.010f);
-    m_btnConfirmNo->SetColors(noColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnConfirmNo.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnConfirmNo->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 取消退出");
@@ -445,12 +406,7 @@ void SceneMenu::OnUpdate(float dt)
 
 void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 {
-    // ── 背景图案 ──────────────────────────────────────────────────────────────
-    // 假定有全屏背景底图，先绘制底层颜色
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 15, 12, 35, 255 });
-    
-    // (此处应有插画渲染...) 略
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     // ── 半透明渐变遮罩 (保证左边文字可读性) ───────────────────────────────────
     // 渐变占据 x: 0 ~ 0.5
@@ -532,15 +488,8 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
     if (m_showEditorMenu)
     {
-        // 半透明遮罩
-        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-            sakura::core::Color{ 0, 0, 0, 140 });
-
-        // 子菜单面板 x=0.30, y=0.28, w=0.40, h=0.44
-        renderer.DrawRoundedRect({ 0.30f, 0.28f, 0.40f, 0.44f },
-            0.012f, sakura::core::Color{ 22, 18, 45, 248 }, true);
-        renderer.DrawRoundedRect({ 0.30f, 0.28f, 0.40f, 0.44f },
-            0.012f, sakura::core::Color{ 120, 90, 180, 200 }, false);
+        sakura::ui::VisualStyle::DrawScrim(renderer);
+        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.30f, 0.28f, 0.40f, 0.44f }, true, true);
 
         // 标题
         renderer.DrawText(m_fontSub, "谱面编辑器",
@@ -599,15 +548,8 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     // ── 退出确认对话框 ────────────────────────────────────────────────────────
     if (m_showExitConfirm)
     {
-        // 半透明遮罩
-        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-            sakura::core::Color{ 0, 0, 0, 140 });
-
-        // 对话框面板 x=0.32, y=0.35, w=0.36, h=0.26
-        renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
-            0.012f, sakura::core::Color{ 28, 24, 52, 245 }, true);
-        renderer.DrawRoundedRect({ 0.32f, 0.35f, 0.36f, 0.26f },
-            0.012f, sakura::core::Color{ 140, 100, 180, 200 }, false);
+        sakura::ui::VisualStyle::DrawScrim(renderer);
+        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.32f, 0.35f, 0.36f, 0.26f }, true, true);
 
         // 提示文字
         renderer.DrawText(m_fontSub, "确定要退出游戏吗？",

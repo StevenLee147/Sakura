@@ -309,10 +309,17 @@ float Renderer::MeasureTextWidth(FontHandle fontHandle,
                                   std::string_view text,
                                   float normFontSize) const
 {
-    if (!m_renderer || text.empty()) return 0.0f;
+    return MeasureText(fontHandle, text, normFontSize).width;
+}
+
+TextMetrics Renderer::MeasureText(FontHandle fontHandle,
+                                  std::string_view text,
+                                  float normFontSize) const
+{
+    if (!m_renderer || text.empty()) return {};
 
     TTF_Font* font = ResourceManager::GetInstance().GetFont(fontHandle);
-    if (!font) return 0.0f;
+    if (!font) return {};
 
     const float targetPixelSize = normFontSize * static_cast<float>(GetScreenHeight());
     const float originalSize    = TTF_GetFontSize(font);
@@ -331,7 +338,14 @@ float Renderer::MeasureTextWidth(FontHandle fontHandle,
         TTF_SetFontSize(font, originalSize);
     }
 
-    return static_cast<float>(w) / static_cast<float>(GetScreenWidth());
+    const int screenW = GetScreenWidth();
+    const int screenH = GetScreenHeight();
+    if (screenW <= 0 || screenH <= 0) return {};
+
+    return {
+        static_cast<float>(w) / static_cast<float>(screenW),
+        static_cast<float>(h) / static_cast<float>(screenH)
+    };
 }
 
 Renderer::TextCacheEntry* Renderer::GetOrCreateTextCacheEntry(FontHandle fontHandle,

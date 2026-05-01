@@ -7,6 +7,7 @@
 #include "core/input.h"
 #include "core/window.h"
 #include "audio/audio_manager.h"
+#include "ui/visual_style.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 
@@ -113,17 +114,10 @@ void SceneSettings::SetupGeneralTab()
         m_isDirty = true;
     });
 
-    // 延迟校准按钮
-    sakura::ui::ButtonColors btnColors;
-    btnColors.normal  = { 50, 45, 80, 220 };
-    btnColors.hover   = { 80, 70, 120, 235 };
-    btnColors.pressed = { 30, 25, 60, 240 };
-    btnColors.text    = sakura::core::Color::White;
-
     m_btnCalibrate = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ CONTENT_X + CONTENT_W * 0.3f, SlotY(3), CONTENT_W * 0.4f, 0.055f },
         "延迟校准", m_font, 0.026f, 0.012f);
-    m_btnCalibrate->SetColors(btnColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCalibrate.get(), sakura::ui::ButtonVariant::Accent);
     m_btnCalibrate->SetOnClick([this]()
     {
         m_manager.SwitchScene(
@@ -138,13 +132,6 @@ void SceneSettings::SetupAudioTab()
 {
     auto& cfg = sakura::core::Config::GetInstance();
     auto& audio = sakura::audio::AudioManager::GetInstance();
-
-    sakura::ui::ButtonColors btnColors;
-    btnColors.normal  = { 50, 45, 80, 220 };
-    btnColors.hover   = { 80, 70, 120, 235 };
-    btnColors.pressed = { 30, 25, 60, 240 };
-    btnColors.text    = sakura::core::Color::White;
-    (void)btnColors;
 
     // 主音量
     m_sliderMaster = std::make_unique<sakura::ui::Slider>(
@@ -241,19 +228,6 @@ void SceneSettings::SetupKeysTab()
     m_keyCodes[4] = static_cast<SDL_Scancode>(cfg.Get<int>(std::string(sakura::core::ConfigKeys::kKeyPause), SDL_SCANCODE_ESCAPE));
     m_keyCodes[5] = static_cast<SDL_Scancode>(cfg.Get<int>(std::string(sakura::core::ConfigKeys::kKeyRetry), SDL_SCANCODE_R));
 
-    sakura::ui::ButtonColors keyBtnColors;
-    keyBtnColors.normal  = { 45, 45, 70, 220 };
-    keyBtnColors.hover   = { 75, 65, 110, 235 };
-    keyBtnColors.pressed = { 25, 25, 50,  240 };
-    keyBtnColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors listeningColors;
-    listeningColors.normal  = { 100, 50, 150, 230 };
-    listeningColors.hover   = { 120, 70, 180, 240 };
-    listeningColors.pressed = { 80,  30, 120, 240 };
-    listeningColors.text    = sakura::core::Color::White;
-    (void)listeningColors;
-
     for (int i = 0; i < KEY_BIND_COUNT; ++i)
     {
         float y = SlotY(i + 1);
@@ -261,7 +235,7 @@ void SceneSettings::SetupKeysTab()
             sakura::core::NormRect{ CONTENT_X + CONTENT_W * 0.35f, y - 0.025f,
                                    CONTENT_W * 0.3f, 0.05f },
             "", m_font, 0.026f, 0.01f);
-        m_keyButtons[i]->SetColors(keyBtnColors);
+        sakura::ui::VisualStyle::ApplyButton(m_keyButtons[i].get(), sakura::ui::ButtonVariant::Secondary);
 
         int idx = i;
         m_keyButtons[i]->SetOnClick([this, idx]()
@@ -274,17 +248,10 @@ void SceneSettings::SetupKeysTab()
 
     UpdateKeyButtonLabels();
 
-    // 恢复默认按钮
-    sakura::ui::ButtonColors resetColors;
-    resetColors.normal  = { 80, 40, 40, 220 };
-    resetColors.hover   = { 110, 60, 60, 235 };
-    resetColors.pressed = { 55,  25, 25, 240 };
-    resetColors.text    = sakura::core::Color::White;
-
     m_btnResetKeys = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ CONTENT_X + CONTENT_W * 0.3f, SlotY(KEY_BIND_COUNT + 1), CONTENT_W * 0.4f, 0.05f },
         "恢复默认", m_font, 0.026f, 0.012f);
-    m_btnResetKeys->SetColors(resetColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnResetKeys.get(), sakura::ui::ButtonVariant::Danger);
     m_btnResetKeys->SetOnClick([this]()
     {
         m_keyCodes[0] = SDL_SCANCODE_A;
@@ -363,16 +330,10 @@ void SceneSettings::SetupDisplayTab()
 
 void SceneSettings::SetupBackButton()
 {
-    sakura::ui::ButtonColors backColors;
-    backColors.normal  = { 45, 45, 70, 220 };
-    backColors.hover   = { 70, 65, 105, 235 };
-    backColors.pressed = { 25, 25, 50, 240 };
-    backColors.text    = sakura::core::Color::White;
-
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.39f, 0.93f - 0.027f, 0.22f, 0.055f },
         "返回", m_font, 0.026f, 0.012f);
-    m_btnBack->SetColors(backColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         TrySwitchBack();
@@ -383,16 +344,10 @@ void SceneSettings::SetupBackButton()
 
 void SceneSettings::SetupSaveButton()
 {
-    sakura::ui::ButtonColors saveColors;
-    saveColors.normal  = { 40, 90, 50, 220 };
-    saveColors.hover   = { 60, 130, 70, 235 };
-    saveColors.pressed = { 25,  60, 30, 240 };
-    saveColors.text    = sakura::core::Color::White;
-
     m_btnSave = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.64f, 0.93f - 0.027f, 0.22f, 0.055f },
         "保 存", m_font, 0.026f, 0.012f);
-    m_btnSave->SetColors(saveColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSave.get(), sakura::ui::ButtonVariant::Primary);
     m_btnSave->SetOnClick([this]()
     {
         SaveSettings();
@@ -403,29 +358,11 @@ void SceneSettings::SetupSaveButton()
 
 void SceneSettings::SetupUnsavedDialog()
 {
-    sakura::ui::ButtonColors saveExitColors;
-    saveExitColors.normal  = { 40, 90, 50, 220 };
-    saveExitColors.hover   = { 60, 130, 70, 235 };
-    saveExitColors.pressed = { 25,  60, 30, 240 };
-    saveExitColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors backColors;
-    backColors.normal  = { 45, 45, 70, 220 };
-    backColors.hover   = { 70, 65, 105, 235 };
-    backColors.pressed = { 25, 25,  50, 240 };
-    backColors.text    = sakura::core::Color::White;
-
-    sakura::ui::ButtonColors discardColors;
-    discardColors.normal  = { 110, 35, 45, 220 };
-    discardColors.hover   = { 150, 50, 60, 235 };
-    discardColors.pressed = {  70, 20, 28, 240 };
-    discardColors.text    = sakura::core::Color::White;
-
     // 对话框内三个按钮（竖排）
     m_btnDialogSaveExit = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.36f, 0.455f, 0.28f, 0.055f },
         "保存并退出", m_font, 0.026f, 0.010f);
-    m_btnDialogSaveExit->SetColors(saveExitColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDialogSaveExit.get(), sakura::ui::ButtonVariant::Primary);
     m_btnDialogSaveExit->SetOnClick([this]()
     {
         m_showUnsavedDialog = false;
@@ -435,7 +372,7 @@ void SceneSettings::SetupUnsavedDialog()
     m_btnDialogBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.36f, 0.525f, 0.28f, 0.055f },
         "返回设置", m_font, 0.026f, 0.010f);
-    m_btnDialogBack->SetColors(backColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDialogBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnDialogBack->SetOnClick([this]()
     {
         m_showUnsavedDialog = false;
@@ -444,7 +381,7 @@ void SceneSettings::SetupUnsavedDialog()
     m_btnDialogDiscard = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.36f, 0.600f, 0.28f, 0.055f },
         "不保存直接退出", m_font, 0.024f, 0.010f);
-    m_btnDialogDiscard->SetColors(discardColors);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDialogDiscard.get(), sakura::ui::ButtonVariant::Danger);
     m_btnDialogDiscard->SetOnClick([this]()
     {
         m_showUnsavedDialog = false;
@@ -523,11 +460,13 @@ void SceneSettings::UpdateKeyButtonLabels()
         if (m_listeningKeyIndex == i)
         {
             m_keyButtons[i]->SetText("按下任意键...");
+            sakura::ui::VisualStyle::ApplyButton(m_keyButtons[i].get(), sakura::ui::ButtonVariant::Primary);
         }
         else
         {
             const char* keyName = SDL_GetScancodeName(m_keyCodes[i]);
             m_keyButtons[i]->SetText(keyName ? keyName : "?");
+            sakura::ui::VisualStyle::ApplyButton(m_keyButtons[i].get(), sakura::ui::ButtonVariant::Secondary);
         }
     }
 }
@@ -809,12 +748,8 @@ void SceneSettings::RenderDisplayTab(sakura::core::Renderer& renderer)
 
 void SceneSettings::OnRender(sakura::core::Renderer& renderer)
 {
-    renderer.Clear(sakura::core::Color::DarkBlue);
-
-    // 背景面板
-    renderer.DrawRoundedRect(
-        { 0.01f, 0.08f, 0.98f, 0.86f }, 0.015f,
-        { 20, 18, 35, 200 }, true);
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.01f, 0.08f, 0.98f, 0.86f }, false, true);
 
     // 标题
     renderer.DrawText(m_font, "设置",
@@ -824,9 +759,9 @@ void SceneSettings::OnRender(sakura::core::Renderer& renderer)
     m_tabBar->Render(renderer);
 
     // 内容区背景
-    renderer.DrawRoundedRect(
-        { CONTENT_X - 0.01f, CONTENT_Y - 0.01f, CONTENT_W + 0.02f, CONTENT_H + 0.02f },
-        0.012f, { 30, 25, 50, 180 }, true);
+    sakura::ui::VisualStyle::DrawPanel(
+        renderer,
+        { CONTENT_X - 0.01f, CONTENT_Y - 0.01f, CONTENT_W + 0.02f, CONTENT_H + 0.02f });
 
     // 当前 Tab 内容
     switch (m_currentTab)
@@ -855,15 +790,8 @@ void SceneSettings::OnRender(sakura::core::Renderer& renderer)
     // 未保存修改对话框
     if (m_showUnsavedDialog)
     {
-        // 半透明遮罩
-        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-            sakura::core::Color{ 0, 0, 0, 150 });
-
-        // 对话框面板
-        renderer.DrawRoundedRect({ 0.32f, 0.36f, 0.36f, 0.31f },
-            0.012f, sakura::core::Color{ 25, 20, 48, 248 }, true);
-        renderer.DrawRoundedRect({ 0.32f, 0.36f, 0.36f, 0.31f },
-            0.012f, sakura::core::Color{ 140, 100, 180, 200 }, false);
+        sakura::ui::VisualStyle::DrawScrim(renderer);
+        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.32f, 0.36f, 0.36f, 0.31f }, true, true);
 
         // 提示文字
         renderer.DrawText(m_font, "有未保存的更改",

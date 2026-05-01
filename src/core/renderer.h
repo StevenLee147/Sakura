@@ -81,6 +81,12 @@ enum class TextAlign
     Right
 };
 
+struct TextMetrics
+{
+    float width  = 0.0f;
+    float height = 0.0f;
+};
+
 // ============================================================================
 // BlendMode — 混合模式
 // ============================================================================
@@ -151,6 +157,10 @@ public:
     float MeasureTextWidth(FontHandle font,
                            std::string_view text,
                            float normFontSize) const;
+
+    TextMetrics MeasureText(FontHandle font,
+                            std::string_view text,
+                            float normFontSize) const;
 
     // ── Sprite 渲染 ───────────────────────────────────────────────────────────
 

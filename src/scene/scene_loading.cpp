@@ -1,6 +1,7 @@
 // scene_loading.cpp — 通用加载场景
 
 #include "scene_loading.h"
+#include "ui/visual_style.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 
@@ -185,19 +186,17 @@ void SceneLoading::RenderSpinner(sakura::core::Renderer& renderer,
 
 void SceneLoading::OnRender(sakura::core::Renderer& renderer)
 {
-    // 背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-        sakura::core::Color{ 10, 8, 20, 255 });
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
     // 旋转动画（居中，进度条上方，垂直居中偏上）
     RenderSpinner(renderer, 0.5f, 0.42f, 0.04f);
 
     // 进度条 (0.3, 0.55, 0.4, 0.03)
     {
-        // 背景轨道
+        const auto progressStyle = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Primary);
         renderer.DrawRoundedRect(
             { 0.3f, 0.55f, 0.4f, 0.03f }, 0.008f,
-            sakura::core::Color{ 30, 25, 50, 200 }, true);
+            sakura::core::Color{ 24, 18, 44, 220 }, true);
 
         // 填充
         float fillW = 0.4f * std::max(0.0f, std::min(1.0f, m_progress));
@@ -205,7 +204,7 @@ void SceneLoading::OnRender(sakura::core::Renderer& renderer)
         {
             renderer.DrawRoundedRect(
                 { 0.3f, 0.55f, fillW, 0.03f }, 0.008f,
-                sakura::core::Color{ 180, 120, 210, 230 }, true);
+                progressStyle.hover, true);
         }
 
         // 边框

@@ -2,6 +2,7 @@
 
 #include "button.h"
 #include "core/input.h"
+#include "core/theme.h"
 #include "utils/easing.h"
 
 #include <algorithm>
@@ -28,6 +29,30 @@ Button::Button(sakura::core::NormRect bounds,
     , m_normFontSize(normFontSize)
     , m_cornerRadius(cornerRadius)
 {
+    ApplyThemeVariant(ButtonVariant::Secondary);
+}
+
+void Button::ApplyThemeVariant(ButtonVariant variant, bool applyMetrics)
+{
+    const auto& styles = sakura::core::Theme::GetInstance().Components();
+    const sakura::core::ThemeButtonStyle* style = &styles.secondaryButton;
+    switch (variant)
+    {
+    case ButtonVariant::Primary:   style = &styles.primaryButton;   break;
+    case ButtonVariant::Accent:    style = &styles.accentButton;    break;
+    case ButtonVariant::Danger:    style = &styles.dangerButton;    break;
+    case ButtonVariant::Secondary:
+    default:                       style = &styles.secondaryButton; break;
+    }
+
+    m_colors.normal   = style->normal;
+    m_colors.hover    = style->hover;
+    m_colors.pressed  = style->pressed;
+    m_colors.disabled = style->disabled;
+    m_colors.text     = style->text;
+    m_colors.border   = style->border;
+    if (applyMetrics)
+        m_cornerRadius = style->cornerRadius;
 }
 
 // ── 颜色插值 ──────────────────────────────────────────────────────────────────

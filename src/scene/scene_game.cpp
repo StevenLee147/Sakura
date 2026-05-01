@@ -6,6 +6,7 @@
 #include "scene_result.h"
 #include "core/input.h"
 #include "core/config.h"
+#include "core/theme.h"
 #include "audio/audio_visualizer.h"
 #include "game/approach_visuals.h"
 #include "utils/logger.h"
@@ -709,42 +710,45 @@ void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 
 void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
 {
+    const auto& theme = sakura::core::Theme::GetInstance();
+
     // 轨道背景
     renderer.DrawFilledRect(
         { TRACK_X, 0.0f, TRACK_W, 1.0f },
-        sakura::core::Color{ 20, 15, 40, 180 });
+        sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 180 });
 
     // 轨道分隔 + 交替明暗
     for (int i = 0; i < LANE_COUNT; ++i)
     {
         float x = GetLaneX(i);
-        uint8_t brightness = (i % 2 == 0) ? 12 : 20;
+        auto laneColor = theme.Colors().laneColors[i % LANE_COUNT];
+        laneColor.a = (i % 2 == 0) ? 105 : 135;
         renderer.DrawFilledRect(
             { x, 0.0f, LANE_W, 1.0f },
-            sakura::core::Color{ brightness, brightness, static_cast<uint8_t>(brightness + 20), 100 });
+            laneColor);
 
         // 轨道线
         if (i > 0)
         {
             renderer.DrawLine(x, 0.0f, x, 1.0f,
-                sakura::core::Color{ 80, 70, 110, 100 }, 0.001f);
+                sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 120 }, 0.001f);
         }
     }
 
     // 判定线（发光白色）
     renderer.DrawLine(TRACK_X, JUDGE_LINE_Y,
                       TRACK_X + TRACK_W, JUDGE_LINE_Y,
-                      sakura::core::Color{ 255, 255, 255, 220 }, 0.003f);
+                      theme.Colors().judgeLine, 0.003f);
     renderer.DrawLine(TRACK_X, JUDGE_LINE_Y,
                       TRACK_X + TRACK_W, JUDGE_LINE_Y,
-                      sakura::core::Color{ 200, 200, 255, 80 }, 0.008f);
+                      sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, 95 }, 0.008f);
 
     // 判定线辉光（脉冲）
     sakura::effects::GlowEffect::DrawGlowBar(
         renderer,
         TRACK_X, JUDGE_LINE_Y - 0.003f,
         TRACK_W, 0.006f,
-        sakura::core::Color{ 255, 255, 220, 180 },
+        sakura::core::Color{ theme.Accent().r, theme.Accent().g, theme.Accent().b, 180 },
         0.008f, 4);
 
     // 按键按下时的轨道高亮
@@ -755,12 +759,12 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
             float lx = GetLaneX(i);
             renderer.DrawFilledRect(
                 { lx, JUDGE_LINE_Y - 0.06f, LANE_W, 0.06f },
-                sakura::core::Color{ 180, 180, 255, 30 });
+                sakura::core::Color{ theme.Primary().r, theme.Primary().g, theme.Primary().b, 40 });
             sakura::effects::GlowEffect::DrawGlow(
                 renderer,
                 lx + LANE_W * 0.5f, JUDGE_LINE_Y,
                 0.018f,
-                sakura::core::Color{ 200, 200, 255, 160 },
+                sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, 160 },
                 0.025f, 3);
         }
     }
@@ -768,14 +772,14 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
     sakura::audio::AudioVisualizer::GetInstance().RenderBars(
         renderer,
         { TRACK_X, JUDGE_LINE_Y + 0.018f, TRACK_W, 0.055f },
-        { 90, 210, 255, 90 },
-        { 255, 210, 150, 180 },
+        { theme.Secondary().r, theme.Secondary().g, theme.Secondary().b, 90 },
+        { theme.Accent().r, theme.Accent().g, theme.Accent().b, 180 },
         0.60f);
 
     // 鼠标区域边框
     renderer.DrawRectOutline(
         { MOUSE_X, MOUSE_Y, MOUSE_W, MOUSE_H },
-        sakura::core::Color{ 100, 80, 150, 100 }, 0.001f);
+        sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 140 }, 0.001f);
 }
 
 // ── RenderKeyboardNotes ───────────────────────────────────────────────────────
@@ -783,6 +787,8 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
 void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 {
     if (!m_gameState.IsPlaying() && !m_gameState.IsInCountdown()) return;
+
+    const auto& theme = sakura::core::Theme::GetInstance();
 
     int now = m_gameState.GetCurrentTime();
     auto activeNotes = m_gameState.GetActiveKeyboardNotes();
@@ -818,15 +824,15 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
         case sakura::game::NoteType::Tap:
         {
             // 白色填充矩形
-            sakura::core::Color noteColor = {
-                220, 200, 255, static_cast<uint8_t>(200 * alpha) };
+            auto noteColor = theme.NoteColor();
+            noteColor.a = static_cast<uint8_t>(210 * alpha);
             renderer.DrawRoundedRect(
                 { lx + 0.003f, ry - NOTE_H * 0.5f,
                   LANE_W - 0.006f, NOTE_H },
                 0.004f, noteColor, true);
             // 下边缘高亮
-            sakura::core::Color lineColor = {
-                255, 230, 255, static_cast<uint8_t>(240 * alpha) };
+            auto lineColor = theme.GlowColor();
+            lineColor.a = static_cast<uint8_t>(240 * alpha);
             renderer.DrawLine(lx + 0.003f, ry,
                               lx + LANE_W - 0.003f, ry,
                               lineColor, 0.003f);
@@ -843,14 +849,14 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
             float botY = std::max(headY + NOTE_H * 0.5f, tailY + NOTE_H * 0.5f);
 
             // 长条（尾→头）
-            sakura::core::Color holdColor = {
-                140, 100, 200, static_cast<uint8_t>(160 * alpha) };
+            auto holdColor = theme.Colors().holdColor;
+            holdColor.a = static_cast<uint8_t>(160 * alpha);
             renderer.DrawFilledRect(
                 { lx + 0.005f, topY, LANE_W - 0.010f, botY - topY },
                 holdColor);
             // 头部矩形
-            sakura::core::Color headColor = {
-                210, 170, 255, static_cast<uint8_t>(220 * alpha) };
+            auto headColor = theme.Secondary();
+            headColor.a = static_cast<uint8_t>(220 * alpha);
             renderer.DrawRoundedRect(
                 { lx + 0.003f, headY - NOTE_H * 0.5f,
                   LANE_W - 0.006f, NOTE_H },
@@ -868,6 +874,8 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 {
     if (!m_gameState.IsPlaying() && !m_gameState.IsInCountdown()) return;
+
+    const auto& theme = sakura::core::Theme::GetInstance();
 
     int now = m_gameState.GetCurrentTime();
     auto activeNotes = m_gameState.GetActiveMouseNotes();
@@ -924,7 +932,8 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             // 将鼠标区局部坐标转换为屏幕坐标
             float sx = MOUSE_X + note.x * MOUSE_W;
             float sy = MOUSE_Y + note.y * MOUSE_H;
-            const sakura::core::Color noteColor{ 200, 150, 255, alpha };
+            auto noteColor = theme.Colors().circleColor;
+            noteColor.a = alpha;
             // 接近圈（外圈从大到小）
             drawGradientApproachRing(
                 sx,
@@ -940,7 +949,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
             // 边缘
             renderer.DrawCircleOutline(sx, sy, 0.025f,
-                sakura::core::Color{ 255, 220, 255, alpha }, 0.002f, 48);
+                sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, alpha }, 0.002f, 48);
             break;
         }
         case sakura::game::NoteType::Slider:
@@ -1005,7 +1014,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             if (!isActive)
             {
                 // 未激活：绘制接近圈（由大缩小）和起点核心圆
-                const sakura::core::Color noteColor{ 100, 220, 140, alpha };
+                sakura::core::Color noteColor{ theme.Accent().r, theme.Accent().g, theme.Accent().b, alpha };
                 drawGradientApproachRing(
                     sx,
                     sy,
@@ -1018,7 +1027,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                     note.time);
                 renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
                 renderer.DrawCircleOutline(sx, sy, 0.025f,
-                    sakura::core::Color{ 220, 255, 235, alpha }, 0.002f, 48);
+                    sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, alpha }, 0.002f, 48);
             }
             else
             {
@@ -1067,13 +1076,15 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
 {
     if (m_fontHUD == sakura::core::INVALID_HANDLE) return;
 
+    const auto& theme = sakura::core::Theme::GetInstance();
+
     // 分数（右对齐 0.96, 0.02）
     {
         std::ostringstream ss;
         ss << std::setw(7) << std::setfill('0') << m_score.GetScore();
         renderer.DrawText(m_fontHUD, ss.str(),
             0.96f, 0.02f, 0.040f,
-            sakura::core::Color{ 255, 240, 255, 230 },
+            sakura::core::Color{ theme.Text().r, theme.Text().g, theme.Text().b, 230 },
             sakura::core::TextAlign::Right);
     }
 
@@ -1084,11 +1095,11 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         {
             renderer.DrawText(m_fontHUD, std::to_string(combo),
                 0.225f, 0.05f, 0.050f,
-                sakura::core::Color{ 255, 220, 100, 230 },
+                sakura::core::Color{ theme.Accent().r, theme.Accent().g, theme.Accent().b, 230 },
                 sakura::core::TextAlign::Center);
             renderer.DrawText(m_fontSmall, "COMBO",
                 0.225f, 0.103f, 0.020f,
-                sakura::core::Color{ 220, 200, 100, 180 },
+                sakura::core::Color{ theme.Accent().r, theme.Accent().g, theme.Accent().b, 180 },
                 sakura::core::TextAlign::Center);
         }
     }
@@ -1099,7 +1110,7 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         ss << std::fixed << std::setprecision(2) << m_score.GetAccuracy() << "%";
         renderer.DrawText(m_fontSmall, ss.str(),
             0.96f, 0.065f, 0.025f,
-            sakura::core::Color{ 200, 200, 240, 200 },
+            sakura::core::Color{ theme.Text().r, theme.Text().g, theme.Text().b, 200 },
             sakura::core::TextAlign::Right);
     }
 
@@ -1113,17 +1124,18 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
                       sec / 60, sec % 60, ms);
         renderer.DrawText(m_fontSmall, buf,
             0.02f, 0.960f, 0.020f,
-            sakura::core::Color{ 160, 155, 180, 160 },
+            sakura::core::Color{ theme.TextDim().r, theme.TextDim().g, theme.TextDim().b, 160 },
             sakura::core::TextAlign::Left);
     }
 
     // 进度条（底部 0.0, 0.982, 1.0, 0.012）
     {
         float progress = m_gameState.GetProgress();
+        const auto& progressStyle = theme.Components().progress;
         renderer.DrawFilledRect({ 0.0f, 0.982f, 1.0f, 0.012f },
-            sakura::core::Color{ 20, 15, 35, 180 });
+            progressStyle.bg);
         renderer.DrawFilledRect({ 0.0f, 0.982f, progress, 0.012f },
-            sakura::core::Color{ 150, 100, 220, 200 });
+            progressStyle.fill);
     }
 }
 

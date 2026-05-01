@@ -8,6 +8,7 @@
 #include "audio/audio_manager.h"
 #include "utils/logger.h"
 #include "effects/shader_manager.h"
+#include "ui/visual_style.h"
 
 #include <memory>
 
@@ -45,6 +46,10 @@ void ScenePause::OnEnter()
         sakura::core::NormRect{BX, 0.53f, BW, BH}, "重新开始", m_fontUI);
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{BX, 0.63f, BW, BH}, "返回选歌", m_fontUI);
+
+    sakura::ui::VisualStyle::ApplyButton(m_btnResume.get(), sakura::ui::ButtonVariant::Primary);
+    sakura::ui::VisualStyle::ApplyButton(m_btnRestart.get(), sakura::ui::ButtonVariant::Accent);
+    sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
 
     m_btnResume ->SetOnClick([this]() { Resume(); });
     m_btnRestart->SetOnClick([this]()
@@ -92,19 +97,12 @@ void ScenePause::OnUpdate(float /*dt*/)
 void ScenePause::OnRender(sakura::core::Renderer& renderer)
 {
     // ── 半透明黑遮罩 ─────────────────────────────────────────────────────────
-    renderer.DrawFilledRect({0.0f, 0.0f, 1.0f, 1.0f}, {0, 0, 0, 160});
+    sakura::ui::VisualStyle::DrawScrim(renderer, 0.62f);
 
     // 暂停时额外晕影强化沉浸感
     sakura::effects::ShaderManager::GetInstance().DrawVignette(0.35f);
 
-    // ── 圆角面板填充 ─────────────────────────────────────────────────────────
-    renderer.DrawRoundedRect({0.30f, 0.25f, 0.40f, 0.50f},
-                             0.015f,
-                             sakura::core::Color{30, 30, 50, 240}, true);
-    // 面板边框
-    renderer.DrawRoundedRect({0.30f, 0.25f, 0.40f, 0.50f},
-                             0.015f,
-                             sakura::core::Color{120, 120, 180, 200}, false);
+    sakura::ui::VisualStyle::DrawPanel(renderer, {0.30f, 0.25f, 0.40f, 0.50f}, true, true);
 
     // ── 标题 "PAUSED" ────────────────────────────────────────────────────────
     renderer.DrawText(m_fontUI, "PAUSED",

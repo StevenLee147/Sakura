@@ -1,5 +1,6 @@
 #include "app.h"
 #include "config.h"
+#include "theme.h"
 #include "utils/logger.h"
 #include "scene/test_scenes.h"
 #include "scene/scene_splash.h"
@@ -68,6 +69,7 @@ bool App::Initialize()
     LOG_INFO("正在初始化 Sakura-樱...");
     // ── 配置系统 ────────────────────────────────────────────────────────────────
     Config::GetInstance().Load("config/settings.json");
+    Theme::GetInstance().Initialize();
 
     // ── 数据库 ───────────────────────────────────────────────────────────────────
     if (!sakura::data::Database::GetInstance().Initialize(ResolveDatabasePath()))
