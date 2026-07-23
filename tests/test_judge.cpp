@@ -95,6 +95,20 @@ TEST_CASE("GetHitError 偏差绝对值反映时间差", "[judge][hiterror]")
     REQUIRE(absErr == 25);
 }
 
+TEST_CASE("过期 Hold 头部只会结算一次 Miss", "[judge][hold]")
+{
+    Judge judge;
+    KeyboardNote hold;
+    hold.time     = 1000;
+    hold.duration = 500;
+    hold.type     = NoteType::Hold;
+
+    REQUIRE(judge.JudgeKeyboardNote(hold, 1200) == JudgeResult::Miss);
+    REQUIRE(hold.isJudged == true);
+    REQUIRE(hold.result == JudgeResult::Miss);
+    REQUIRE(judge.JudgeKeyboardNote(hold, 1201) == JudgeResult::None);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HoldState 默认值
 // ─────────────────────────────────────────────────────────────────────────────

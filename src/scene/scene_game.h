@@ -31,6 +31,8 @@ struct JudgeFlash
     int   lane        = 0;      // 键盘轨道（isKeyboard=true 时有效）
     float posX        = 0.0f;   // 鼠标区显示位置
     float posY        = 0.0f;
+    int   hitErrorMs  = 0;      // 正数=偏早，负数=偏晚
+    bool  showHitError = false;
     static constexpr float FLASH_DURATION = 0.5f;
 };
 
@@ -125,9 +127,13 @@ private:
     // 响应鼠标点击判定
     void HandleMouseClick(float normX, float normY);
 
+    // 事件阶段直接采样音频播放头，避免使用上一帧的游戏时钟
+    int GetInputTimeMs() const;
+
     // 添加判定闪现
     void AddJudgeFlash(sakura::game::JudgeResult r, bool isKb, int lane = 0,
-                       float px = 0.f, float py = 0.f);
+                       float px = 0.f, float py = 0.f,
+                       int hitErrorMs = 0, bool showHitError = false);
 
     // 渲染各部分
     void RenderBackground(sakura::core::Renderer& renderer);

@@ -167,6 +167,18 @@ float SceneGame::CalcApproachScale(int noteTimeMs, int currentTimeMs) const
     return 1.0f + 1.5f * t;   // 2.5 → 1.0
 }
 
+int SceneGame::GetInputTimeMs() const
+{
+    auto& audio = sakura::audio::AudioManager::GetInstance();
+    if (!m_gameState.IsPlaying() || !audio.IsPlaying())
+        return m_gameState.GetCurrentTime();
+
+    const int globalOffset = sakura::core::Config::GetInstance().Get<int>(
+        std::string(sakura::core::ConfigKeys::kAudioOffset), 0);
+    return static_cast<int>(audio.GetMusicPosition() * 1000.0)
+        - m_chartInfo.offset - globalOffset;
+}
+
 // ── HandleKeyPress ────────────────────────────────────────────────────────────
 
 void SceneGame::HandleKeyPress(SDL_Scancode key)
@@ -181,7 +193,7 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
     }
     if (lane < 0) return;
 
-    int now = m_gameState.GetCurrentTime();
+    int now = GetInputTimeMs();
     auto& kbNotes = m_gameState.GetKeyboardNotes();
 
     // 在活跃键盘音符中找同轨道最近未判定的音符
@@ -229,16 +241,23 @@ void SceneGame::HandleKeyPress(SDL_Scancode key)
             hs.lastHeldTimeMs = now;
             m_holdStates.push_back(hs);
         }
-        // 头部判定结果反馈（闪光 + 计入头 Hit / Miss）
-        m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-        AddJudgeFlash(result, true, lane);
+        if (result != sakura::game::JudgeResult::None)
+        {
+            m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
+            AddJudgeFlash(result, true, lane, 0.0f, 0.0f,
+                          sakura::game::Judge::GetHitError(note.time, now), true);
+        }
     }
     // Tap（普通）
     else
     {
         auto result = m_judge.JudgeKeyboardNote(note, now);
-        m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-        AddJudgeFlash(result, true, lane);
+        if (result != sakura::game::JudgeResult::None)
+        {
+            m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
+            AddJudgeFlash(result, true, lane, 0.0f, 0.0f,
+                          sakura::game::Judge::GetHitError(note.time, now), true);
+        }
     }
 }
 
@@ -256,7 +275,7 @@ void SceneGame::HandleMouseClick(float normX, float normY)
     if (mouseX < 0.0f || mouseX > 1.0f ||
         mouseY < 0.0f || mouseY > 1.0f) return;
 
-    int now = m_gameState.GetCurrentTime();
+    int now = GetInputTimeMs();
     auto& msNotes = m_gameState.GetMouseNotes();
     auto  activeMs= m_gameState.GetActiveMouseNotes();
 
@@ -327,14 +346,16 @@ void SceneGame::HandleMouseClick(float normX, float normY)
         // 将鼠标区局部坐标转换为屏幕坐标再存入闪现记录
         float flashSX = MOUSE_X + note.x * MOUSE_W;
         float flashSY = MOUSE_Y + note.y * MOUSE_H;
-        AddJudgeFlash(result, false, 0, flashSX, flashSY);
+        AddJudgeFlash(result, false, 0, flashSX, flashSY,
+                  sakura::game::Judge::GetHitError(note.time, now), true);
     }
 }
 
 // ── AddJudgeFlash ─────────────────────────────────────────────────────────────
 
 void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
-                               int lane, float px, float py)
+                               int lane, float px, float py,
+                               int hitErrorMs, bool showHitError)
 {
     JudgeFlash flash;
     flash.result   = r;
@@ -343,6 +364,8 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
     flash.lane     = lane;
     flash.posX     = px;
     flash.posY     = py;
+    flash.hitErrorMs = hitErrorMs;
+    flash.showHitError = showHitError;
     m_judgeFlashes.push_back(flash);
 
     // ── 粒子特效：根据判定结果发射对应颜色粒子 ────────────────────────────────
@@ -438,16 +461,6 @@ void SceneGame::OnUpdate(float dt)
     if (!m_gameState.IsPlaying()) return;
 
     int now = m_gameState.GetCurrentTime();
-
-    // 按帧消费输入缓冲，避免同帧多个键鼠按下互相覆盖。
-    for (const auto& keyPress : sakura::core::Input::GetKeyPressEvents())
-        HandleKeyPress(static_cast<SDL_Scancode>(keyPress.scancode));
-
-    for (const auto& mousePress : sakura::core::Input::GetMouseButtonPressEvents())
-    {
-        if (mousePress.button == SDL_BUTTON_LEFT)
-            HandleMouseClick(mousePress.normX, mousePress.normY);
-    }
 
     // ── 自动 Miss 检测 ─────────────────────────────────────────────────────────
     {
@@ -640,6 +653,17 @@ void SceneGame::OnEvent(const SDL_Event& event)
                 std::make_unique<ScenePause>(m_manager, m_gameState),
                 TransitionType::Fade, 0.3f);
             return;
+        }
+
+        if (!event.key.repeat)
+            HandleKeyPress(event.key.scancode);
+        break;
+
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        if (event.button.button == SDL_BUTTON_LEFT)
+        {
+            const auto mousePos = sakura::core::Input::GetMousePosition();
+            HandleMouseClick(mousePos.x, mousePos.y);
         }
         break;
 
@@ -1189,6 +1213,22 @@ void SceneGame::RenderJudgeFlashes(sakura::core::Renderer& renderer)
         renderer.DrawText(m_fontSmall, JudgeResultText(flash.result),
             posX, posY, 0.028f,
             color, sakura::core::TextAlign::Center);
+
+        if (flash.showHitError && flash.result != sakura::game::JudgeResult::Miss)
+        {
+            std::string timingText;
+            if (flash.hitErrorMs > 0)
+                timingText = "EARLY +" + std::to_string(flash.hitErrorMs) + "ms";
+            else if (flash.hitErrorMs < 0)
+                timingText = "LATE " + std::to_string(-flash.hitErrorMs) + "ms";
+            else
+                timingText = "0ms";
+
+            renderer.DrawText(m_fontSmall, timingText,
+                posX, posY + 0.026f, 0.016f,
+                sakura::core::Color{ color.r, color.g, color.b, alpha },
+                sakura::core::TextAlign::Center);
+        }
     }
 }
 

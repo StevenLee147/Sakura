@@ -67,6 +67,11 @@ JudgeResult Judge::JudgeKeyboardNote(KeyboardNote& note, int hitTimeMs)
         note.isJudged = true;
         note.result   = result;
     }
+    else if (note.type == NoteType::Hold && result == JudgeResult::Miss)
+    {
+        note.isJudged = true;
+        note.result   = result;
+    }
     // Hold：只判定头部（后续由 UpdateHoldTick 处理）
     // 调用方需要据此创建 HoldState
     // 这里仅标记头部已开始，不完全标记 isJudged
