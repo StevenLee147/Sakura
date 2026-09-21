@@ -15,7 +15,8 @@ jobs:
   # ── 构建矩阵（Debug + Release，Windows） ──────────────────────────────────
   build:
     name: ${{ matrix.config.name }}
-    runs-on: windows-latest
+    # Match the Visual Studio 17 2022 generator and v143 CRT used by packaging.
+    runs-on: windows-2022
 
     strategy:
       fail-fast: false
