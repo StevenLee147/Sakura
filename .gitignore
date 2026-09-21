@@ -49,3 +49,8 @@ Thumbs.db
 # Downloads
 download/
 build-local/
+
+# Generated Python caches and portable player data
+__pycache__/
+*.pyc
+userdata/

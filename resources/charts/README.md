@@ -1,29 +1,18 @@
-# resources/charts/
+# Sakura 内置曲库
 
-每首曲子对应**一个独立子文件夹**，文件夹名即为谱面 ID（与 `info.json` 中的 `id` 字段一致）。
+本目录包含 6 首曲目、10 张谱面；主曲包信息见 `album.json`。
 
-## 目录结构约定
+| 曲目 | BPM | 难度 | 时长 |
+|---|---|---|---|
+| Spring Breeze | 130 | Normal 3 / Hard 5.5 | 76.35 s |
+| Cherry Blossom | 155 | Normal 4 / Hard 7 / Expert 10 | 64.44 s |
+| Digital Dream | 175 | Hard 8.5 / Expert 12 | 57.36 s |
+| Sakura Storm | 200 | Expert 14 | 50.50 s |
+| First Steps | 100 | 入门练习 | 入门练习曲 |
+| Timing Garden | 120 | 节奏练习 | 节奏练习曲 |
 
-```
-resources/charts/
-├── {chart_id}/          ← 每首曲子一个文件夹
-│   ├── info.json        ← 谱面元信息（标题、曲师、难度列表等）
-│   ├── normal.json      ← Normal 难度谱面数据
-│   ├── hard.json        ← Hard 难度谱面数据（可选）
-│   ├── expert.json      ← Expert 难度谱面数据（可选）
-│   ├── music.ogg        ← 音乐文件（推荐 OGG/FLAC）
-│   ├── cover.png        ← 封面图片（512x512 或 1024x1024）
-│   └── bg.png           ← 游戏内背景图片（可选）
-│
-├── test-song/           ← 内置测试谱面（开发用）
-│   ├── info.json
-│   └── normal.json
-│
-└── README.md            ← 本文件
-```
+四首主曲使用 40 小节的完整段落结构，包含前奏、主题、间奏、再现与结尾；音符覆盖全曲并保留休息段。音乐、封面可通过 `scripts/build_starter_album.py` 重建，音源为程序合成，不使用外部录音采样。
 
-## 说明
+每首曲目独立存放 `info.json`、难度 JSON、音乐和可选图片。资源字段均为相对本曲目目录的路径。自制谱面建议通过游戏导入到用户数据目录的 `charts`；编辑内置谱面会建立用户副本。
 
-- `info.json` 中的 `music_file`、`cover_file`、`background_file` 均为**相对于本谱面文件夹**的路径
-- `ChartLoader::ScanCharts()` 扫描此目录，递归查找所有包含 `info.json` 的子文件夹
-- 格式详见 `doc/CHART_FORMAT_SPEC.md`
+音乐支持 WAV/MP3/FLAC/OGG Vorbis；图片支持 PNG/JPEG/WebP/BMP。格式详见 `doc/CHART_FORMAT_SPEC.md`。

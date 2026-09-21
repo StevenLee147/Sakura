@@ -1,4 +1,6 @@
 #include "particle_system.h"
+#include "core/config.h"
+#include "core/theme.h"
 #include "utils/logger.h"
 
 #include <array>
@@ -264,16 +266,7 @@ static void DrawSakuraBlossom(sakura::core::Renderer& renderer, const Particle& 
 static void DrawSakuraPetal(sakura::core::Renderer& renderer, const Particle& p,
                             float sz, const sakura::core::Color& col)
 {
-    static constexpr float kPetalVerticalSquash = 0.82f;
-    const float rad = p.rotation * kDegToRad;
-    const float dirX = std::cos(rad);
-    const float dirY = std::sin(rad) * kPetalVerticalSquash;
-    renderer.DrawCircleFilled(p.x + dirX * sz * 0.45f,
-                              p.y + dirY * sz * 0.45f,
-                              sz * 0.62f, col, 10);
-    renderer.DrawCircleFilled(p.x - dirX * sz * 0.18f,
-                              p.y - dirY * sz * 0.18f,
-                              sz * 0.46f, col, 10);
+    renderer.DrawPetal(p.x, p.y, sz, p.rotation * std::numbers::pi_v<float> / 180.0f, col);
 }
 
 // ============================================================================
@@ -344,6 +337,8 @@ sakura::core::Color ParticleSystem::LerpColor(const sakura::core::Color& a,
 
 void ParticleSystem::Emit(float x, float y, int count, const ParticleConfig& cfg)
 {
+    if(!sakura::core::Theme::GetInstance().Settings().particlesEnabled)return;
+    count=static_cast<int>(std::round(count*sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity",0.7f)));
     for (int i = 0; i < count; ++i)
     {
         Particle* p = AllocParticle();
@@ -382,12 +377,16 @@ void ParticleSystem::StopEmitter(int id)
 
 void ParticleSystem::Update(float dt)
 {
+    const auto& settings=sakura::core::Config::GetInstance();
+    if(!sakura::core::Theme::GetInstance().Settings().particlesEnabled || settings.Get<bool>("graphics.reduced_motion",false))return;
     // 处理持续发射器
     for (auto& em : m_emitters)
     {
         if (!em.active) continue;
         em.accumulator += dt;
-        float interval = 1.0f / em.rate;
+        const float intensity=settings.Get<float>("graphics.effect_intensity",0.7f);
+        if(em.rate<=0 || intensity<=0)continue;
+        float interval = 1.0f / (em.rate*intensity);
         while (em.accumulator >= interval)
         {
             em.accumulator -= interval;
@@ -422,6 +421,8 @@ void ParticleSystem::Update(float dt)
 
 void ParticleSystem::Render(sakura::core::Renderer& renderer)
 {
+    if (!sakura::core::Theme::GetInstance().Settings().particlesEnabled || sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion",false)) return;
+
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
     for (const auto& p : m_pool)

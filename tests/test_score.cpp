@@ -41,13 +41,13 @@ TEST_CASE("ScoreCalculator::Initialize 重置内部状态", "[score][init]")
     REQUIRE(sc.GetMissCount()    == 0);
 }
 
-TEST_CASE("ScoreCalculator::Initialize 接受 0（保护性最小值 1）", "[score][init]")
+TEST_CASE("ScoreCalculator::空谱面不能生成虚假满分", "[score][init]")
 {
     ScoreCalculator sc;
     REQUIRE_NOTHROW(sc.Initialize(0));
     // 不应崩溃；单音符也会受到连击加成影响，但仍应受 10% 上限约束
     sc.OnJudge(JudgeResult::Perfect, 0);
-    REQUIRE(sc.GetScore() >= 1'000'000);
+    REQUIRE(sc.GetScore() == 0);
     REQUIRE(sc.GetScore() <= 1'100'000);
 }
 

@@ -21,6 +21,7 @@ public:
               sakura::core::FontHandle fontHandle = 0,
               float normFontSize                  = 0.028f,
               int   maxLength                     = 128);
+    ~TextInput() override { if (m_isFocused) SetFocused(false); }
 
     // ── 属性 ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ private:
     int                      m_maxLength;
     size_t                   m_cursorPos = 0;    // 字符索引
     bool                     m_isFocused = false;
+    bool                     m_selectedAll = false;
 
     sakura::core::FontHandle m_fontHandle;
     float                    m_normFontSize;

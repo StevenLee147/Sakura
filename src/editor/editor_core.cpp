@@ -1,6 +1,7 @@
 // editor_core.cpp — 谱面编辑器核心状态实现
 
 #include "editor_core.h"
+#include "utils/file_io.h"
 #include "game/chart_loader.h"
 #include "audio/audio_manager.h"
 #include "utils/logger.h"
@@ -140,7 +141,7 @@ bool EditorCore::SaveChart()
     return SaveChartTo(m_folderPath + "/" + m_diffFile);
 }
 
-bool EditorCore::SaveChartTo(const std::string& fullPath)
+bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
 {
     try
     {
@@ -216,28 +217,44 @@ bool EditorCore::SaveChartTo(const std::string& fullPath)
         }
         j["mouse_notes"] = std::move(msArr);
 
-        std::ofstream ofs(fullPath);
-        if (!ofs.is_open())
-        {
-            LOG_ERROR("[EditorCore] 无法写入文件: {}", fullPath);
-            return false;
-        }
-        ofs << j.dump(4);
-        ofs.close();
+        auto checked = m_chartData;
+        checked.keyboardNotes = sortedKb; checked.mouseNotes = sortedMs;
+        sakura::game::ChartLoader loader;
+        if(!loader.ValidateChartData(checked)) return false;
 
-        // 同步更新 ChartInfo 的 note_count
-        int kbSorted   = static_cast<int>(m_chartData.keyboardNotes.size());
-        int mouseSorted = static_cast<int>(m_chartData.mouseNotes.size());
-        for (auto& diff : m_chartInfo.difficulties)
-        {
-            if (diff.chartFile == m_diffFile)
-            {
-                diff.noteCount      = kbSorted;
-                diff.mouseNoteCount = mouseSorted;
+        const int kbSorted=static_cast<int>(sortedKb.size()),mouseSorted=static_cast<int>(sortedMs.size());
+        if(activate) {
+            const auto file=p.filename().string();
+            auto info=m_chartInfo;
+            auto it=std::find_if(info.difficulties.begin(),info.difficulties.end(),[&](const auto& d){return d.chartFile==file;});
+            if(it==info.difficulties.end()){
+                sakura::game::DifficultyInfo diff;diff.name=p.stem().string();diff.chartFile=file;info.difficulties.push_back(diff);it=std::prev(info.difficulties.end());
             }
+            it->noteCount=kbSorted;it->mouseNoteCount=mouseSorted;
+            it->holdCount=static_cast<int>(std::count_if(sortedKb.begin(),sortedKb.end(),[](const auto& n){return n.type==sakura::game::NoteType::Hold;}));
+            const auto infoPath=p.parent_path()/"info.json";
+            json meta;
+            if(fs::exists(infoPath)){std::ifstream input(infoPath);meta=json::parse(input);}
+            else meta={{"version",2},{"id",info.id},{"title",info.title},{"artist",info.artist},{"charter",info.charter},
+                {"bpm",info.bpm},{"offset",info.offset},{"music_file",info.musicFile},{"cover_file",info.coverFile},
+                {"background_file",info.backgroundFile},{"preview_time",info.previewTime}};
+            meta["bpm"]=info.bpm;meta["offset"]=info.offset;meta["title"]=info.title;meta["artist"]=info.artist;
+            meta["difficulties"]=json::array();
+            for(const auto& diff:info.difficulties)meta["difficulties"].push_back({{"name",diff.name},{"level",diff.level},
+                {"chart_file",diff.chartFile},{"note_count",diff.noteCount},{"hold_count",diff.holdCount},{"mouse_note_count",diff.mouseNoteCount}});
+            const bool existed=fs::exists(fullPath);
+            std::string previous;
+            if(existed){std::ifstream input(fullPath,std::ios::binary);if(!input)return false;previous.assign(std::istreambuf_iterator<char>(input),{});}
+            if(!sakura::utils::AtomicWrite(fullPath,j.dump(2)))return false;
+            if(!sakura::utils::AtomicWrite(infoPath,meta.dump(2))){
+                if(existed)sakura::utils::AtomicWrite(fullPath,previous);
+                else {std::error_code ec;fs::remove(fullPath,ec);}
+                return false;
+            }
+            m_chartInfo=std::move(info);m_folderPath=p.parent_path().string();m_chartInfo.folderPath=m_folderPath;m_diffFile=file;
+            m_dirty=false;
         }
-
-        m_dirty = false;
+        else if(!sakura::utils::AtomicWrite(fullPath,j.dump(2)))return false;
         LOG_INFO("[EditorCore] 已保存谱面到: {} (KB={}, Mouse={})",
                  fullPath, kbSorted, mouseSorted);
         return true;

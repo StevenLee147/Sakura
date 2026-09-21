@@ -1,7 +1,7 @@
 #pragma once
 
-// sfx_generator.h — 合成占位音效 WAV 文件生成器
-// 在 resources/sound/sfx/ 目录下按 set 生成简易正弦波 WAV 占位文件
+// sfx_generator.h — 合成合成音效 WAV 文件生成器
+// 在 resources/sound/sfx/ 目录下按 set 生成简易正弦波 WAV 合成文件
 
 #include <string_view>
 
@@ -11,7 +11,7 @@ namespace sakura::audio
 class SfxGenerator
 {
 public:
-    // 生成所有占位音效（若文件已存在则跳过）
+    // 生成所有合成音效（若文件已存在则跳过）
     // basePath: 例如 "resources/sound/sfx"
     static void GenerateDefaults(std::string_view basePath);
 

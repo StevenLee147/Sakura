@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 0.5.5
+    VERSION 0.6.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
 
 # 预发布标签（留空则为正式版）
-set(SAKURA_VERSION_PRERELEASE "alpha")
+set(SAKURA_VERSION_PRERELEASE "beta")
 if(SAKURA_VERSION_PRERELEASE STREQUAL "")
     set(SAKURA_VERSION_FULL "${PROJECT_VERSION}")
 else()
@@ -26,6 +26,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ============================================================================
 if(MSVC)
     add_compile_options(
+        /MP             # Parallel translation units
         /W4             # 高警告级别
         /utf-8          # 源文件 UTF-8 编码
         /permissive-    # 严格标准一致性
@@ -150,6 +151,7 @@ if(SAKURA_BUILD_APP)
     find_package(SDL3 CONFIG REQUIRED)
     find_package(SDL3_image CONFIG REQUIRED)
     find_package(SDL3_ttf CONFIG REQUIRED)
+    find_path(SAKURA_STB_INCLUDE_DIR stb_vorbis.c PATH_SUFFIXES stb REQUIRED)
     # miniaudio 是 header-only, 通过 vcpkg 安装后直接 include
 endif()
 
@@ -186,9 +188,14 @@ if(SAKURA_BUILD_APP)
         ${SAKURA_SOURCES}
         ${SAKURA_HEADERS}
     )
+    if(WIN32)
+        target_sources(${PROJECT_NAME} PRIVATE resources/windows/sakura.rc)
+        target_link_options(${PROJECT_NAME} PRIVATE "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/sakura.manifest")
+    endif()
 
     target_include_directories(${PROJECT_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${SAKURA_STB_INCLUDE_DIR}"
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         SAKURA_HAS_SPDLOG=$<BOOL:${SAKURA_HAS_SPDLOG}>
@@ -214,6 +221,11 @@ if(SAKURA_BUILD_APP)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/config/achievements.json"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/achievements.json"
         COMMENT "Syncing resources to output directory"
     )
 
@@ -243,6 +255,7 @@ if(SAKURA_BUILD_APP)
     install(DIRECTORY resources/
         DESTINATION bin/resources
     )
+    install(FILES config/achievements.json DESTINATION bin/config)
 endif()
 
 # ============================================================================
@@ -271,6 +284,10 @@ if(SAKURA_BUILD_TESTS)
         src/game/chart_loader.cpp
         src/game/pp_calculator.cpp
         src/game/score.cpp
+        src/game/chart_utils.cpp
+        src/game/play_session.cpp
+        src/game/replay.cpp
+        src/utils/file_io.cpp
         src/game/judge.cpp
         src/game/tutorial_data.cpp
         src/utils/logger.cpp

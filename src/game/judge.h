@@ -67,6 +67,7 @@ public:
 
     // 从 Config 读取偏移并初始化（±5ms 可调）
     void Initialize();
+    void SetPointerScale(float x, float y) { m_scaleX=x; m_scaleY=y; }
 
     const JudgeWindows& GetWindows() const { return m_windows; }
 
@@ -130,6 +131,7 @@ public:
 
 private:
     JudgeWindows m_windows;
+    float m_scaleX=1, m_scaleY=1;
 };
 
 } // namespace sakura::game

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include <cmath>
 
 namespace sakura::game
 {
@@ -13,8 +14,13 @@ namespace sakura::game
 
 void ScoreCalculator::Initialize(int totalNoteCount)
 {
-    m_totalNoteCount  = std::max(1, totalNoteCount);
-    m_baseScorePerNote = 1000000.0f / static_cast<float>(m_totalNoteCount);
+    m_totalNoteCount = std::max(0, totalNoteCount);
+    // Preserve the combo reward, but normalize its maximum to exactly one million.
+    const double ramp = std::min(m_totalNoteCount, 100);
+    const double maximumWeight = m_totalNoteCount + 0.001 * ramp * (ramp + 1.0) / 2.0
+        + 0.1 * std::max(0, m_totalNoteCount - 100);
+    m_baseScorePerNote = maximumWeight > 0.0 ? 1000000.0 / maximumWeight : 0.0;
+    m_exactScore = 0.0;
 
     m_score        = 0;
     m_accuracySum  = 0.0f;
@@ -26,6 +32,7 @@ void ScoreCalculator::Initialize(int totalNoteCount)
     m_badCount     = 0;
     m_missCount    = 0;
     m_hitErrors.clear();
+    m_hitErrors.reserve(m_totalNoteCount);
 
     LOG_DEBUG("ScoreCalculator 初始化: 总音符={}, 每音符基础分={:.2f}",
               m_totalNoteCount, m_baseScorePerNote);
@@ -33,10 +40,11 @@ void ScoreCalculator::Initialize(int totalNoteCount)
 
 // ── OnJudge ───────────────────────────────────────────────────────────────────
 
-void ScoreCalculator::OnJudge(JudgeResult result, int hitError)
+void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTiming)
 {
+    if (GetJudgedCount() >= m_totalNoteCount) return;
     // 记录偏差（仅记录实际命中的音符，Miss 不记录）
-    if (result != JudgeResult::None && result != JudgeResult::Miss)
+    if (recordTiming && result != JudgeResult::None && result != JudgeResult::Miss)
     {
         m_hitErrors.push_back(hitError);
     }
@@ -97,8 +105,8 @@ void ScoreCalculator::OnJudge(JudgeResult result, int hitError)
     );
 
     // 实际得分 = 基础分 × 判定比例 × (1 + 连击加成)
-    float noteScore = m_baseScorePerNote * scoreRatio * (1.0f + comboBonus);
-    m_score += static_cast<int>(noteScore);
+    m_exactScore += m_baseScorePerNote * scoreRatio * (1.0 + comboBonus);
+    m_score = std::clamp(static_cast<int>(std::lround(m_exactScore)), 0, 1000000);
 
     // 累积准确率权重
     m_accuracySum += accuracyWeight;
@@ -156,8 +164,10 @@ GameResult ScoreCalculator::GetResult(const std::string& chartId,
     result.badCount     = m_badCount;
     result.missCount    = m_missCount;
 
-    result.isFullCombo  = IsFullCombo();
-    result.isAllPerfect = IsAllPerfect();
+    result.totalJudgments = m_totalNoteCount;
+    const bool completed = m_totalNoteCount > 0 && GetJudgedCount() == m_totalNoteCount;
+    result.isFullCombo  = completed && IsFullCombo();
+    result.isAllPerfect = completed && IsAllPerfect();
     result.playTimeSeconds = playTimeSeconds;
     result.playedAt     = static_cast<long long>(std::time(nullptr));
     result.hitErrors    = m_hitErrors;

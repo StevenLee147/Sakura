@@ -1,5 +1,7 @@
 #include "window.h"
 #include "utils/logger.h"
+#include "config.h"
+#include <SDL3_image/SDL_image.h>
 
 namespace sakura::core
 {
@@ -32,6 +34,8 @@ bool Window::Create(const std::string& title, int width, int height)
     }
 
     UpdateSize();
+    if(auto* icon=IMG_Load("resources/images/app_icon.png")){SDL_SetWindowIcon(m_window,icon);SDL_DestroySurface(icon);}
+    SDL_SetWindowMinimumSize(m_window, 960, 540);
     LOG_INFO("窗口 \"{}\" 创建成功 ({}x{})", title, m_width, m_height);
     return true;
 }
@@ -84,9 +88,10 @@ bool Window::HandleEvent(const SDL_Event& event)
         case SDL_EVENT_KEY_DOWN:
         {
             // F11 切换全屏
-            if (event.key.scancode == SDL_SCANCODE_F11)
+            if (event.key.scancode == SDL_SCANCODE_F11 && !event.key.repeat)
             {
                 ToggleFullscreen();
+                Config::GetInstance().Set(ConfigKeys::kFullscreen, m_fullscreen);
                 return true;
             }
             break;

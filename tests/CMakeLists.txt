@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.25)
 # ─── SakuraTests ─────────────────────────────────────────────────────────────
 add_executable(SakuraTests
     test_main.cpp
+    test_play_session.cpp
+    test_persistence.cpp
     test_achievement_manager.cpp
     test_approach_visuals.cpp
     test_chart_loader_builtin.cpp

@@ -8,6 +8,7 @@
 #include "core/renderer.h"
 #include "core/resource_manager.h"
 #include "ui/button.h"
+#include "ui/text_input.h"
 #include "editor/editor_core.h"
 #include "editor/editor_timeline.h"
 #include "editor/editor_mouse_area.h"
@@ -31,6 +32,8 @@ public:
                          const std::string& difficultyFile = "normal.json");
 
     void OnEnter() override;
+    bool CanClose() override;
+    bool PropertyDialogOpen() const { return m_propertyEditing; }
     void OnExit()  override;
     void OnUpdate(float dt) override;
     void OnRender(sakura::core::Renderer& renderer) override;
@@ -83,6 +86,21 @@ private:
     // ── 按键辅助 ──────────────────────────────────────────────────────────────
     bool m_ctrlHeld  = false;
     bool m_shiftHeld = false;
+    bool m_exitDialog=false,m_closeWindow=false,m_allowClose=false;
+    float m_recoveryTimer=0;
+    std::vector<std::unique_ptr<sakura::ui::Button>> m_exitButtons;
+    void RequestExit(bool window=false);
+    void FinishExit();
+    bool m_propertyEditing=false;
+    int m_propertyKeyboard=-1,m_propertyMouse=-1;
+    std::vector<std::string> m_propertyLabels;
+    std::vector<std::unique_ptr<sakura::ui::TextInput>> m_propertyInputs;
+    std::unique_ptr<sakura::ui::Button> m_btnProperties,m_propertyApply,m_propertyCancel;
+    void OpenProperties();
+    void ApplyProperties();
+    void CloseProperties();
+    void RenderProperties(sakura::core::Renderer& renderer);
+    void StartFullPreview(int fromMs);
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
     void SetupToolbar();

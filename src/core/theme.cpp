@@ -78,11 +78,11 @@ void Theme::ApplySakura()
     m_colors.primary       = { 255, 150, 180, 255 };  // 樱花粉
     m_colors.secondary     = { 180, 130, 210, 255 };  // 淡紫
     m_colors.accent        = { 255, 210, 100, 255 };  // 暖金
-    m_colors.bg            = {  10,   8,  22, 255 };  // 深夜蓝
-    m_colors.surface       = {  25,  20,  50, 230 };  // 深蓝灰面板
+    m_colors.bg            = {  12,  16,  29, 255 };  // 深夜蓝
+    m_colors.surface       = {  23,  29,  45, 230 };  // 深蓝灰面板
     m_colors.surfaceBorder = { 100,  80, 160, 200 };  // 紫边框
     m_colors.text          = { 240, 230, 255, 255 };  // 淡白紫
-    m_colors.textDim       = { 140, 120, 170, 200 };  // 暗紫灰
+    m_colors.textDim       = { 162, 166, 188, 255 };  // 暗紫灰
     m_colors.noteColor     = { 255, 160, 200, 255 };  // 粉红
     m_colors.holdColor     = { 200, 130, 255, 255 };  // 紫
     m_colors.circleColor   = { 255, 200, 230, 220 };  // 淡粉
@@ -116,19 +116,19 @@ void Theme::ApplySakura()
     m_settings.vignetteEnabled  = true;
 
     m_components.primaryButton = MakeButtonStyle(
-        { 100, 55, 155, 220 }, { 130, 80, 190, 235 }, { 70, 35, 120, 240 },
-        Color::White, { 255, 210, 245, 150 });
+        { 225, 163, 181, 255 }, { 248, 190, 204, 255 }, { 185, 126, 149, 255 },
+        { 30, 24, 38, 255 }, { 255, 220, 226, 150 });
     m_components.secondaryButton = MakeButtonStyle(
-        { 35, 30, 65, 210 }, { 60, 50, 105, 230 }, { 20, 15, 45, 240 },
-        Color::White, { 220, 200, 255, 120 });
+        { 30, 36, 54, 220 }, { 53, 58, 78, 240 }, { 20, 24, 40, 240 },
+        { 227, 226, 237, 255 }, { 170, 172, 195, 55 });
     m_components.accentButton = MakeButtonStyle(
         { 95, 70, 30, 220 }, { 135, 100, 45, 235 }, { 70, 50, 20, 240 },
         Color::White, { 255, 230, 150, 160 });
     m_components.dangerButton = MakeButtonStyle(
-        { 110, 40, 55, 220 }, { 150, 55, 75, 235 }, { 80, 25, 40, 240 },
-        Color::White, { 255, 170, 180, 150 });
+        { 48, 32, 47, 180 }, { 89, 45, 63, 235 }, { 35, 25, 40, 240 },
+        { 231, 169, 185, 255 }, { 200, 134, 155, 65 });
     m_components.panel = {
-        { 15, 12, 30, 220 }, { 100, 80, 150, 150 }, { 0, 0, 0, 95 },
+        { 19, 24, 39, 235 }, { 147, 154, 184, 45 }, { 0, 0, 0, 40 },
         { 255, 150, 200, 170 }, 0.012f, 0.0015f
     };
     m_components.modal = {

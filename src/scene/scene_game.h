@@ -9,6 +9,8 @@
 #include "game/game_state.h"
 #include "game/judge.h"
 #include "game/score.h"
+#include "game/play_session.h"
+#include "game/replay.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 #include "effects/screen_shake.h"
@@ -44,29 +46,42 @@ class SceneGame final : public Scene
 public:
     SceneGame(SceneManager& mgr,
               const sakura::game::ChartInfo& chartInfo,
-              int difficultyIndex = 0);
+              int difficultyIndex = 0, sakura::game::PlayOptions options = {});
 
     void OnEnter() override;
     void OnExit()  override;
     void OnUpdate(float dt) override;
     void OnRender(sakura::core::Renderer& renderer) override;
     void OnEvent(const SDL_Event& event) override;
+    const sakura::game::PlaySession& Session() const { return m_session; }
+    const sakura::game::GameState& State() const { return m_gameState; }
 
 private:
     SceneManager& m_manager;
 
     // 游戏核心系统
     sakura::game::GameState        m_gameState;
-    sakura::game::Judge            m_judge;
-    sakura::game::ScoreCalculator  m_score;
+    sakura::game::PlaySession m_session;
+    sakura::game::PlayOptions m_options;
+    std::optional<sakura::game::Replay> m_replay;
+    size_t m_replayCursor = 0;
+    int m_inputLagMs = 0;
+    bool m_finishing = false;
+    float m_pointerScaleX = 1, m_pointerScaleY = 1;
+    struct CursorPoint { float x, y, age; };
+    std::vector<CursorPoint> m_cursorTrail;
+    float m_trailSample = 0;
+    std::array<float,4> m_lanePulse{};
+    float m_noteSpeed = 5.0f;
+    int m_approachMs = 1000;
+    void Pause();
+    void Retry();
 
     // 初始化参数（OnEnter 时传给 GameState::Start）
     sakura::game::ChartInfo m_chartInfo;
     int                     m_difficultyIndex;
 
     // Hold/Slider 活跃状态
-    std::vector<sakura::game::HoldState>   m_holdStates;
-    std::vector<sakura::game::SliderState> m_sliderStates;
 
     // 判定闪现
     std::vector<JudgeFlash> m_judgeFlashes;
@@ -88,9 +103,9 @@ private:
     static constexpr float LANE_W       = TRACK_W / LANE_COUNT;   // 0.0875
     static constexpr float JUDGE_LINE_Y = 0.85f;
     static constexpr float MOUSE_X      = 0.45f;
-    static constexpr float MOUSE_Y      = 0.05f;
+    static constexpr float MOUSE_Y      = 0.16f;
     static constexpr float MOUSE_W      = 0.50f;
-    static constexpr float MOUSE_H      = 0.90f;
+    static constexpr float MOUSE_H      = 0.66f;
 
     // 音符渲染参数
     static constexpr float NOTE_H        = 0.022f;  // Tap 音符高度

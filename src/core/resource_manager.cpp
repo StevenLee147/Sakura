@@ -1,5 +1,4 @@
-// miniaudio 是单文件库，在此处（且仅在此处）定义实现
-#define MINIAUDIO_IMPLEMENTATION
+// Audio implementations live in audio/audio_backend.cpp.
 #include <miniaudio.h>
 
 #include "resource_manager.h"
@@ -44,6 +43,7 @@ bool ResourceManager::Initialize(SDL_Renderer* renderer)
         LOG_ERROR("TTF_Init 失败: {}", SDL_GetError());
         return false;
     }
+    m_ttfInitialized = true;
     LOG_INFO("SDL3_ttf 初始化成功");
 
     // 加载默认字体（NotoSansSC-Regular.ttf，24pt）
@@ -78,6 +78,7 @@ void ResourceManager::ReleaseAll()
     m_textures.clear();
     m_texturePaths.clear();
     m_texturePathsByHandle.clear();
+    m_textureReferences.clear();
 
     for (auto& [handle, font] : m_fonts)
     {
@@ -114,7 +115,8 @@ void ResourceManager::ReleaseAll()
     m_defaultFontHandle = INVALID_HANDLE;
     m_nextHandle        = INVALID_HANDLE;
 
-    TTF_Quit();
+    if (m_ttfInitialized) TTF_Quit();
+    m_ttfInitialized = false;
     LOG_DEBUG("ResourceManager: 资源释放完成");
 }
 
@@ -127,6 +129,7 @@ std::optional<TextureHandle> ResourceManager::LoadTexture(const std::string& pat
     if (it != m_texturePaths.end())
     {
         LOG_DEBUG("纹理缓存命中: {}", path);
+        ++m_textureReferences[it->second];
         return it->second;
     }
 
@@ -147,6 +150,7 @@ std::optional<TextureHandle> ResourceManager::LoadTexture(const std::string& pat
     m_texturePaths[path]    = handle;
     m_textures[handle]      = tex;
     m_texturePathsByHandle[handle] = path;
+    m_textureReferences[handle] = 1;
 
     LOG_DEBUG("纹理已加载: {} (handle={})", path, handle);
     return handle;
@@ -162,6 +166,8 @@ void ResourceManager::UnloadTexture(TextureHandle handle)
 {
     auto it = m_textures.find(handle);
     if (it == m_textures.end()) return;
+    if(--m_textureReferences[handle]>0)return;
+    m_textureReferences.erase(handle);
 
     if (it->second) SDL_DestroyTexture(it->second);
     m_textures.erase(it);

@@ -45,6 +45,7 @@ bool BackgroundRenderer::LoadImage(std::string_view path)
 
 void BackgroundRenderer::UnloadImage()
 {
+    if(m_blurred){SDL_DestroyTexture(m_blurred);m_blurred=nullptr;}
     if (m_textureHandle != sakura::core::INVALID_HANDLE)
     {
         sakura::core::ResourceManager::GetInstance().UnloadTexture(m_textureHandle);
@@ -56,30 +57,30 @@ void BackgroundRenderer::Update(float /*dt*/) {}
 
 void BackgroundRenderer::Render(sakura::core::Renderer& renderer)
 {
-    if (m_textureHandle != sakura::core::INVALID_HANDLE)
-    {
-        // 铺满屏幕（居中裁切由 DrawSprite 的 NormRect{0,0,1,1} 决定）
-        // 使用 BlurEnabled 选择是否先捕获到 ShaderManager 然后模糊
-        if (m_blurEnabled)
-        {
-            renderer.DrawSprite(m_textureHandle,
-                { 0.0f, 0.0f, 1.0f, 1.0f }, 0.0f,
-                sakura::core::Color::White, 1.0f);
-            ShaderManager::GetInstance().DrawBlurred(nullptr, 0.5f);
+    auto* image=sakura::core::ResourceManager::GetInstance().GetTexture(m_textureHandle);
+    if(image){
+        auto* native=renderer.GetSDLRenderer();
+        const int width=renderer.GetScreenWidth(),height=renderer.GetScreenHeight();
+        float iw=1,ih=1;SDL_GetTextureSize(image,&iw,&ih);
+        const float scale=std::max(width/iw,height/ih);
+        SDL_FRect crop{(iw-width/scale)*0.5f,(ih-height/scale)*0.5f,width/scale,height/scale};
+        if(m_blurEnabled && (!m_blurred || m_blurW!=width || m_blurH!=height)){
+            if(m_blurred)SDL_DestroyTexture(m_blurred);
+            m_blurred=SDL_CreateTexture(native,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,std::max(1,width/32),std::max(1,height/32));
+            m_blurW=width;m_blurH=height;
+            if(m_blurred){
+                auto* previous=SDL_GetRenderTarget(native);
+                if(SDL_SetRenderTarget(native,m_blurred)){
+                    SDL_SetRenderDrawColor(native,0,0,0,255);SDL_RenderClear(native);
+                    SDL_RenderTexture(native,image,&crop,nullptr);
+                    SDL_SetRenderTarget(native,previous);
+                    SDL_SetTextureScaleMode(m_blurred,SDL_SCALEMODE_LINEAR);
+                }else{SDL_DestroyTexture(m_blurred);m_blurred=nullptr;}
+            }
         }
-        else
-        {
-            renderer.DrawSprite(m_textureHandle,
-                { 0.0f, 0.0f, 1.0f, 1.0f }, 0.0f,
-                sakura::core::Color::White, 1.0f);
-        }
+        if(m_blurEnabled&&m_blurred)SDL_RenderTexture(native,m_blurred,nullptr,nullptr);
+        else SDL_RenderTexture(native,image,&crop,nullptr);
     }
-    else
-    {
-        renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-                    sakura::core::Theme::GetInstance().BgColor());
-    }
-
     // 暗化遮罩
     if (m_dimming > 0.001f)
     {

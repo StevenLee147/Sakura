@@ -44,6 +44,8 @@ private:
     float m_beatTimer       = 0.0f;   // 距离上次 beat 的时间（秒）
     int   m_lastBeatTimeMs  = 0;       // 上次节拍的绝对时间 ms（用于偏差计算）
     float m_totalTimeMs     = 0.0f;   // 累计运行时间 ms
+    int m_lastSampleBeat = -1;
+    bool m_audioReady = false;
 
     // 脉冲动画（0=无脉冲，1=刚好节拍）
     float m_pulseAnim = 0.0f;

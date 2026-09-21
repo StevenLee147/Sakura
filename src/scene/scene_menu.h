@@ -50,11 +50,11 @@ private:
     std::array<std::unique_ptr<sakura::ui::Button>, BUTTON_COUNT> m_buttons;
 
     // 按钮位置
-    static constexpr float BTN_X     = 0.1f;
-    static constexpr float BTN_W     = 0.25f;
-    static constexpr float BTN_H     = 0.048f;
-    static constexpr float BTN_GAP   = 0.064f;          // 每个按钮的 Y 间距
-    static constexpr float BTN_Y0    = 0.33f;           // 第一个按钮 Y
+    static constexpr float BTN_X     = 0.075f;
+    static constexpr float BTN_W     = 0.29f;
+    static constexpr float BTN_H     = 0.055f;
+    static constexpr float BTN_GAP   = 0.068f;          // 每个按钮的 Y 间距
+    static constexpr float BTN_Y0    = 0.405f;           // 第一个按钮 Y
 
     // ── 入场动画 ──────────────────────────────────────────────────────────────
     struct EnterAnim
@@ -78,10 +78,11 @@ private:
     } m_anim;
 
     float m_enterTimer = 0.0f;   // 进场总计时
+    int m_keyboardFocus = 0;
 
     // 目标 X/Y 坐标
-    static constexpr float TITLE_X = 0.1f;
-    static constexpr float TITLE_Y = 0.15f;
+    static constexpr float TITLE_X = 0.075f;
+    static constexpr float TITLE_Y = 0.18f;
 
     // ── 谱面编辑器子菜单 ───────────────────────────────────────────────────────
     bool m_showEditorMenu = false;

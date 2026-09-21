@@ -1,7 +1,7 @@
 // audio_manager.cpp — 音频管理器实现
 // 使用 miniaudio 高层 ma_engine API
 
-// miniaudio 头文件（实现已在 resource_manager.cpp 中定义）
+// miniaudio 头文件（实现已在 audio_backend.cpp 中定义）
 // 这里只做声明引用，不重复定义
 #include <miniaudio.h>
 
@@ -9,10 +9,15 @@
 #include "audio_visualizer.h"
 #include "sfx_generator.h"
 #include "core/config.h"
+#include "core/paths.h"
+#include <algorithm>
+#include <cmath>
 #include "utils/logger.h"
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <cctype>
 
 namespace sakura::audio
 {
@@ -68,6 +73,17 @@ bool AudioManager::Initialize()
     // 设置主音量
     ma_engine_set_volume(m_engine, m_masterVolume);
 
+    m_sfxGroup = new ma_sound_group();
+    if (ma_sound_group_init(m_engine, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_sfxGroup) != MA_SUCCESS)
+    {
+        delete m_sfxGroup;
+        m_sfxGroup = nullptr;
+        ma_engine_uninit(m_engine);
+        delete m_engine;
+        m_engine = nullptr;
+        return false;
+    }
+    ma_sound_group_set_volume(m_sfxGroup, m_sfxVolume);
     m_initialized = true;
     LOG_INFO("AudioManager 初始化成功，主音量={:.2f}，音乐音量={:.2f}，音效音量={:.2f}",
              m_masterVolume, m_musicVolume, m_sfxVolume);
@@ -81,14 +97,13 @@ void AudioManager::Shutdown()
     if (!m_initialized) return;
 
     // 停止并释放当前音乐
-    if (m_music)
-    {
-        ma_sound_stop(m_music);
-        ma_sound_uninit(m_music);
-        delete m_music;
-        m_music = nullptr;
-    }
+    StopMusic();
     AudioVisualizer::GetInstance().ClearSource();
+
+    for (auto& [path, voices] : m_sfxCache)
+        for (auto* voice : voices) if (voice) { ma_sound_uninit(voice); delete voice; }
+    m_sfxCache.clear();
+    if (m_sfxGroup) { ma_sound_group_uninit(m_sfxGroup); delete m_sfxGroup; m_sfxGroup = nullptr; }
 
     // 释放引擎
     if (m_engine)
@@ -106,7 +121,7 @@ void AudioManager::Shutdown()
 
 // ── 背景音乐 ──────────────────────────────────────────────────────────────────
 
-bool AudioManager::PlayMusic(const std::string& path, int loops, double startPositionSeconds)
+bool AudioManager::PlayMusic(const std::string& path, int loops, double startPositionSeconds, bool startPaused)
 {
     if (!m_initialized || !m_engine)
     {
@@ -127,7 +142,23 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     m_music = new ma_sound();
     ma_uint32 flags = MA_SOUND_FLAG_STREAM;  // 流式加载，适合长音乐
 
-    ma_result result = ma_sound_init_from_file(
+    ma_result result;
+    auto extension=std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+    if(extension==".ogg" || extension==".oga"){
+        // stb_vorbis callback streaming cannot report length. Its memory pull
+        // decoder supports exact seeking while keeping compressed data in RAM.
+        const auto size=std::filesystem::file_size(path);
+        if(size==0 || size>256*1024*1024){delete m_music;m_music=nullptr;return false;}
+        m_compressedMusic.resize(static_cast<size_t>(size));
+        std::ifstream source(path,std::ios::binary);
+        if(!source.read(reinterpret_cast<char*>(m_compressedMusic.data()),static_cast<std::streamsize>(size))){delete m_music;m_music=nullptr;m_compressedMusic.clear();return false;}
+        m_musicDecoder=new ma_decoder();
+        auto decoderConfig=ma_decoder_config_init(ma_format_f32,0,0);
+        result=ma_decoder_init_memory(m_compressedMusic.data(),m_compressedMusic.size(),&decoderConfig,m_musicDecoder);
+        if(result==MA_SUCCESS)result=ma_sound_init_from_data_source(m_engine,m_musicDecoder,MA_SOUND_FLAG_NO_SPATIALIZATION,nullptr,m_music);
+        else {delete m_musicDecoder;m_musicDecoder=nullptr;}
+    }else result = ma_sound_init_from_file(
         m_engine,
         path.c_str(),
         flags,
@@ -141,6 +172,8 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
         LOG_ERROR("ma_sound_init_from_file 失败 [{}]: error={}", path, static_cast<int>(result));
         delete m_music;
         m_music = nullptr;
+        if(m_musicDecoder){ma_decoder_uninit(m_musicDecoder);delete m_musicDecoder;m_musicDecoder=nullptr;}
+        m_compressedMusic.clear();
         return false;
     }
 
@@ -174,14 +207,14 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     }
 
     // 开始播放
-    result = ma_sound_start(m_music);
+    result = startPaused ? MA_SUCCESS : ma_sound_start(m_music);
     if (result != MA_SUCCESS)
     {
         LOG_ERROR("ma_sound_start 失败: error={}", static_cast<int>(result));
         return false;
     }
 
-    m_musicPaused = false;
+    m_musicPaused = startPaused;
     m_fadingOut   = false;
     LOG_INFO("开始播放音乐: {} (loop={}, startPos={:.3f}s)", path, loops, startPositionSeconds);
     return true;
@@ -225,6 +258,8 @@ void AudioManager::StopMusic()
     ma_sound_uninit(m_music);
     delete m_music;
     m_music       = nullptr;
+    if(m_musicDecoder){ma_decoder_uninit(m_musicDecoder);delete m_musicDecoder;m_musicDecoder=nullptr;}
+    std::vector<unsigned char>{}.swap(m_compressedMusic);
     m_musicPath   = "";
     m_musicPaused = false;
     m_fadingOut   = false;
@@ -238,9 +273,9 @@ void AudioManager::FadeOutMusic(int ms)
 
     // 使用 miniaudio 内置淡出 API
     // ma_sound_set_fade_in_milliseconds(sound, startVol, endVol, durationMs)
-    float currentVol = m_musicVolume * m_masterVolume;
+    float currentVol = 1.0f;
     ma_sound_set_fade_in_milliseconds(m_music, currentVol, 0.0f,
-                                     static_cast<ma_uint64>(ms));
+                                     static_cast<ma_uint64>(std::max(0, ms)));
 
     m_fadingOut    = true;
     m_fadeDuration = static_cast<float>(ms) / 1000.0f;
@@ -248,9 +283,19 @@ void AudioManager::FadeOutMusic(int ms)
     LOG_DEBUG("音乐淡出 {}ms", ms);
 }
 
+void AudioManager::Update(float dt)
+{
+    if (m_fadingOut)
+    {
+        m_fadeTimer += dt;
+        if (m_fadeTimer >= m_fadeDuration) StopMusic();
+    }
+}
+
 bool AudioManager::SetMusicPosition(double seconds)
 {
-    if (!m_music) return false;
+    if (!m_music || !std::isfinite(seconds)) return false;
+    seconds = std::clamp(seconds, 0.0, std::max(0.0, GetMusicDuration()));
 
     // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
     ma_result result = ma_sound_seek_to_second(m_music, static_cast<float>(seconds));
@@ -295,26 +340,38 @@ bool AudioManager::IsPaused() const
 
 // ── 音效 ──────────────────────────────────────────────────────────────────────
 
+void AudioManager::CacheSFX(const std::string& path)
+{
+    if (!m_initialized || m_sfxCache.contains(path) || !std::filesystem::exists(path)) return;
+    std::array<ma_sound*, 4> voices{};
+    for (auto& voice : voices)
+    {
+        voice = new ma_sound();
+        if (ma_sound_init_from_file(m_engine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION,
+                m_sfxGroup, nullptr, voice) != MA_SUCCESS)
+        {
+            delete voice;
+            voice = nullptr;
+        }
+    }
+    m_sfxCache.emplace(path, voices);
+}
+
 void AudioManager::PlaySFX(const std::string& path)
 {
     if (!m_initialized || !m_engine) return;
-
-    if (!std::filesystem::exists(path))
+    CacheSFX(path);
+    const auto it = m_sfxCache.find(path);
+    if (it == m_sfxCache.end()) return;
+    ma_sound* chosen = nullptr;
+    for (auto* voice : it->second)
+        if (voice) { chosen = voice; if (!ma_sound_is_playing(voice)) break; }
+    if (chosen)
     {
-        LOG_WARN("音效文件不存在: {}", path);
-        return;
-    }
-
-    // 使用 ma_engine_play_sound 实现 fire-and-forget 音效播放
-    // 无需手动管理 ma_sound 生命周期
-    ma_result result = ma_engine_play_sound(m_engine, path.c_str(), nullptr);
-    if (result != MA_SUCCESS)
-    {
-        LOG_WARN("PlaySFX 失败 [{}]: error={}", path, static_cast<int>(result));
-    }
-    else
-    {
-        AudioVisualizer::GetInstance().AddImpulse(0.30f);
+        ma_sound_stop(chosen);
+        ma_sound_seek_to_pcm_frame(chosen, 0);
+        ma_sound_start(chosen);
+        AudioVisualizer::GetInstance().AddImpulse(0.20f);
     }
 }
 
@@ -351,7 +408,7 @@ void AudioManager::SetMusicVolume(float vol)
 void AudioManager::SetSFXVolume(float vol)
 {
     m_sfxVolume = std::max(0.0f, std::min(1.0f, vol));
-    // SFX 通过 engine 音量控制，这里仅记录（fire-and-forget 音效不单独控制）
+    if (m_sfxGroup) ma_sound_group_set_volume(m_sfxGroup, m_sfxVolume);
 }
 
 void AudioManager::ApplyMusicVolume()
@@ -378,11 +435,11 @@ void AudioManager::SetPlaybackSpeed(float speed)
 
 bool AudioManager::LoadHitsoundSet(std::string_view name)
 {
-    // 先生成占位音效（若不存在）
-    SfxGenerator::GenerateDefaults("resources/sound/sfx");
+    // 先生成合成音效（若不存在）
+    SfxGenerator::GenerateDefaults(sakura::core::Paths::User("cache/sfx-v2"));
 
     m_hitsoundSetName = std::string(name);
-    std::string base = "resources/sound/sfx/" + m_hitsoundSetName + "/";
+    std::string base = sakura::core::Paths::User("cache/sfx-v2/" + m_hitsoundSetName + "/");
 
     m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = base + "tap.wav";
     m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = base + "hold_start.wav";
@@ -397,7 +454,7 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_judgeSFXPaths[4] = base + "miss.wav";
 
     // UI 音效统一放 ui/
-    std::string ui = "resources/sound/sfx/ui/";
+    std::string ui = sakura::core::Paths::User("cache/sfx-v2/ui/");
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]   = ui + "button_hover.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]   = ui + "button_click.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]    = ui + "transition.wav";
@@ -408,11 +465,15 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationHit)]  = ui + "calibration_hit.wav";
 
     LOG_INFO("[AudioManager] 已加载 hitsound set: {}", name);
+    for (const auto& path : m_hitsoundPaths) CacheSFX(path);
+    for (const auto& path : m_judgeSFXPaths) CacheSFX(path);
+    for (const auto& path : m_uiSFXPaths) CacheSFX(path);
     return true;
 }
 
 void AudioManager::PlayHitsound(HitsoundType type)
 {
+    if(!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled",true))return;
     if (!m_initialized) return;
     int idx = static_cast<int>(type);
     if (idx < 0 || idx >= static_cast<int>(m_hitsoundPaths.size())) return;
@@ -436,6 +497,7 @@ void AudioManager::PlayHitsoundForNote(sakura::game::NoteType noteType)
 
 void AudioManager::PlayJudgeSFX(sakura::game::JudgeResult result)
 {
+    if (!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled", true)) return;
     if (!m_initialized) return;
     int idx = static_cast<int>(result);
     if (idx < 0 || idx >= static_cast<int>(m_judgeSFXPaths.size())) return;

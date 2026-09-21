@@ -9,6 +9,7 @@
 #include "ui/button.h"
 #include "ui/toast.h"
 #include "game/chart.h"
+#include "game/play_session.h"
 #include "game/pp_calculator.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
@@ -28,8 +29,9 @@ class SceneResult final : public Scene
 public:
     SceneResult(SceneManager& mgr,
                 sakura::game::GameResult result,
-                sakura::game::ChartInfo  chartInfo);
+                sakura::game::ChartInfo  chartInfo, sakura::game::PlayOptions options = {});
 
+    const sakura::game::GameResult& Result() const { return m_result; }
     void OnEnter() override;
     void OnExit()  override;
     void OnUpdate(float dt) override;
@@ -40,6 +42,12 @@ private:
     SceneManager&            m_manager;
     sakura::game::GameResult m_result;
     sakura::game::ChartInfo  m_chartInfo;
+    sakura::game::PlayOptions m_options;
+    bool m_newBest = false, m_savedScore = false;
+    int m_scoreDelta = 0;
+    std::array<int,41> m_histogram{};
+    double m_meanError = 0, m_deviation = 0;
+    std::unique_ptr<sakura::ui::Button> m_btnReplay;
 
     sakura::core::FontHandle m_fontUI    = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontScore = sakura::core::INVALID_HANDLE;

@@ -41,6 +41,8 @@ public:
     void Shutdown();
 
     bool IsOpen() const { return m_db != nullptr; }
+    bool BackupTo(const std::string& path) const;
+    bool RestoreFrom(const std::string& path);
 
     // ── 成绩 ─────────────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ public:
     // 返回某谱面某难度的最高分记录（无记录则返回空 optional）
     std::optional<sakura::game::GameResult> GetBestScore(
         const std::string& chartId,
-        const std::string& difficulty) const;
+        const std::string& difficulty, const std::string& chartHash = {}) const;
 
     // 返回某谱面某难度排行榜（按 score 降序，最多 limit 条）
     std::vector<sakura::game::GameResult> GetTopScores(

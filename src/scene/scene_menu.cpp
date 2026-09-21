@@ -9,6 +9,8 @@
 #include "scene_chart_wizard.h"
 #include "audio/audio_visualizer.h"
 #include "core/input.h"
+#include "core/config.h"
+#include "core/paths.h"
 #include "game/chart_loader.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -97,7 +99,7 @@ void SceneMenu::OnEnter()
 void SceneMenu::SetupButtons()
 {
     const char* labels[BUTTON_COUNT] = {
-        "开始游戏", "教程", "统计", "谱面编辑器", "设置", "退出"
+        "开始旅程   /   PLAY", "初次见面   /   教程", "我的记录   /   统计", "谱面工房   /   编辑器", "偏好设置   /   SETTINGS", "离开游戏"
     };
 
     for (int i = 0; i < BUTTON_COUNT; ++i)
@@ -223,10 +225,12 @@ void SceneMenu::ScanCustomCharts()
 
     // 确保谱面目录存在
     std::error_code ec;
-    std::filesystem::create_directories(CUSTOM_CHARTS_PATH, ec);
+    std::filesystem::create_directories(sakura::core::Paths::User("charts"), ec);
 
     sakura::game::ChartLoader loader;
-    auto charts = loader.ScanCharts(CUSTOM_CHARTS_PATH);
+    auto charts = loader.ScanCharts(sakura::core::Paths::User("charts"));
+    auto builtin = loader.ScanCharts(CUSTOM_CHARTS_PATH);
+    for(auto& chart:builtin)if(std::none_of(charts.begin(),charts.end(),[&](const auto& other){return other.id==chart.id;}))charts.push_back(std::move(chart));
     for (auto& ci : charts)
     {
         ChartEntry entry;
@@ -352,7 +356,7 @@ void SceneMenu::UpdateEnterAnimation(float dt)
 
 void SceneMenu::OnUpdate(float dt)
 {
-    UpdateEnterAnimation(dt);
+    UpdateEnterAnimation(sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false) ? 10.0f : dt);
 
     // ── 粒子与特效更新 ───────────────────────────────────────────────────────
     m_particles.Update(dt);
@@ -408,60 +412,19 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 {
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
 
-    // ── 半透明渐变遮罩 (保证左边文字可读性) ───────────────────────────────────
-    // 渐变占据 x: 0 ~ 0.5
-    renderer.DrawGradientRect({ 0.0f, 0.0f, 0.6f, 1.0f },
-        sakura::core::Color{ 10, 10, 20, 240 },   // TopLeft
-        sakura::core::Color{ 10, 10, 20, 0 },     // TopRight
-        sakura::core::Color{ 10, 10, 20, 240 },   // BottomLeft
-        sakura::core::Color{ 10, 10, 20, 0 });    // BottomRight
-
-    // ── 背景微粒 + 樱花飘落 ────────────────────────────────────────────────────
-    m_particles.Render(renderer);
-
-    sakura::audio::AudioVisualizer::GetInstance().RenderCircle(
-        renderer,
-        0.80f, 0.28f, 0.10f,
-        { 255, 170, 210, 180 },
-        0.75f);
-    sakura::audio::AudioVisualizer::GetInstance().RenderWave(
-        renderer,
-        { 0.54f, 0.78f, 0.38f, 0.10f },
-        { 160, 220, 255, 170 },
-        0.80f);
-
-    // ── 鼠标点击光环特效 ────────────────────────────────────────────────────────
-    for (const auto& ring : m_clickRings)
-    {
-        float t = ring.timer / 0.4f; // 0~1
-        float radius = sakura::utils::EaseOutCubic(t) * 0.05f; // 最大半径 5% 屏幕短边
-        uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - t));
-        renderer.DrawCircleOutline(ring.x, ring.y, radius, sakura::core::Color{ 255, 255, 255, alpha }, 0.002f, 32);
-    }
-
+    sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_glowPhase);
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
-
-    float titleX = TITLE_X + m_anim.titleOffsetX;
-
-    // ── 标题发光脉冲效果（在文字后面画glow） ───────────────────────────────────
-    sakura::effects::GlowEffect::PulseGlow(renderer,
-        titleX + 0.15f, TITLE_Y + 0.04f,           // 中心（左右对齐）
-        0.04f, 0.07f,                    // 大小 min~max
-        sakura::core::Color{ 255, 140, 180, 120 },  // 粉色发光
-        m_glowPhase, 0.8f, 5);           // 频率 0.8Hz
-
-    // ── 标题 ──────────────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontTitle, "Sakura-\xe6\xa8\xb1",
-        titleX, TITLE_Y, 0.08f,
-        sakura::core::Color{ 255, 255, 255, 255 },
-        sakura::core::TextAlign::Left);
-
-    // ── 副标题 ────────────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontSub, "Mixed-Mode Rhythm Game",
-        titleX, TITLE_Y + 0.09f, 0.025f,
-        sakura::core::Color{ 220, 220, 230, 200 },
-        sakura::core::TextAlign::Left);
-
+    const auto pink = sakura::core::Color{234, 173, 193, 255};
+    const auto dim = sakura::core::Color{161, 169, 191, 255};
+    const float titleX = TITLE_X + m_anim.titleOffsetX;
+    renderer.DrawText(m_fontSub, "A DUAL RHYTHM JOURNEY", titleX, 0.12f, 0.018f, pink);
+    renderer.DrawText(m_fontTitle, "Sakura", titleX, TITLE_Y, 0.102f, {245,235,235,255});
+    renderer.DrawText(m_fontTitle, "樱", titleX + 0.238f, TITLE_Y + 0.021f, 0.068f, pink);
+    renderer.DrawLine(titleX, 0.345f, titleX + 0.040f, 0.345f, pink, 0.002f);
+    renderer.DrawText(m_fontSub, "指尖落樱，双手成诗。", titleX + 0.05f, 0.327f, 0.022f, dim);
+    renderer.DrawText(m_fontSub, "4 KEYS  +  MOUSE", 0.735f, 0.771f, 0.020f, pink, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSub, "左手节奏 · 右手旋律", 0.735f, 0.814f, 0.023f, dim, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSub, "↑ ↓ 选择   ·   Enter 确认", 0.075f, 0.880f, 0.017f, dim);
     // ── 按钮（应用 X 动画偏移，同时做溢出裁剪）──────────────────────────────
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
@@ -476,12 +439,14 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 
         m_buttons[i]->SetBounds(animBounds);
         m_buttons[i]->Render(renderer);
+        if (i == m_keyboardFocus)
+            renderer.DrawFilledRect({animBounds.x - 0.010f, animBounds.y + 0.013f, 0.002f, animBounds.height - 0.026f}, {234,173,193,220});
         m_buttons[i]->SetBounds(origBounds);   // 还原
     }
 
     // ── 版本号 ────────────────────────────────────────────────────────────────
     renderer.DrawText(m_fontSub, "v" SAKURA_VERSION_STRING,
-        0.02f, 0.96f, 0.018f,
+        0.075f, 0.95f, 0.016f,
         sakura::core::Color{ 200, 200, 200, 160 },
         sakura::core::TextAlign::Left);
 
@@ -630,6 +595,12 @@ void SceneMenu::OnEvent(const SDL_Event& event)
     }
 
     // ESC → 显示退出确认框
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
+    {
+        if (event.key.scancode == SDL_SCANCODE_UP) { m_keyboardFocus = (m_keyboardFocus + BUTTON_COUNT - 1) % BUTTON_COUNT; return; }
+        if (event.key.scancode == SDL_SCANCODE_DOWN || event.key.scancode == SDL_SCANCODE_TAB) { m_keyboardFocus = (m_keyboardFocus + 1) % BUTTON_COUNT; return; }
+        if (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_SPACE) { m_buttons[m_keyboardFocus]->Activate(); return; }
+    }
     if (event.type == SDL_EVENT_KEY_DOWN &&
         event.key.scancode == SDL_SCANCODE_ESCAPE)
     {

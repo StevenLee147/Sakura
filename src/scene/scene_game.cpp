@@ -6,6 +6,10 @@
 #include "scene_result.h"
 #include "core/input.h"
 #include "core/config.h"
+#include "core/paths.h"
+#include "ui/toast.h"
+#include "ui/visual_style.h"
+#include "game/chart_utils.h"
 #include "core/theme.h"
 #include "audio/audio_visualizer.h"
 #include "game/approach_visuals.h"
@@ -29,20 +33,6 @@ namespace sakura::scene
 namespace
 {
 
-// 将判定结果映射为点击选 note 时的优先级：值越小表示时间判定越好。
-int JudgePriority(sakura::game::JudgeResult result)
-{
-    switch (result)
-    {
-    case sakura::game::JudgeResult::Perfect: return 0;
-    case sakura::game::JudgeResult::Great:   return 1;
-    case sakura::game::JudgeResult::Good:    return 2;
-    case sakura::game::JudgeResult::Bad:     return 3;
-    case sakura::game::JudgeResult::Miss:    return 4;
-    default:                                  return 5;
-    }
-}
-
 sakura::core::Color ToCoreColor(const sakura::game::GuidanceColor& color)
 {
     return { color.r, color.g, color.b, color.a };
@@ -52,9 +42,10 @@ sakura::core::Color ToCoreColor(const sakura::game::GuidanceColor& color)
 
 SceneGame::SceneGame(SceneManager& mgr,
                      const sakura::game::ChartInfo& chartInfo,
-                     int difficultyIndex)
+                     int difficultyIndex, sakura::game::PlayOptions options)
     : m_manager(mgr)
     , m_chartInfo(chartInfo)
+    , m_options(std::move(options))
     , m_difficultyIndex(difficultyIndex)
 {
 }
@@ -72,14 +63,15 @@ void SceneGame::OnEnter()
 
     // 背景系统初始化
     {
-        float bgDim = sakura::core::Config::GetInstance().Get("background_dimming", 0.5f);
+        float bgDim = sakura::core::Config::GetInstance().Get("gameplay.background_dim", 0.75f);
         m_useDefaultBg = true;
         if (!m_chartInfo.backgroundFile.empty())
         {
             std::string bgPath = m_chartInfo.folderPath + "/" + m_chartInfo.backgroundFile;
             if (m_bgRenderer.LoadImage(bgPath))
             {
-                m_bgRenderer.SetDimming(bgDim);
+                m_bgRenderer.SetDimming(0);
+                m_bgRenderer.SetBlurEnabled(sakura::core::Config::GetInstance().Get<bool>("graphics.background_blur",true));
                 m_useDefaultBg = false;
             }
         }
@@ -102,27 +94,54 @@ void SceneGame::OnEnter()
             cfg.Get<int>("input.key_lane_3", SDL_SCANCODE_F));
     }
 
-    // 初始化判定系统
-    m_judge.Initialize();
-
-    // 启动 GameState（加载谱面 + 开始倒计时）
-    if (!m_gameState.Start(m_chartInfo, m_difficultyIndex))
+    auto& cfg = sakura::core::Config::GetInstance();
+    m_noteSpeed = cfg.Get<float>("gameplay.note_speed", 5.0f);
+    m_approachMs = cfg.Get<int>("gameplay.mouse_approach_ms", 1000);
+    m_finishing = false;
+    m_replayCursor = 0;
+    if (m_options.mode == sakura::game::PlayMode::Replay)
     {
-        LOG_ERROR("[SceneGame] GameState::Start 失败，返回选歌界面");
-        m_manager.SwitchScene(
-            std::make_unique<SceneSelect>(m_manager),
-            TransitionType::Fade, 0.4f);
+        m_replay = sakura::game::Replay::Load(m_options.replayFile);
+        if (m_replay)
+        {
+            m_options.rate = m_replay->rate;
+            m_options.startMs = m_replay->startMs;
+        }
+    }
+    if (!m_gameState.Start(m_chartInfo, m_difficultyIndex, m_options))
+    {
+        sakura::ui::ToastManager::Instance().Show(m_gameState.GetError(), sakura::ui::ToastType::Error, 6.0f);
+        if(m_options.returnToEditor){m_manager.PopScene();return;}
+        m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::Fade, 0.2f);
         return;
     }
-
-    // 初始化计分器
-    int totalNotes = m_gameState.GetTotalNoteCount();
-    m_score.Initialize(totalNotes);
-
-    // 清空状态
-    m_holdStates.clear();
-    m_sliderStates.clear();
+    if (m_options.mode == sakura::game::PlayMode::Replay && (!m_replay ||
+        m_replay->chartId != m_chartInfo.id || m_replay->difficulty != m_difficultyIndex ||
+        m_replay->chartHash != sakura::game::Replay::Hash(m_gameState.GetChartData(),m_chartInfo.offset)))
+    {
+        sakura::ui::ToastManager::Instance().Show("回放损坏或谱面已变更，无法播放", sakura::ui::ToastType::Error);
+        m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::Fade, 0.2f);
+        return;
+    }
+    m_options=m_gameState.GetOptions();
+    m_session.Initialize(m_gameState.GetChartData(), m_options.mode == sakura::game::PlayMode::AutoPlay,
+        m_options.startMs, m_options.endMs);
+    int viewW=1600, viewH=900; if(auto* window=SDL_GetKeyboardFocus()) SDL_GetWindowSize(window,&viewW,&viewH);
+    const float edge=std::min(viewW*MOUSE_W,viewH*MOUSE_H);
+    m_pointerScaleX=viewW*MOUSE_W/edge; m_pointerScaleY=viewH*MOUSE_H/edge;
+    if(m_replay){m_pointerScaleX=m_replay->pointerScaleX;m_pointerScaleY=m_replay->pointerScaleY;}
+    m_session.SetPointerScale(m_pointerScaleX,m_pointerScaleY);
+    if(!m_replay)m_session.Submit({-10000,sakura::game::InputKind::PointerScale,0,m_pointerScaleX,m_pointerScaleY});
+    m_options = m_gameState.GetOptions();
+    if(m_session.Total()==0){sakura::ui::ToastManager::Instance().Show("这个练习区间内没有完整音符",sakura::ui::ToastType::Warning);m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager));return;}
+    m_session.SetOnJudge([this](const sakura::game::JudgmentEvent& event)
+    {
+        if(event.keyboard) m_lanePulse[event.lane]=1.0f;
+        AddJudgeFlash(event.result, event.keyboard, event.lane,
+            MOUSE_X + event.x * MOUSE_W, MOUSE_Y + event.y * MOUSE_H, event.error, event.timed);
+    });
     m_judgeFlashes.clear();
+    m_cursorTrail.clear();
 
     // ── 特效初始化 ────────────────────────────────────────────────────────────
     m_particles.Clear();
@@ -138,11 +157,10 @@ void SceneGame::OnExit()
 {
     LOG_INFO("[SceneGame] 退出游戏场景");
     sakura::audio::AudioManager::GetInstance().StopMusic();
-    m_holdStates.clear();
-    m_sliderStates.clear();
     m_judgeFlashes.clear();
     m_particles.Clear();
     m_bgRenderer.UnloadImage();
+    sakura::audio::AudioManager::GetInstance().SetPlaybackSpeed(1.0f);
 }
 
 // ── CalcNoteRenderY ───────────────────────────────────────────────────────────
@@ -150,12 +168,9 @@ void SceneGame::OnExit()
 float SceneGame::CalcNoteRenderY(int noteTimeMs, int currentTimeMs,
                                   float svSpeed) const
 {
-    auto& cfg      = sakura::core::Config::GetInstance();
-    float noteSpeed = cfg.Get<float>("gameplay.note_speed", 1.0f);
-
-    float dtMs      = static_cast<float>(noteTimeMs - currentTimeMs);
-    float fallRate  = noteSpeed * svSpeed * JUDGE_LINE_Y / BASE_APPROACH_RANGE;
-    return JUDGE_LINE_Y - dtMs * fallRate;
+    (void)svSpeed;
+    const float distance = sakura::game::ScrollDistance(m_gameState.GetChartData(), currentTimeMs, noteTimeMs);
+    return JUDGE_LINE_Y - distance * m_noteSpeed * JUDGE_LINE_Y / BASE_APPROACH_RANGE;
 }
 
 // ── CalcApproachScale ─────────────────────────────────────────────────────────
@@ -163,7 +178,7 @@ float SceneGame::CalcNoteRenderY(int noteTimeMs, int currentTimeMs,
 float SceneGame::CalcApproachScale(int noteTimeMs, int currentTimeMs) const
 {
     float dtMs  = static_cast<float>(noteTimeMs - currentTimeMs);
-    float t     = std::max(0.0f, std::min(1.0f, dtMs / BASE_APPROACH_RANGE));
+    float t     = std::max(0.0f, std::min(1.0f, dtMs / static_cast<float>(m_approachMs)));
     return 1.0f + 1.5f * t;   // 2.5 → 1.0
 }
 
@@ -176,179 +191,26 @@ int SceneGame::GetInputTimeMs() const
     const int globalOffset = sakura::core::Config::GetInstance().Get<int>(
         std::string(sakura::core::ConfigKeys::kAudioOffset), 0);
     return static_cast<int>(audio.GetMusicPosition() * 1000.0)
-        - m_chartInfo.offset - globalOffset;
+        - m_chartInfo.offset - globalOffset - m_inputLagMs;
 }
 
 // ── HandleKeyPress ────────────────────────────────────────────────────────────
 
 void SceneGame::HandleKeyPress(SDL_Scancode key)
 {
-    if (!m_gameState.IsPlaying()) return;
-
-    // 找出按键对应轨道
-    int lane = -1;
-    for (int i = 0; i < LANE_COUNT; ++i)
-    {
-        if (m_laneKeys[i] == key) { lane = i; break; }
-    }
-    if (lane < 0) return;
-
-    int now = GetInputTimeMs();
-    auto& kbNotes = m_gameState.GetKeyboardNotes();
-
-    // 在活跃键盘音符中找同轨道最近未判定的音符
-    auto activeKb = m_gameState.GetActiveKeyboardNotes();
-    int  bestIdx  = -1;
-    int  bestDist = INT_MAX;
-
-    for (auto& note : activeKb)
-    {
-        if (note.isJudged) continue;
-        if (note.lane != lane) continue;
-        int dist = std::abs(note.time - now);
-        if (dist < bestDist)
-        {
-            bestDist = dist;
-            // 找到索引（需要与 kbNotes 对齐）
-            for (int i = 0; i < static_cast<int>(kbNotes.size()); ++i)
-            {
-                if (&kbNotes[i] == &note) { bestIdx = i; break; }
-            }
-        }
-    }
-
-    if (bestIdx < 0) return;
-
-    auto& note = kbNotes[bestIdx];
-
-    // Hold 起始
-    if (note.type == sakura::game::NoteType::Hold)
-    {
-        auto result = m_judge.JudgeKeyboardNote(note, now);
-        if (result != sakura::game::JudgeResult::Miss &&
-            result != sakura::game::JudgeResult::None)
-        {
-            // 立即标记 isJudged=true（防 CheckMisses 误判），result 留 None 等 Hold 结束
-            note.isJudged = true;
-            note.result   = sakura::game::JudgeResult::None;
-
-            // 开始 Hold 状态追踪
-            sakura::game::HoldState hs;
-            hs.noteIndex  = bestIdx;
-            hs.isHeld     = true;
-            hs.headJudged = true;
-            hs.headResult = result;
-            hs.lastHeldTimeMs = now;
-            m_holdStates.push_back(hs);
-        }
-        if (result != sakura::game::JudgeResult::None)
-        {
-            m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-            AddJudgeFlash(result, true, lane, 0.0f, 0.0f,
-                          sakura::game::Judge::GetHitError(note.time, now), true);
-        }
-    }
-    // Tap（普通）
-    else
-    {
-        auto result = m_judge.JudgeKeyboardNote(note, now);
-        if (result != sakura::game::JudgeResult::None)
-        {
-            m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-            AddJudgeFlash(result, true, lane, 0.0f, 0.0f,
-                          sakura::game::Judge::GetHitError(note.time, now), true);
-        }
-    }
+    if (!m_gameState.IsPlaying() || m_options.mode == sakura::game::PlayMode::AutoPlay ||
+        m_options.mode == sakura::game::PlayMode::Replay) return;
+    for (int lane = 0; lane < LANE_COUNT; ++lane)
+        if (m_laneKeys[lane] == key)
+            m_session.Submit({GetInputTimeMs(), sakura::game::InputKind::LaneDown, lane});
 }
-
-// ── HandleMouseClick ──────────────────────────────────────────────────────────
 
 void SceneGame::HandleMouseClick(float normX, float normY)
 {
-    if (!m_gameState.IsPlaying()) return;
-
-    // 将屏幕归一化坐标转换为鼠标区域内归一化坐标
-    float mouseX = (normX - MOUSE_X) / MOUSE_W;
-    float mouseY = (normY - MOUSE_Y) / MOUSE_H;
-
-    // 超出鼠标区域
-    if (mouseX < 0.0f || mouseX > 1.0f ||
-        mouseY < 0.0f || mouseY > 1.0f) return;
-
-    int now = GetInputTimeMs();
-    auto& msNotes = m_gameState.GetMouseNotes();
-    auto  activeMs= m_gameState.GetActiveMouseNotes();
-
-    // 优先选取空间距离最近且在时间窗口内的未判定音符
-    // （鼠标区音符分布在二维空间，空间优先比时间优先更准确）
-    int   bestIdx      = -1;
-    int   bestPriority = INT_MAX;
-    float bestDist     = FLT_MAX;
-    int   bestTDist    = INT_MAX;
-    for (auto& n : activeMs)
-    {
-        if (n.isJudged) continue;
-        // 排除时间上完全超前（还未进入判定窗口）或已经彻底过期的音符，
-        // 避免点击被尚未可打/已经 Miss 的鼠标音符抢走。
-        int timeDiff = now - n.time;
-        if (timeDiff < -m_judge.GetWindows().miss ||
-            timeDiff > m_judge.GetWindows().miss) continue;
-
-        float dx = mouseX - n.x;
-        float dy = mouseY - n.y;
-        float dist = std::sqrt(dx * dx + dy * dy);
-        float tolerance = sakura::game::Judge::GetMouseHitTolerance(n);
-        if (dist > tolerance) continue;
-
-        int   absT = std::abs(timeDiff);
-        int   priority = JudgePriority(m_judge.GetResultByTimeDiff(absT));
-
-        // 仅在点击真正落入音符头部范围后再比较优先级：
-        // 先取时间判定更好的目标，再用空间距离/时间差打破平局。
-        if (priority < bestPriority ||
-            (priority == bestPriority &&
-             (dist < bestDist - 1e-4f ||
-              (dist < bestDist + 1e-4f && absT < bestTDist))))
-        {
-            bestPriority = priority;
-            bestDist     = dist;
-            bestTDist    = absT;
-            bestIdx      = static_cast<int>(&n - msNotes.data());
-        }
-    }
-    if (bestIdx < 0) return;
-
-    auto& note   = msNotes[bestIdx];
-    auto  result = m_judge.JudgeMouseNote(note, now, mouseX, mouseY);
-
-    if (note.type == sakura::game::NoteType::Slider &&
-        result != sakura::game::JudgeResult::Miss &&
-        result != sakura::game::JudgeResult::None)
-    {
-        // 标记音符已判定（防止 CheckMouseMisses 在 Slider 进行中误判为 Miss）
-        // result 暂置 None，Slider 所有拐点判定完毕后在 OnUpdate 中填入终判结果
-        note.isJudged = true;
-        note.result   = sakura::game::JudgeResult::None;
-
-        // 开始 Slider 追踪
-        sakura::game::SliderState ss;
-        ss.noteIndex   = bestIdx;
-        ss.headJudged  = true;
-        ss.headResult  = result;
-        m_sliderStates.push_back(ss);
-    }
-
-    // 仅在有效判定（非 None）时计分并显示判定闪现
-    // None 表示点击未命中音符（距离过远或时间太早），不应产生任何反馈
-    if (result != sakura::game::JudgeResult::None)
-    {
-        m_score.OnJudge(result, sakura::game::Judge::GetHitError(note.time, now));
-        // 将鼠标区局部坐标转换为屏幕坐标再存入闪现记录
-        float flashSX = MOUSE_X + note.x * MOUSE_W;
-        float flashSY = MOUSE_Y + note.y * MOUSE_H;
-        AddJudgeFlash(result, false, 0, flashSX, flashSY,
-                  sakura::game::Judge::GetHitError(note.time, now), true);
-    }
+    if (!m_gameState.IsPlaying() || m_options.mode == sakura::game::PlayMode::AutoPlay ||
+        m_options.mode == sakura::game::PlayMode::Replay) return;
+    m_session.Submit({GetInputTimeMs(), sakura::game::InputKind::MouseDown, 0,
+        (normX - MOUSE_X) / MOUSE_W, (normY - MOUSE_Y) / MOUSE_H});
 }
 
 // ── AddJudgeFlash ─────────────────────────────────────────────────────────────
@@ -400,7 +262,8 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
     }
 
     // ── 判定音效 ──────────────────────────────────────────────────────────────
-    sakura::audio::AudioManager::GetInstance().PlayJudgeSFX(r);
+    if(r==sakura::game::JudgeResult::Miss || sakura::core::Config::GetInstance().Get<bool>("audio.judgment_sounds",false))
+        sakura::audio::AudioManager::GetInstance().PlayJudgeSFX(r);
 
     // ── Hitsound（按音符类型）────────────────────────────────────────────────
     auto hsType = isKb
@@ -414,179 +277,75 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
 
 void SceneGame::OnUpdate(float dt)
 {
-    // 更新 GameState（倒计时、时间推进）
+    if (m_finishing) return;
     m_gameState.Update(dt);
-
-    // ── 游戏结束 → 切换到结算场景（在 IsPlaying 守卫之前检查）─────────────────
+    const int now = m_gameState.GetCurrentTime();
+    if (m_gameState.IsPlaying() || m_gameState.IsFinished())
+    {
+        if (m_gameState.TakeResumed() && m_options.mode != sakura::game::PlayMode::Replay)
+            m_session.Submit({now, sakura::game::InputKind::Resume});
+        if (m_options.mode == sakura::game::PlayMode::Replay && m_replay)
+        {
+            while (m_replayCursor < m_replay->inputs.size() && m_replay->inputs[m_replayCursor].time <= now)
+                m_session.Submit(m_replay->inputs[m_replayCursor++]);
+        }
+        else
+        {
+            const auto mouse = sakura::core::Input::GetMousePosition();
+            if(m_options.mode!=sakura::game::PlayMode::AutoPlay) m_session.Submit({now, sakura::game::InputKind::Pointer, 0,
+                (mouse.x - MOUSE_X) / MOUSE_W, (mouse.y - MOUSE_Y) / MOUSE_H});
+            m_session.Submit({now, sakura::game::InputKind::Tick});
+        }
+    }
     if (m_gameState.IsFinished())
     {
-        LOG_INFO("[SceneGame] 游戏完成，切换到结算");
-
-        // 将活跃 Slider 中未完成的拐点计为 Miss（音乐结束时 Slider 可能仍在进行中）
-        auto& msNotes = m_gameState.GetMouseNotes();
-        for (auto& ss : m_sliderStates)
-        {
-            if (ss.noteIndex >= 0 && ss.noteIndex < static_cast<int>(msNotes.size()))
-            {
-                const auto& sliderNote = msNotes[ss.noteIndex];
-                int remaining = static_cast<int>(sliderNote.sliderPath.size())
-                                - ss.nextWaypointIndex;
-                for (int i = 0; i < remaining; ++i)
-                    m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
-            }
+        m_finishing = true;
+        m_session.Finish();
+        if(m_options.returnToEditor){
+            sakura::ui::ToastManager::Instance().Show("试玩结束 · "+std::to_string(m_session.Score().GetScore())+" 分",sakura::ui::ToastType::Success);
+            m_manager.PopScene();return;
         }
-        m_sliderStates.clear();
-
-        // 将 CheckFinished 中强制判定的 Miss 计入分数
-        int forcedMisses = m_gameState.TakeForcedMisses();
-        for (int i = 0; i < forcedMisses; ++i)
-            m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
-
-        auto result = m_score.GetResult(
-            m_chartInfo.id,
-            m_chartInfo.title,
-            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
-                ? m_chartInfo.difficulties[m_difficultyIndex].name : "Unknown",
-            m_difficultyIndex,
-            m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size())
-                ? m_chartInfo.difficulties[m_difficultyIndex].level : 0.0f,
-            std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0)
-        );
-        m_manager.SwitchScene(
-            std::make_unique<SceneResult>(m_manager, result, m_chartInfo),
-            TransitionType::Fade, 0.5f);
+        if (m_options.mode == sakura::game::PlayMode::Practice && m_options.loop)
+        {
+            Retry();
+            return;
+        }
+        const auto& difficulty = m_chartInfo.difficulties[m_difficultyIndex];
+        auto result = m_session.Score().GetResult(m_chartInfo.id, m_chartInfo.title,
+            difficulty.name, m_difficultyIndex, difficulty.level,
+            std::max(0.0, (now - m_options.startMs) / (1000.0 * m_options.rate)));
+        result.assisted = m_options.mode != sakura::game::PlayMode::Standard;
+        result.chartHash = sakura::game::Replay::Hash(m_gameState.GetChartData(),m_chartInfo.offset);
+        result.playbackRate = m_options.rate;
+        if (!result.assisted && sakura::core::Config::GetInstance().Get<bool>("gameplay.save_replays", true))
+        {
+            sakura::game::Replay replay;
+            replay.chartId = m_chartInfo.id;
+            replay.chartHash = sakura::game::Replay::Hash(m_gameState.GetChartData(),m_chartInfo.offset);
+            replay.difficulty = m_difficultyIndex;
+            replay.inputs = m_session.Recording();
+            replay.pointerScaleX=m_pointerScaleX;replay.pointerScaleY=m_pointerScaleY;
+            const auto path = sakura::core::Paths::User("replays/" + std::to_string(result.playedAt) +
+                "-" + std::to_string(SDL_GetTicksNS()) + ".skr");
+            if (replay.Save(path))
+            {
+                result.replayFile = path;
+                auto& cfg = sakura::core::Config::GetInstance();
+                cfg.Set("library.last_replay", path);
+                cfg.Set("library.replay_"+m_chartInfo.id+"_"+std::to_string(m_difficultyIndex), path);
+                cfg.Save();
+            }
+            else sakura::ui::ToastManager::Instance().Show("回放保存失败，请检查存储空间", sakura::ui::ToastType::Error);
+        }
+        m_manager.SwitchScene(std::make_unique<SceneResult>(m_manager, result, m_chartInfo, m_options), TransitionType::Fade, 0.4f);
         return;
     }
-
-    if (!m_gameState.IsPlaying()) return;
-
-    int now = m_gameState.GetCurrentTime();
-
-    // ── 自动 Miss 检测 ─────────────────────────────────────────────────────────
-    {
-        int misses = m_judge.CheckMisses(
-            m_gameState.GetKeyboardNotes(), now);
-        int mouseMisses = m_judge.CheckMouseMisses(
-            m_gameState.GetMouseNotes(), now);
-
-        for (int i = 0; i < misses + mouseMisses; ++i)
-            m_score.OnJudge(sakura::game::JudgeResult::Miss, 0);
-    }
-
-    // ── Hold 持续判定 ────────────────────────────────────────────────────────
-    auto& kbNotes = m_gameState.GetKeyboardNotes();
-    for (auto it = m_holdStates.begin(); it != m_holdStates.end(); )
-    {
-        auto& hs   = *it;
-        if (hs.noteIndex < 0 || hs.noteIndex >= static_cast<int>(kbNotes.size()))
-        {
-            it = m_holdStates.erase(it);
-            continue;
-        }
-        auto& note = kbNotes[hs.noteIndex];
-
-        // 按键短断触滤波：短时间掉键不立即视为松开
-        bool keyHeld = false;
-        if (note.lane >= 0 && note.lane < LANE_COUNT)
-            keyHeld = sakura::core::Input::IsKeyHeld(m_laneKeys[note.lane]);
-
-        if (keyHeld)
-        {
-            hs.isHeld = true;
-            hs.lastHeldTimeMs = now;
-            hs.releaseTimeMs = -1;
-        }
-        else
-        {
-            if (hs.releaseTimeMs < 0)
-            {
-                hs.releaseTimeMs = now;
-            }
-
-            bool withinGapTolerance = (hs.lastHeldTimeMs >= 0) &&
-                (now - hs.lastHeldTimeMs <= sakura::game::HoldState::INPUT_GAP_TOLERANCE_MS);
-            hs.isHeld = withinGapTolerance;
-            if (withinGapTolerance)
-                hs.releaseTimeMs = -1;
-        }
-
-        auto tickResult = m_judge.UpdateHoldTick(hs, note, now);
-        if (tickResult != sakura::game::JudgeResult::None)
-        {
-            // 写入终判结果（覆盖占位的 None）
-            note.result = tickResult;
-            m_score.OnJudge(tickResult, 0);
-            AddJudgeFlash(tickResult, true, note.lane);
-        }
-
-        // finalized 置位后移除（由 UpdateHoldTick 内部设置）
-        if (hs.finalized)
-        {
-            it = m_holdStates.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
-
-    // ── Slider 路径追踪 ───────────────────────────────────────────────────────
-    auto& msNotes = m_gameState.GetMouseNotes();
-    auto [mx, my] = sakura::core::Input::GetMousePosition();
-    float mouseX = (mx - MOUSE_X) / MOUSE_W;
-    float mouseY = (my - MOUSE_Y) / MOUSE_H;
-    bool  mouseDown = sakura::core::Input::IsMouseButtonHeld(SDL_BUTTON_LEFT);
-
-    for (auto it = m_sliderStates.begin(); it != m_sliderStates.end(); )
-    {
-        auto& ss = *it;
-        if (ss.noteIndex < 0 || ss.noteIndex >= static_cast<int>(msNotes.size()))
-        {
-            it = m_sliderStates.erase(it);
-            continue;
-        }
-        auto& note = msNotes[ss.noteIndex];
-
-        if (mouseDown)
-        {
-            ss.lastDownTimeMs = now;
-        }
-        bool filteredMouseDown = mouseDown ||
-            (ss.lastDownTimeMs >= 0 &&
-             now - ss.lastDownTimeMs <= sakura::game::SliderState::INPUT_GAP_TOLERANCE_MS);
-
-        auto sResult = m_judge.UpdateSliderTracking(
-            ss, note, now, mouseX, mouseY, filteredMouseDown);
-
-        // 拐点判定结果：计分并发出判定闪现
-        if (sResult != sakura::game::JudgeResult::None)
-        {
-            m_score.OnJudge(sResult, 0);
-            // 在刚判定的拐点位置显示判定结果
-            // UpdateSliderTracking 在判定后执行了 ++nextWaypointIndex，因此减 1 还原到刚判定的索引
-            // 边界检查确保安全（正常情况下 judgedIdx 恒 ≥ 0）
-            int judgedIdx = ss.nextWaypointIndex - 1;
-            if (judgedIdx >= 0 && judgedIdx < static_cast<int>(note.sliderPath.size()))
-            {
-                float wpSX = MOUSE_X + note.sliderPath[judgedIdx].first  * MOUSE_W;
-                float wpSY = MOUSE_Y + note.sliderPath[judgedIdx].second * MOUSE_H;
-                AddJudgeFlash(sResult, false, 0, wpSX, wpSY);
-            }
-        }
-
-        // 所有拐点判定完毕 → 填入终判结果，移除状态
-        if (ss.finalized)
-        {
-            note.result = ss.isMissed
-                ? sakura::game::JudgeResult::Miss
-                : ss.headResult;
-            it = m_sliderStates.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    for (auto& note : m_gameState.GetActiveKeyboardNotes())
+        if (note.isJudged && note.result != sakura::game::JudgeResult::None)
+            note.alpha = std::max(0.0f, note.alpha - dt * 8.0f);
+    for (auto& note : m_gameState.GetActiveMouseNotes())
+        if (note.isJudged && note.result != sakura::game::JudgeResult::None)
+            note.alpha = std::max(0.0f, note.alpha - dt * 8.0f);
 
     // ── 更新判定闪现计时器 ────────────────────────────────────────────────────
     for (auto it = m_judgeFlashes.begin(); it != m_judgeFlashes.end(); )
@@ -614,7 +373,7 @@ void SceneGame::OnUpdate(float dt)
     }
 
     // 连击里程碑检测（50/100/200/500/1000）
-    int currCombo = m_score.GetCombo();
+    int currCombo = m_session.Score().GetCombo();
     static constexpr int MILESTONES[] = { 50, 100, 200, 500, 1000 };
     for (int ms : MILESTONES)
     {
@@ -634,65 +393,86 @@ void SceneGame::OnUpdate(float dt)
 
     // 更新轨道按键状态（用于发光）
     for (int i = 0; i < LANE_COUNT; ++i)
-        m_lanePressed[i] = sakura::core::Input::IsKeyHeld(m_laneKeys[i]);
+    {
+        m_lanePulse[i]=std::max(0.0f,m_lanePulse[i]-dt*6);
+        m_lanePressed[i]=m_session.Lanes()[i] || m_lanePulse[i]>0.2f;
+    }
+    for(auto& point:m_cursorTrail)point.age+=dt;
+    std::erase_if(m_cursorTrail,[](const CursorPoint& p){return p.age>0.14f;});
+    m_trailSample+=dt;
+    if(m_trailSample>=0.008f){m_trailSample=0; m_cursorTrail.push_back({MOUSE_X+m_session.MouseX()*MOUSE_W,MOUSE_Y+m_session.MouseY()*MOUSE_H,0});}
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
 
-void SceneGame::OnEvent(const SDL_Event& event)
+void SceneGame::Pause()
 {
-    switch (event.type)
-    {
-    case SDL_EVENT_KEY_DOWN:
-        // ESC → 暂停
-        if (event.key.scancode == SDL_SCANCODE_ESCAPE &&
-            m_gameState.IsPlaying())
-        {
-            m_gameState.Pause();
-            m_manager.PushScene(
-                std::make_unique<ScenePause>(m_manager, m_gameState),
-                TransitionType::Fade, 0.3f);
-            return;
-        }
-
-        if (!event.key.repeat)
-            HandleKeyPress(event.key.scancode);
-        break;
-
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if (event.button.button == SDL_BUTTON_LEFT)
-        {
-            const auto mousePos = sakura::core::Input::GetMousePosition();
-            HandleMouseClick(mousePos.x, mousePos.y);
-        }
-        break;
-
-    case SDL_EVENT_KEY_UP:
-    {
-        // 检测 Hold 松开 → 记录松开时刻
-        for (auto& hs : m_holdStates)
-        {
-            if (hs.noteIndex < 0) continue;
-            auto& kbNotes = m_gameState.GetKeyboardNotes();
-            if (hs.noteIndex < static_cast<int>(kbNotes.size()))
-            {
-                int lane = kbNotes[hs.noteIndex].lane;
-                if (event.key.scancode == m_laneKeys[lane] && hs.isHeld)
-                {
-                    hs.isHeld       = false;
-                    hs.releaseTimeMs = m_gameState.GetCurrentTime();
-                }
-            }
-        }
-
-        break;
+    if(m_options.returnToEditor){m_gameState.Pause();m_manager.PopScene();return;}
+    if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
+    const int now = m_gameState.GetCurrentTime();
+    if(m_options.mode!=sakura::game::PlayMode::Replay){
+        for (int lane = 0; lane < 4; ++lane) m_session.Submit({now, sakura::game::InputKind::LaneUp, lane});
+        m_session.Submit({now, sakura::game::InputKind::MouseUp});
     }
-    default:
-        break;
-    }
+    m_gameState.Pause();
+    m_manager.PushScene(std::make_unique<ScenePause>(m_manager, m_gameState), TransitionType::Fade, 0.16f);
 }
 
-// ── 渲染辅助 ──────────────────────────────────────────────────────────────────
+void SceneGame::Retry()
+{
+    if(m_options.returnToEditor){OnExit();OnEnter();return;}
+    m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager, m_chartInfo, m_difficultyIndex, m_options),
+        TransitionType::Fade, 0.18f);
+}
+
+void SceneGame::OnEvent(const SDL_Event& event)
+{
+    const Uint64 nowNS = SDL_GetTicksNS();
+    m_inputLagMs = event.common.timestamp > 0 && event.common.timestamp <= nowNS
+        ? static_cast<int>(std::min<Uint64>((nowNS - event.common.timestamp) / 1000000, 100)) : 0;
+    m_inputLagMs = static_cast<int>(m_inputLagMs * m_options.rate);
+    if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_MINIMIZED)
+    {
+        Pause();
+        return;
+    }
+    if(event.type==SDL_EVENT_WINDOW_RESIZED && m_options.mode!=sakura::game::PlayMode::Replay) {
+        const float edge=std::min(event.window.data1*MOUSE_W,event.window.data2*MOUSE_H);
+        if(edge>0){
+            m_pointerScaleX=event.window.data1*MOUSE_W/edge;m_pointerScaleY=event.window.data2*MOUSE_H/edge;
+            m_session.Submit({m_gameState.GetCurrentTime(),sakura::game::InputKind::PointerScale,0,m_pointerScaleX,m_pointerScaleY});
+        }
+    }
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
+    {
+        const auto& cfg = sakura::core::Config::GetInstance();
+        if (event.key.scancode == SDL_SCANCODE_ESCAPE ||
+            event.key.scancode == cfg.Get<int>(sakura::core::ConfigKeys::kKeyPause, SDL_SCANCODE_ESCAPE))
+        { Pause(); return; }
+        if (event.key.scancode == cfg.Get<int>(sakura::core::ConfigKeys::kKeyRetry, SDL_SCANCODE_R))
+        { Retry(); return; }
+        HandleKeyPress(event.key.scancode);
+    }
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+    {
+        const auto mouse = sakura::core::Input::GetMousePosition();
+        if (mouse.x >= 0.955f && mouse.y <= 0.06f) { Pause(); return; }
+        HandleMouseClick(mouse.x, mouse.y);
+    }
+    if (m_options.mode == sakura::game::PlayMode::Replay || m_options.mode == sakura::game::PlayMode::AutoPlay) return;
+    if (event.type == SDL_EVENT_KEY_UP)
+        for (int lane = 0; lane < 4; ++lane)
+            if (event.key.scancode == m_laneKeys[lane])
+                m_session.Submit({GetInputTimeMs(), sakura::game::InputKind::LaneUp, lane});
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT)
+        m_session.Submit({GetInputTimeMs(), sakura::game::InputKind::MouseUp});
+    if (event.type == SDL_EVENT_MOUSE_MOTION && m_gameState.IsPlaying())
+    {
+        const auto mouse = sakura::core::Input::GetMousePosition();
+        m_session.Submit({GetInputTimeMs(), sakura::game::InputKind::Pointer, 0,
+            (mouse.x - MOUSE_X) / MOUSE_W, (mouse.y - MOUSE_Y) / MOUSE_H});
+    }
+}
 
 const char* SceneGame::JudgeResultText(sakura::game::JudgeResult r)
 {
@@ -711,7 +491,7 @@ sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 {
     switch (r)
     {
-    case sakura::game::JudgeResult::Perfect: return { 200, 160, 255, 255 };   // 紫
+    case sakura::game::JudgeResult::Perfect: return { 250, 216, 157, 255 };   // 紫
     case sakura::game::JudgeResult::Great:   return { 100, 180, 255, 255 };   // 蓝
     case sakura::game::JudgeResult::Good:    return { 100, 220, 120, 255 };   // 绿
     case sakura::game::JudgeResult::Bad:     return { 255, 220,  80, 255 };   // 黄
@@ -724,10 +504,10 @@ sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 
 void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 {
-    if (m_useDefaultBg)
-        m_defaultBg.Render(renderer);
-    else
-        m_bgRenderer.Render(renderer);
+    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawSakuraLandscape(renderer,m_judgePulsePhase,0.34f);
+    if(!m_useDefaultBg)m_bgRenderer.Render(renderer);
+    renderer.DrawFilledRect({0,0,1,1},{6,9,17,static_cast<uint8_t>(sakura::core::Config::GetInstance().Get<float>("gameplay.background_dim",0.75f)*210)});
 }
 
 // ── RenderTrack ───────────────────────────────────────────────────────────────
@@ -736,29 +516,20 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
 {
     const auto& theme = sakura::core::Theme::GetInstance();
 
-    // 轨道背景
-    renderer.DrawFilledRect(
-        { TRACK_X, 0.0f, TRACK_W, 1.0f },
-        sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 180 });
-
-    // 轨道分隔 + 交替明暗
-    for (int i = 0; i < LANE_COUNT; ++i)
-    {
-        float x = GetLaneX(i);
-        auto laneColor = theme.Colors().laneColors[i % LANE_COUNT];
-        laneColor.a = (i % 2 == 0) ? 105 : 135;
-        renderer.DrawFilledRect(
-            { x, 0.0f, LANE_W, 1.0f },
-            laneColor);
-
-        // 轨道线
-        if (i > 0)
-        {
-            renderer.DrawLine(x, 0.0f, x, 1.0f,
-                sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 120 }, 0.001f);
+    const float opacity=sakura::core::Config::GetInstance().Get<float>("gameplay.lane_opacity",0.9f);
+    renderer.DrawFilledRect({TRACK_X,0.12f,TRACK_W,0.80f},{11,15,26,static_cast<uint8_t>(255*opacity)});
+    for(int i=0;i<LANE_COUNT;++i){
+        const float x=GetLaneX(i);
+        renderer.DrawGradientRect({x,0.12f,LANE_W,0.73f},{35,41,60,static_cast<uint8_t>(60*opacity)},{35,41,60,static_cast<uint8_t>(60*opacity)},
+            {67,46,64,static_cast<uint8_t>((i%2?100:75)*opacity)},{67,46,64,static_cast<uint8_t>((i%2?100:75)*opacity)});
+        renderer.DrawLine(x,0.12f,x,0.92f,{178,151,176,40},0.001f);
+        renderer.DrawText(m_fontSmall,SDL_GetScancodeName(m_laneKeys[i]),x+LANE_W*0.5f,0.877f,0.026f,m_lanePressed[i]?theme.Primary():theme.TextDim(),sakura::core::TextAlign::Center);
+        if(m_lanePulse[i]>0){
+            const auto bottom=sakura::core::Color{236,175,198,static_cast<uint8_t>(m_lanePulse[i]*75)};
+            renderer.DrawGradientRect({x,0.64f,LANE_W,0.21f},{236,175,198,0},{236,175,198,0},bottom,bottom);
         }
     }
-
+    renderer.DrawLine(TRACK_X+TRACK_W,0.12f,TRACK_X+TRACK_W,0.92f,{178,151,176,50},0.001f);
     // 判定线（发光白色）
     renderer.DrawLine(TRACK_X, JUDGE_LINE_Y,
                       TRACK_X + TRACK_W, JUDGE_LINE_Y,
@@ -793,24 +564,17 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
         }
     }
 
-    sakura::audio::AudioVisualizer::GetInstance().RenderBars(
-        renderer,
-        { TRACK_X, JUDGE_LINE_Y + 0.018f, TRACK_W, 0.055f },
-        { theme.Secondary().r, theme.Secondary().g, theme.Secondary().b, 90 },
-        { theme.Accent().r, theme.Accent().g, theme.Accent().b, 180 },
-        0.60f);
+    renderer.DrawText(m_fontSmall,"KEYS / 节奏",TRACK_X,0.10f,0.016f,theme.TextDim());
+    renderer.DrawText(m_fontSmall,"MOUSE / 旋律",MOUSE_X,0.10f,0.016f,theme.TextDim());
+    renderer.DrawRoundedRect({MOUSE_X-0.015f,MOUSE_Y-0.025f,MOUSE_W+0.03f,MOUSE_H+0.055f},0.016f,{164,171,194,27},false,16,0.001f);
 
-    // 鼠标区域边框
-    renderer.DrawRectOutline(
-        { MOUSE_X, MOUSE_Y, MOUSE_W, MOUSE_H },
-        sakura::core::Color{ theme.Surface().r, theme.Surface().g, theme.Surface().b, 140 }, 0.001f);
 }
 
 // ── RenderKeyboardNotes ───────────────────────────────────────────────────────
 
 void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 {
-    if (!m_gameState.IsPlaying() && !m_gameState.IsInCountdown()) return;
+    if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
 
     const auto& theme = sakura::core::Theme::GetInstance();
 
@@ -897,7 +661,7 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 
 void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 {
-    if (!m_gameState.IsPlaying() && !m_gameState.IsInCountdown()) return;
+    if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
 
     const auto& theme = sakura::core::Theme::GetInstance();
 
@@ -917,7 +681,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
         auto gradient = sakura::game::BuildApproachGradient(
             noteTimeMs,
             now,
-            static_cast<int>(BASE_APPROACH_RANGE),
+            m_approachMs,
             { noteColor.r, noteColor.g, noteColor.b, ringAlpha },
             startAccent,
             endAccent);
@@ -946,8 +710,11 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
     {
         if (note.isJudged && note.alpha <= 0.01f) continue;
 
+        if (note.time - now > m_approachMs) continue;
         float scale = CalcApproachScale(note.time, now);
         uint8_t alpha = static_cast<uint8_t>(note.alpha * 220.0f);
+        const float edge=std::min(renderer.GetScreenWidth()*MOUSE_W,renderer.GetScreenHeight()*MOUSE_H);
+        const float radius=sakura::game::Judge::GetMouseHitTolerance(note)*edge/std::min(renderer.GetScreenWidth(),renderer.GetScreenHeight());
 
         switch (note.type)
         {
@@ -962,7 +729,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             drawGradientApproachRing(
                 sx,
                 sy,
-                0.028f * scale,
+                radius * scale,
                 0.0024f,
                 noteColor,
                 { 90, 225, 255, static_cast<uint8_t>(alpha * 0.78f) },
@@ -970,9 +737,9 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 static_cast<uint8_t>(alpha * 0.78f),
                 note.time);
             // 核心圆
-            renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
+            renderer.DrawCircleFilled(sx, sy, radius, noteColor.WithAlpha(static_cast<uint8_t>(alpha*0.13f)));
             // 边缘
-            renderer.DrawCircleOutline(sx, sy, 0.025f,
+            renderer.DrawCircleOutline(sx, sy, radius,
                 sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, alpha }, 0.002f, 48);
             break;
         }
@@ -986,7 +753,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             auto& msNotes = m_gameState.GetMouseNotes();
             int noteIndex = static_cast<int>(&note - msNotes.data());
             const sakura::game::SliderState* ssPtr = nullptr;
-            for (const auto& s : m_sliderStates)
+            for (const auto& s : m_session.Sliders())
             {
                 if (s.noteIndex == noteIndex)
                 {
@@ -1042,15 +809,15 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 drawGradientApproachRing(
                     sx,
                     sy,
-                    0.030f * scale,
+                    radius * scale,
                     0.0024f,
                     noteColor,
                     { 255, 215, 120, static_cast<uint8_t>(alpha * 0.72f) },
                     { 110, 245, 225, static_cast<uint8_t>(alpha * 0.72f) },
                     static_cast<uint8_t>(alpha * 0.72f),
                     note.time);
-                renderer.DrawCircleFilled(sx, sy, 0.025f, noteColor);
-                renderer.DrawCircleOutline(sx, sy, 0.025f,
+                renderer.DrawCircleFilled(sx, sy, radius, noteColor.WithAlpha(static_cast<uint8_t>(alpha*0.13f)));
+                renderer.DrawCircleOutline(sx, sy, radius,
                     sakura::core::Color{ theme.GlowColor().r, theme.GlowColor().g, theme.GlowColor().b, alpha }, 0.002f, 48);
             }
             else
@@ -1073,7 +840,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                     0.002f, 24);
 
                 // 2. 在鼠标当前位置绘制玩家光标圆环（随鼠标移动）
-                auto [cmx, cmy] = sakura::core::Input::GetMousePosition();
+                const float cmx = MOUSE_X + m_session.MouseX()*MOUSE_W, cmy = MOUSE_Y + m_session.MouseY()*MOUSE_H;
                 float localMx = std::max(0.0f, std::min(1.0f,
                     (cmx - MOUSE_X) / MOUSE_W));
                 float localMy = std::max(0.0f, std::min(1.0f,
@@ -1098,69 +865,46 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 
 void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
 {
-    if (m_fontHUD == sakura::core::INVALID_HANDLE) return;
-
-    const auto& theme = sakura::core::Theme::GetInstance();
-
-    // 分数（右对齐 0.96, 0.02）
-    {
-        std::ostringstream ss;
-        ss << std::setw(7) << std::setfill('0') << m_score.GetScore();
-        renderer.DrawText(m_fontHUD, ss.str(),
-            0.96f, 0.02f, 0.040f,
-            sakura::core::Color{ theme.Text().r, theme.Text().g, theme.Text().b, 230 },
-            sakura::core::TextAlign::Right);
+    using namespace sakura::core;
+    if(m_fontHUD==INVALID_HANDLE)return;
+    const auto& cfg=Config::GetInstance();
+    const Color pink{236,174,196,255},dim{151,164,187,255},white{239,232,241,255};
+    renderer.DrawFilledRect({0,0,1,0.086f},{12,17,29,235});
+    renderer.DrawFilledRect({0,0.931f,1,0.069f},{12,17,29,235});
+    sakura::ui::VisualStyle::DrawTextFit(renderer,m_fontHUD,m_chartInfo.title,0.04f,0.014f,0.028f,0.35f,white);
+    renderer.DrawText(m_fontSmall,m_chartInfo.difficulties[m_difficultyIndex].name+"  /  Lv."+std::to_string(static_cast<int>(m_chartInfo.difficulties[m_difficultyIndex].level)),0.04f,0.053f,0.017f,dim);
+    const char* modes[]={"LIVE / 正式演奏","PRACTICE / 自由练习","AUTO / 自动演示","REPLAY / 回放"};
+    renderer.DrawText(m_fontSmall,m_options.returnToEditor?"EDITOR / 试玩 · Esc 返回工房":modes[static_cast<int>(m_options.mode)],0.47f,0.027f,0.019f,pink);
+    std::ostringstream score,accuracy;
+    score<<std::setw(7)<<std::setfill('0')<<m_session.Score().GetScore();
+    accuracy<<std::fixed<<std::setprecision(2)<<m_session.Score().GetAccuracy()<<"%";
+    renderer.DrawText(m_fontHUD,score.str(),0.935f,0.008f,0.035f,white,TextAlign::Right);
+    renderer.DrawText(m_fontSmall,accuracy.str(),0.935f,0.05f,0.021f,pink,TextAlign::Right);
+    renderer.DrawRoundedRect({0.955f,0.018f,0.032f,0.046f},0.008f,{88,79,104,120});
+    renderer.DrawFilledRect({0.965f,0.029f,0.003f,0.024f},white);
+    renderer.DrawFilledRect({0.975f,0.029f,0.003f,0.024f},white);
+    if(cfg.Get<bool>("gameplay.show_combo",true)&&m_session.Score().GetCombo()>1){
+        renderer.DrawText(m_fontHUD,std::to_string(m_session.Score().GetCombo()),0.225f,0.24f,0.060f,pink,TextAlign::Center);
+        renderer.DrawText(m_fontSmall,"C O M B O",0.225f,0.318f,0.017f,dim,TextAlign::Center);
     }
-
-    // 连击（居中 0.225, 0.05，只在 ≥10 时显示）
-    {
-        int combo = m_score.GetCombo();
-        if (combo >= 10)
-        {
-            renderer.DrawText(m_fontHUD, std::to_string(combo),
-                0.225f, 0.05f, 0.050f,
-                sakura::core::Color{ theme.Accent().r, theme.Accent().g, theme.Accent().b, 230 },
-                sakura::core::TextAlign::Center);
-            renderer.DrawText(m_fontSmall, "COMBO",
-                0.225f, 0.103f, 0.020f,
-                sakura::core::Color{ theme.Accent().r, theme.Accent().g, theme.Accent().b, 180 },
-                sakura::core::TextAlign::Center);
-        }
+    const int sec=std::max(0,m_gameState.GetCurrentTime())/1000;char buffer[32];std::snprintf(buffer,sizeof(buffer),"%d:%02d",sec/60,sec%60);
+    renderer.DrawText(m_fontSmall,buffer,0.04f,0.951f,0.020f,dim);
+    renderer.DrawFilledRect({0.11f,0.964f,0.29f,0.003f},{67,67,88,255});
+    renderer.DrawFilledRect({0.11f,0.964f,0.29f*m_gameState.GetProgress(),0.003f},pink);
+    if(cfg.Get<bool>("gameplay.show_hit_error",true)){
+        const float center=0.69f,width=0.25f,y=0.951f;
+        renderer.DrawFilledRect({center-width/2,y,width,0.01f},{110,62,69,140});
+        renderer.DrawFilledRect({center-width*80/300,y,width*160/300,0.01f},{82,123,150,160});
+        renderer.DrawFilledRect({center-width*25/300,y,width*50/300,0.01f},{217,190,142,220});
+        renderer.DrawLine(center,y-0.005f,center,y+0.017f,white,0.001f);
+        const auto& errors=m_session.Score().GetHitErrors();
+        const int begin=std::max(0,static_cast<int>(errors.size())-20);
+        for(int i=begin;i<static_cast<int>(errors.size());++i){float x=center-std::clamp(errors[i],-150,150)/300.0f*width;
+            renderer.DrawLine(x,y-0.004f,x,y+0.016f,{235,230,242,static_cast<uint8_t>(50+160.0f*(i-begin+1)/(errors.size()-begin))},0.001f);}
+        renderer.DrawText(m_fontSmall,"EARLY",0.535f,0.948f,0.014f,dim,TextAlign::Right);
+        renderer.DrawText(m_fontSmall,"LATE",0.842f,0.948f,0.014f,dim);
     }
-
-    // 准确率（右对齐 0.96, 0.065）
-    {
-        std::ostringstream ss;
-        ss << std::fixed << std::setprecision(2) << m_score.GetAccuracy() << "%";
-        renderer.DrawText(m_fontSmall, ss.str(),
-            0.96f, 0.065f, 0.025f,
-            sakura::core::Color{ theme.Text().r, theme.Text().g, theme.Text().b, 200 },
-            sakura::core::TextAlign::Right);
-    }
-
-    // 时间（左下 0.02, 0.96）
-    {
-        int t   = m_gameState.GetCurrentTime();
-        int sec = std::abs(t / 1000);
-        int ms  = std::abs(t % 1000);
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%d:%02d.%03d",
-                      sec / 60, sec % 60, ms);
-        renderer.DrawText(m_fontSmall, buf,
-            0.02f, 0.960f, 0.020f,
-            sakura::core::Color{ theme.TextDim().r, theme.TextDim().g, theme.TextDim().b, 160 },
-            sakura::core::TextAlign::Left);
-    }
-
-    // 进度条（底部 0.0, 0.982, 1.0, 0.012）
-    {
-        float progress = m_gameState.GetProgress();
-        const auto& progressStyle = theme.Components().progress;
-        renderer.DrawFilledRect({ 0.0f, 0.982f, 1.0f, 0.012f },
-            progressStyle.bg);
-        renderer.DrawFilledRect({ 0.0f, 0.982f, progress, 0.012f },
-            progressStyle.fill);
-    }
+    renderer.DrawText(m_fontSmall,"Esc 暂停",0.966f,0.951f,0.016f,dim,TextAlign::Right);
 }
 
 // ── RenderCountdown ───────────────────────────────────────────────────────────
@@ -1210,11 +954,14 @@ void SceneGame::RenderJudgeFlashes(sakura::core::Renderer& renderer)
         auto color = JudgeResultColor(flash.result);
         color.a = alpha;
 
+        if(!flash.isKeyboard && flash.result!=sakura::game::JudgeResult::Miss){
+            renderer.DrawCircleOutline(flash.posX,flash.posY,0.025f+progress*0.065f,color.WithAlpha(static_cast<uint8_t>(alpha*0.5f)),0.0015f,48);
+        }
         renderer.DrawText(m_fontSmall, JudgeResultText(flash.result),
             posX, posY, 0.028f,
             color, sakura::core::TextAlign::Center);
 
-        if (flash.showHitError && flash.result != sakura::game::JudgeResult::Miss)
+        if (sakura::core::Config::GetInstance().Get<bool>("gameplay.show_hit_error",true) && flash.showHitError && flash.result != sakura::game::JudgeResult::Miss)
         {
             std::string timingText;
             if (flash.hitErrorMs > 0)
@@ -1236,29 +983,22 @@ void SceneGame::RenderJudgeFlashes(sakura::core::Renderer& renderer)
 
 void SceneGame::OnRender(sakura::core::Renderer& renderer)
 {
+    const auto& cfg=sakura::core::Config::GetInstance();
+    auto& shader=sakura::effects::ShaderManager::GetInstance();
+    renderer.Flush();
+    const bool capture=m_chromaTimer>0&&cfg.Get<bool>("graphics.glow",true)&&!cfg.Get<bool>("graphics.reduced_motion",false)&&shader.BeginCapture();
     RenderBackground(renderer);
     RenderTrack(renderer);
-
-    if (m_gameState.IsPlaying() || m_gameState.IsInCountdown())
-    {
-        RenderKeyboardNotes(renderer);
-        RenderMouseNotes(renderer);
-    }
-
+    if(m_gameState.GetPhase()!=sakura::game::GamePhase::Idle){RenderKeyboardNotes(renderer);RenderMouseNotes(renderer);}
+    RenderJudgeFlashes(renderer);
+    m_particles.Render(renderer);
+    if(cfg.Get<bool>("gameplay.cursor_trail",true)&&!cfg.Get<bool>("graphics.reduced_motion",false))
+        for(size_t i=1;i<m_cursorTrail.size();++i){const auto& a=m_cursorTrail[i-1];const auto& b=m_cursorTrail[i];
+            renderer.DrawLine(a.x,a.y,b.x,b.y,{241,186,207,static_cast<uint8_t>((1-b.age/0.14f)*120*cfg.Get<float>("graphics.effect_intensity",0.7f))},0.003f);}
+    if(!m_cursorTrail.empty()){const auto& p=m_cursorTrail.back();renderer.DrawCircleOutline(p.x,p.y,0.012f,{247,219,223,210},0.002f,32);renderer.DrawCircleFilled(p.x,p.y,0.003f,{255,233,238,240},16);}
+    if(capture){renderer.Flush();auto* texture=shader.EndCapture();SDL_RenderTexture(renderer.GetSDLRenderer(),texture,nullptr,nullptr);shader.DrawChromaticAberration(texture,m_chromaTimer/0.4f*cfg.Get<float>("graphics.effect_intensity",0.7f));}
     RenderHUD(renderer);
     RenderCountdown(renderer);
-    RenderJudgeFlashes(renderer);
-
-    // 粒子渲染（最上层）
-    m_particles.Render(renderer);
-
-    // 连击里程碑色差特效
-    if (m_chromaTimer > 0.0f)
-    {
-        float intensity = (m_chromaTimer / 0.4f) * 0.006f;
-        sakura::effects::ShaderManager::GetInstance().DrawChromaticAberration(
-            nullptr, intensity);
-    }
 }
 
 } // namespace sakura::scene

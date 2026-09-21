@@ -11,7 +11,7 @@ std::vector<TutorialLesson> BuildTutorialLessons()
     lessons.push_back(TutorialLesson{
         TutorialLessonType::KeyboardTap,
         "第 1 课 - 键盘 Tap",
-        "看准判定线上的箭头提示，按下对应的 A / S / D / F。判定窗口放宽到 ±200ms。",
+        "音符到达判定线时，按下轨道下方显示的按键。先跟随节奏，教程的判定更宽松。",
         "很好，Tap 的基础节奏已经掌握了。",
         200,
         0.1f,
@@ -44,7 +44,7 @@ std::vector<TutorialLesson> BuildTutorialLessons()
     lessons.push_back(TutorialLesson{
         TutorialLessonType::MouseCircle,
         "第 3 课 - 鼠标 Circle",
-        "点击右侧区域的圆圈即可。这里距离容差放宽到 0.10，先感受节奏和落点。",
+        "接近圈逐渐缩小，与目标重合时点击圆心。先感受节奏，再熟悉鼠标落点。",
         "不错，鼠标点击也已经稳定了。",
         200,
         0.1f,

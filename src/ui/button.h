@@ -50,6 +50,7 @@ public:
     void SetTextPadding(float padding)              { m_textPadding = padding; }
     void SetTextAlign(sakura::core::TextAlign align) { m_textAlign = align; }
     void SetOnClick(std::function<void()> onClick)  { m_onClick = std::move(onClick); }
+    void Activate() { if (m_isEnabled && m_onClick) { if (s_clickSFX) s_clickSFX(); m_onClick(); } }
     void ApplyThemeVariant(ButtonVariant variant, bool applyMetrics = false);
 
     // ── 全局 UI 音效回调（由 AudioManager 注册，无需逐按钮设置）────────────

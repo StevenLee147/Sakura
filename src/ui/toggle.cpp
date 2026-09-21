@@ -94,7 +94,7 @@ void Toggle::Render(sakura::core::Renderer& renderer)
 
     // 轨道区域（右侧，约占组件宽度 40%）
     float labelAreaW = m_label.empty() ? 0.0f : m_bounds.width * 0.60f;
-    float trackW     = m_bounds.width  * 0.40f;
+    float trackW     = m_label.empty() ? m_bounds.width : m_bounds.width * 0.40f;
     float trackH     = m_bounds.height * 0.55f;
     float trackX     = m_bounds.x + labelAreaW;
     float trackY     = m_bounds.y + (m_bounds.height - trackH) * 0.5f;
@@ -113,8 +113,9 @@ void Toggle::Render(sakura::core::Renderer& renderer)
     // 拇指（圆形，沿轨道滑动）
     float thumbRadius = trackH * 0.42f;
     float padding     = trackH * 0.08f;
-    float thumbMinX   = trackX + thumbRadius + padding;
-    float thumbMaxX   = trackX + trackW - thumbRadius - padding;
+    const float aspect=static_cast<float>(renderer.GetScreenHeight())/renderer.GetScreenWidth();
+    float thumbMinX   = trackX + (thumbRadius + padding)*aspect;
+    float thumbMaxX   = trackX + trackW - (thumbRadius + padding)*aspect;
     float thumbX      = thumbMinX + easedT * (thumbMaxX - thumbMinX);
     float thumbY      = trackY + trackH * 0.5f;
 

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 
 namespace fs = std::filesystem;
 using json   = nlohmann::json;
@@ -55,6 +56,8 @@ NoteType ChartLoader::ParseNoteType(const std::string& typeStr) const
 
 std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonPath)
 {
+    try
+    {
     if (!fs::exists(infoJsonPath))
     {
         LOG_ERROR("info.json 不存在: {}", infoJsonPath);
@@ -79,6 +82,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
         return std::nullopt;
     }
 
+    if (!j.is_object()) return std::nullopt;
     ChartInfo info;
 
     // 版本检查
@@ -139,9 +143,24 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
         }
     }
 
+    auto safeFile = [](const std::string& name)
+    {
+        if (name.empty()) return true;
+        const fs::path path(name);
+        if (path.is_absolute() || path.has_root_name() || name.find(':') != std::string::npos) return false;
+        for (const auto& part : path) if (part == "..") return false;
+        return true;
+    };
+    if (!safeFile(info.musicFile) || !safeFile(info.coverFile) || !safeFile(info.backgroundFile) ||
+        !std::isfinite(info.bpm) || info.bpm <= 0 || info.bpm > 1000 || std::abs(static_cast<long long>(info.offset)) > 60000)
+        return std::nullopt;
+    for (const auto& difficulty : info.difficulties)
+        if (!safeFile(difficulty.chartFile) || difficulty.chartFile.empty() || !std::isfinite(difficulty.level) ||
+            difficulty.level < 0 || difficulty.level > 100) return std::nullopt;
     if (info.difficulties.empty())
     {
         LOG_WARN("谱面 '{}' 无难度定义", info.id);
+        return std::nullopt;
     }
 
     // 填充文件夹路径
@@ -150,12 +169,20 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
     LOG_INFO("加载谱面信息成功: {} ({}) [{}难度]",
              info.title, info.id, info.difficulties.size());
     return info;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("谱面读取失败: {}", e.what());
+        return std::nullopt;
+    }
 }
 
 // ── LoadChartData ─────────────────────────────────────────────────────────────
 
 std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJsonPath)
 {
+    try
+    {
     if (!fs::exists(chartJsonPath))
     {
         LOG_ERROR("谱面数据文件不存在: {}", chartJsonPath);
@@ -180,6 +207,9 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
         return std::nullopt;
     }
 
+    if (!j.is_object()) return std::nullopt;
+    for (const char* key : {"keyboard_notes", "mouse_notes", "timing_points", "sv_points"})
+        if (j.contains(key) && (!j[key].is_array() || j[key].size() > 100000)) return std::nullopt;
     ChartData data;
     data.version = SafeGet<int>(j, "version", 1);
 
@@ -283,16 +313,16 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
 
     // ── 按时间排序 ────────────────────────────────────────────────────────────
 
-    std::sort(data.timingPoints.begin(), data.timingPoints.end(),
+    std::stable_sort(data.timingPoints.begin(), data.timingPoints.end(),
               [](const TimingPoint& a, const TimingPoint& b) { return a.time < b.time; });
 
-    std::sort(data.svPoints.begin(), data.svPoints.end(),
+    std::stable_sort(data.svPoints.begin(), data.svPoints.end(),
               [](const SVPoint& a, const SVPoint& b) { return a.time < b.time; });
 
-    std::sort(data.keyboardNotes.begin(), data.keyboardNotes.end(),
+    std::stable_sort(data.keyboardNotes.begin(), data.keyboardNotes.end(),
               [](const KeyboardNote& a, const KeyboardNote& b) { return a.time < b.time; });
 
-    std::sort(data.mouseNotes.begin(), data.mouseNotes.end(),
+    std::stable_sort(data.mouseNotes.begin(), data.mouseNotes.end(),
               [](const MouseNote& a, const MouseNote& b) { return a.time < b.time; });
 
     LOG_INFO("加载谱面数据成功: 键盘音符={}, 鼠标音符={}, 时间点={}, SV点={}",
@@ -301,7 +331,14 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
              data.timingPoints.size(),
              data.svPoints.size());
 
+    if (!ValidateChartData(data)) return std::nullopt;
     return data;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("谱面读取失败: {}", e.what());
+        return std::nullopt;
+    }
 }
 
 // ── ScanCharts ────────────────────────────────────────────────────────────────
@@ -310,25 +347,25 @@ std::vector<ChartInfo> ChartLoader::ScanCharts(const std::string& rootDir)
 {
     std::vector<ChartInfo> charts;
 
-    if (!fs::exists(rootDir) || !fs::is_directory(rootDir))
+    std::error_code scanError;
+    if (!fs::is_directory(rootDir,scanError))
     {
         LOG_WARN("谱面根目录不存在: {}", rootDir);
         return charts;
     }
 
-    for (const auto& entry : fs::recursive_directory_iterator(rootDir))
-    {
-        if (!entry.is_regular_file()) continue;
-        if (entry.path().filename() != "info.json") continue;
-
-        std::string infoPath = entry.path().string();
-        auto chartInfo = LoadChartInfo(infoPath);
-        if (chartInfo)
-        {
-            charts.push_back(std::move(*chartInfo));
+    fs::recursive_directory_iterator iterator(rootDir,fs::directory_options::skip_permission_denied,scanError),end;
+    while(iterator!=end && !scanError) {
+        const auto entry=*iterator;
+        if(entry.is_regular_file(scanError) && entry.path().filename()=="info.json") {
+            if(auto chartInfo=LoadChartInfo(entry.path().string()))charts.push_back(std::move(*chartInfo));
         }
+        if(iterator.depth()>8)iterator.disable_recursion_pending();
+        iterator.increment(scanError);
     }
+    if(scanError)LOG_WARN("部分曲库无法读取: {}",scanError.message());
 
+    std::stable_sort(charts.begin(), charts.end(), [](const auto& a, const auto& b) { return a.title < b.title; });
     LOG_INFO("扫描谱面目录 '{}': 找到 {} 个谱面", rootDir, charts.size());
     return charts;
 }
@@ -337,69 +374,42 @@ std::vector<ChartInfo> ChartLoader::ScanCharts(const std::string& rootDir)
 
 bool ChartLoader::ValidateChartData(const ChartData& data) const
 {
-    bool valid = true;
-
-    // 检查键盘音符
-    for (size_t i = 0; i < data.keyboardNotes.size(); ++i)
+    constexpr int maxTime = 3600000;
+    auto position = [](float value) { return std::isfinite(value) && value >= 0 && value <= 1; };
+    if (data.keyboardNotes.size() + data.mouseNotes.size() > 100000 || data.timingPoints.empty()) return false;
+    int previous = -1;
+    for (const auto& note : data.keyboardNotes)
     {
-        const auto& n = data.keyboardNotes[i];
-
-        if (n.time < 0)
-        {
-            LOG_WARN("键盘音符[{}] time={} 小于0", i, n.time);
-            valid = false;
-        }
-        if (n.lane < 0 || n.lane > 3)
-        {
-            LOG_WARN("键盘音符[{}] lane={} 超出范围 [0,3]", i, n.lane);
-            valid = false;
-        }
-        if (n.type == NoteType::Hold && n.duration <= 0)
-        {
-            LOG_WARN("键盘音符[{}] Hold 但 duration={}", i, n.duration);
-        }
-        // 按时间升序检查
-        if (i > 0 && n.time < data.keyboardNotes[i-1].time)
-        {
-            LOG_WARN("键盘音符[{}] 未按时间升序排列", i);
-            valid = false;
-        }
+        if (note.time < previous || note.time < 0 || note.time > maxTime || note.lane < 0 || note.lane > 3 ||
+            (note.type != NoteType::Tap && note.type != NoteType::Hold) || note.duration < 0 ||
+            note.duration > maxTime - note.time || (note.type == NoteType::Hold && note.duration == 0)) return false;
+        previous = note.time;
     }
-
-    // 检查鼠标音符
-    for (size_t i = 0; i < data.mouseNotes.size(); ++i)
+    previous = -1;
+    for (const auto& note : data.mouseNotes)
     {
-        const auto& n = data.mouseNotes[i];
-
-        if (n.time < 0)
-        {
-            LOG_WARN("鼠标音符[{}] time={} 小于0", i, n.time);
-            valid = false;
-        }
-        if (n.x < 0.0f || n.x > 1.0f || n.y < 0.0f || n.y > 1.0f)
-        {
-            LOG_WARN("鼠标音符[{}] 坐标({:.2f},{:.2f}) 超出[0,1]范围", i, n.x, n.y);
-            valid = false;
-        }
-        if (i > 0 && n.time < data.mouseNotes[i-1].time)
-        {
-            LOG_WARN("鼠标音符[{}] 未按时间升序排列", i);
-            valid = false;
-        }
+        if (note.time < previous || note.time < 0 || note.time > maxTime || !position(note.x) || !position(note.y) ||
+            (note.type != NoteType::Circle && note.type != NoteType::Slider) || note.sliderDuration < 0 ||
+            note.sliderDuration > maxTime - note.time || note.sliderPath.size() > 1024) return false;
+        if (note.type == NoteType::Slider && (note.sliderDuration <= 0 || note.sliderPath.empty())) return false;
+        for (const auto& [x, y] : note.sliderPath) if (!position(x) || !position(y)) return false;
+        previous = note.time;
     }
-
-    // 检查时间点
-    if (data.timingPoints.empty())
+    previous = -1;
+    for (const auto& point : data.timingPoints)
     {
-        LOG_WARN("谱面无时间点");
-        valid = false;
+        if (point.time < previous || point.time > maxTime || !std::isfinite(point.bpm) || point.bpm <= 0 ||
+            point.bpm > 1000 || point.timeSigNumerator < 1 || point.timeSigDenominator < 1) return false;
+        previous = point.time;
     }
-    else if (data.timingPoints[0].time != 0)
+    previous = -1;
+    for (const auto& point : data.svPoints)
     {
-        LOG_WARN("第一个时间点不在 time=0");
+        if (point.time < previous || point.time > maxTime || !std::isfinite(point.speed) ||
+            point.speed <= 0 || point.speed > 10) return false;
+        previous = point.time;
     }
-
-    return valid;
+    return true;
 }
 
 } // namespace sakura::game

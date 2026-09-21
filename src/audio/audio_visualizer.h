@@ -64,12 +64,14 @@ private:
     void AnalyzeSamples(const float* samples, std::size_t frameCount, int channels, int sampleRate, float dt);
 
     ma_decoder* m_decoder = nullptr;
+    std::vector<unsigned char> m_compressedSource;
     std::string m_sourcePath;
 
     std::array<float, 32> m_bands = {};
     std::array<float, 32> m_peaks = {};
     std::vector<float> m_waveform;
     float m_impulse = 0.0f;
+    float m_analysisTimer = 0.0f;
 };
 
 } // namespace sakura::audio

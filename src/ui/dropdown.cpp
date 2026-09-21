@@ -58,7 +58,7 @@ sakura::core::NormRect Dropdown::GetDropdownRect() const
 {
     float itemH = GetItemHeight();
     float totalH = itemH * static_cast<float>(m_options.size());
-    return { m_bounds.x, m_bounds.y + m_bounds.height, m_bounds.width, totalH };
+    return { m_bounds.x, m_bounds.y+m_bounds.height+totalH>0.94f ? std::max(0.015f,m_bounds.y-totalH) : m_bounds.y+m_bounds.height, m_bounds.width, totalH };
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -78,6 +78,15 @@ bool Dropdown::HandleEvent(const SDL_Event& event)
 {
     if (!m_isVisible || !m_isEnabled) return false;
 
+    if(m_isOpen && event.type==SDL_EVENT_KEY_DOWN){
+        if(event.key.scancode==SDL_SCANCODE_ESCAPE){Close();return true;}
+        if(event.key.scancode==SDL_SCANCODE_DOWN || event.key.scancode==SDL_SCANCODE_UP){
+            m_hoveredIndex=std::clamp((m_hoveredIndex<0?m_selectedIndex:m_hoveredIndex)+(event.key.scancode==SDL_SCANCODE_DOWN?1:-1),0,static_cast<int>(m_options.size())-1);return true;
+        }
+        if(event.key.scancode==SDL_SCANCODE_RETURN && !m_options.empty()){
+            if(m_hoveredIndex>=0)m_selectedIndex=m_hoveredIndex;Close();if(m_onChange)m_onChange(m_selectedIndex,m_options[m_selectedIndex]);return true;
+        }
+    }
     auto [mx, my] = sakura::core::Input::GetMousePosition();
 
     if (event.type == SDL_EVENT_MOUSE_MOTION)
@@ -165,7 +174,7 @@ void Dropdown::Render(sakura::core::Renderer& renderer)
         const std::string& selText = GetSelectedOption();
         renderer.DrawText(m_fontHandle, selText,
                           m_bounds.x + m_bounds.width * 0.05f,
-                          m_bounds.y + m_bounds.height * 0.5f,
+                          m_bounds.y + (m_bounds.height-renderer.MeasureText(m_fontHandle,selText,m_normFontSize).height)*0.5f,
                           m_normFontSize,
                           m_textColor,
                           sakura::core::TextAlign::Left);
@@ -226,7 +235,7 @@ void Dropdown::Render(sakura::core::Renderer& renderer)
             {
                 renderer.DrawText(m_fontHandle, m_options[i],
                                   itemRect.x + itemRect.width * 0.05f,
-                                  itemY + itemH * 0.5f,
+                                  itemY + (itemH-renderer.MeasureText(m_fontHandle,m_options[i],m_normFontSize).height)*0.5f,
                                   m_normFontSize,
                                   m_textColor,
                                   sakura::core::TextAlign::Left);

@@ -8,243 +8,122 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <cmath>
 
 namespace sakura::game
 {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 
-bool GameState::Start(const ChartInfo& chartInfo, int difficultyIndex)
+bool GameState::Start(const ChartInfo& chartInfo, int difficultyIndex, PlayOptions options)
 {
-    if (difficultyIndex < 0 ||
-        difficultyIndex >= static_cast<int>(chartInfo.difficulties.size()))
+    m_error.clear();
+    if (difficultyIndex < 0 || difficultyIndex >= static_cast<int>(chartInfo.difficulties.size()))
     {
-        LOG_ERROR("GameState::Start: 难度索引 {} 越界（共 {} 个难度）",
-                  difficultyIndex, chartInfo.difficulties.size());
+        m_error = "谱面难度无效";
         return false;
     }
-
-    m_chartInfo       = chartInfo;
-    m_difficultyIndex = difficultyIndex;
-
-    // 加载谱面数据
-    const auto& diff      = chartInfo.difficulties[difficultyIndex];
-    std::string dataPath  = chartInfo.folderPath + "/" + diff.chartFile;
-
     ChartLoader loader;
-    auto chartData = loader.LoadChartData(dataPath);
-    if (!chartData)
+    auto data = loader.LoadChartData(chartInfo.folderPath + "/" + chartInfo.difficulties[difficultyIndex].chartFile);
+    if (!data || !loader.ValidateChartData(*data) || JudgmentCount(*data) == 0)
     {
-        LOG_ERROR("GameState::Start: 无法加载谱面数据: {}", dataPath);
+        m_error = "谱面无法读取、包含无效音符或为空";
         return false;
     }
-    m_chartData = std::move(*chartData);
-
-    if (!loader.ValidateChartData(m_chartData))
+    m_chartInfo = chartInfo;
+    m_chartData = std::move(*data);
+    m_difficultyIndex = difficultyIndex;
+    if(options.mode==PlayMode::Standard)options=PlayOptions{};
+    m_options = options;
+    m_options.rate = std::clamp(options.rate, 0.5f, 2.0f);
+    m_chartEndMs = ChartEndTime(m_chartData);
+    m_options.startMs = std::clamp(options.startMs, 0, m_chartEndMs);
+    m_globalOffset = sakura::core::Config::GetInstance().Get<int>(sakura::core::ConfigKeys::kAudioOffset, 0);
+    auto& audio = sakura::audio::AudioManager::GetInstance();
+    audio.SetPlaybackSpeed(m_options.rate);
+    const double startSeconds = m_options.startMs == 0 ? 0.0 : std::max(0.0, (m_options.startMs + m_chartInfo.offset + m_globalOffset) / 1000.0);
+    if (!audio.PlayMusic(chartInfo.folderPath + "/" + chartInfo.musicFile, 0, startSeconds, true))
     {
-        LOG_WARN("GameState::Start: 谱面校验有警告，继续加载");
+        m_error = "音乐无法播放，请检查音频文件与输出设备";
+        return false;
     }
-
-    // 读取 Config 全局偏移
-    m_globalOffset = sakura::core::Config::GetInstance()
-        .Get<int>(std::string(sakura::core::ConfigKeys::kAudioOffset), 0);
-
-    // 音乐文件路径
-    std::string musicPath = chartInfo.folderPath + "/" + chartInfo.musicFile;
-
-    // 检查音乐文件是否存在
-    if (!std::filesystem::exists(musicPath))
+    m_musicDuration = audio.GetMusicDuration();
+    if (m_options.startMs > 0 && startSeconds >= m_musicDuration)
     {
-        LOG_WARN("GameState::Start: 音乐文件不存在: {}，游戏继续（无音乐）", musicPath);
-        m_musicDuration = 30.0; // 默认30秒
+        m_error = "练习起点超过音乐时长";
+        audio.StopMusic();
+        return false;
     }
-    else
-    {
-        m_musicDuration = 30.0; // 先用估算值，播放后从 audio 读取实际值
-    }
-
-    // 初始化活跃窗口
-    m_kbActiveBegin = 0;
-    m_kbActiveEnd   = 0;
-    m_msActiveBegin = 0;
-    m_msActiveEnd   = 0;
-
-    // 重置时间
-    m_currentTimeMs  = 0;
-    m_playbackStartMs = 0;
-    m_musicStarted   = false;
+    m_musicStarted = true;
+    m_playbackStartMs = static_cast<int>(startSeconds*1000) - m_chartInfo.offset - m_globalOffset;
+    m_currentTimeMs = m_playbackStartMs - static_cast<int>(COUNTDOWN_DURATION * 1000 * m_options.rate);
     m_countdownTimer = COUNTDOWN_DURATION;
-    m_phase          = GamePhase::Countdown;
-
-    LOG_INFO("GameState 启动: {} - {} (Lv.{:.1f}), 键盘音符={}, 鼠标音符={}",
-             chartInfo.title,
-             diff.name,
-             diff.level,
-             m_chartData.keyboardNotes.size(),
-             m_chartData.mouseNotes.size());
-
+    m_resumeCountdown = false;
+    m_resumed = false;
+    m_phase = GamePhase::Countdown;
+    m_kbActiveBegin = m_kbActiveEnd = m_msActiveBegin = m_msActiveEnd = 0;
+    m_forcedMissCount = 0;
+    m_tailTimeMs = 0.0;
+    UpdateActiveWindows();
     return true;
 }
 
-// ── Update ─────────────────────────────────────────────────────────────────────
-
 void GameState::Update(float dt)
 {
-    switch (m_phase)
-    {
-    case GamePhase::Countdown:
+    auto& audio = sakura::audio::AudioManager::GetInstance();
+    if (m_phase == GamePhase::Countdown)
     {
         m_countdownTimer -= dt;
+        if (!m_resumeCountdown)
+            m_currentTimeMs = m_playbackStartMs - static_cast<int>(std::max(0.0f, m_countdownTimer) * 1000 * m_options.rate);
         if (m_countdownTimer <= 0.0f)
         {
-            auto& audio = sakura::audio::AudioManager::GetInstance();
-
-            if (m_musicStarted && audio.IsPaused())
-            {
-                // 从暂停恢复：ma_sound 已存在且已 seek 到正确位置，直接恢复播放
-                audio.ResumeMusic();
-                LOG_DEBUG("音乐恢复播放，起始位置={:.3f}s",
-                          static_cast<double>(m_playbackStartMs) / 1000.0);
-            }
-            else if (!m_musicStarted)
-            {
-                // 首次开始：加载并播放音乐
-                const std::string musicPath = m_chartInfo.folderPath + "/" + m_chartInfo.musicFile;
-                if (std::filesystem::exists(musicPath))
-                {
-                    double startPos = static_cast<double>(m_playbackStartMs) / 1000.0;
-                    if (audio.PlayMusic(musicPath, 0, startPos))
-                    {
-                        double dur = audio.GetMusicDuration();
-                        if (dur > 0.0) m_musicDuration = dur;
-                        m_musicStarted = true;
-                        LOG_DEBUG("音乐开始播放: {}，时长={:.1f}s，起始位置={:.3f}s",
-                                  musicPath, m_musicDuration, startPos);
-                    }
-                    else
-                    {
-                        LOG_WARN("音乐播放失败，游戏以无音乐模式运行");
-                        m_musicStarted = false;
-                    }
-                }
-            }
-
-            m_phase          = GamePhase::Playing;
-            m_currentTimeMs  = m_playbackStartMs;
+            audio.ResumeMusic();
+            m_phase = GamePhase::Playing;
+            m_resumed = m_resumeCountdown;
+            m_resumeCountdown = false;
+            m_currentTimeMs = static_cast<int>(audio.GetMusicPosition() * 1000.0) - m_chartInfo.offset - m_globalOffset;
         }
-        break;
-    }
-
-    case GamePhase::Playing:
-    {
-        auto& audio = sakura::audio::AudioManager::GetInstance();
-
-        if (m_musicStarted && audio.IsPlaying())
-        {
-            // 基于音乐播放位置同步（避免累加 dt 的误差）
-            double musicPos = audio.GetMusicPosition();
-            // 应用 chart offset + 全局 offset
-            int offsetMs = m_chartInfo.offset + m_globalOffset;
-            m_currentTimeMs = static_cast<int>(musicPos * 1000.0) - offsetMs;
-        }
-        else if (m_musicStarted && !audio.IsPlaying() && !audio.IsPaused())
-        {
-            // 音乐自然结束
-            double musicPos = audio.GetMusicPosition();
-            m_currentTimeMs = static_cast<int>(musicPos * 1000.0);
-        }
-        else if (!m_musicStarted)
-        {
-            // 无音乐模式：使用 dt 累加
-            m_currentTimeMs += static_cast<int>(dt * 1000.0f);
-        }
-
-        // 更新活跃音符窗口
         UpdateActiveWindows();
-
-        // 检查是否结束
-        CheckFinished();
-        break;
     }
-
-    case GamePhase::Paused:
-        // 暂停中不更新时间
-        break;
-
-    default:
-        break;
+    else if (m_phase == GamePhase::Playing)
+    {
+        if (audio.IsPlaying())
+        {
+            m_currentTimeMs = static_cast<int>(audio.GetMusicPosition() * 1000.0) - m_chartInfo.offset - m_globalOffset;
+            m_tailTimeMs = m_currentTimeMs;
+        }
+        else
+        {
+            // Let late windows and sustain tails resolve after the last audio sample.
+            // Keep fractional milliseconds: truncating dt on every frame drifts at high FPS.
+            m_tailTimeMs += static_cast<double>(dt) * 1000.0 * m_options.rate;
+            m_currentTimeMs = static_cast<int>(m_tailTimeMs);
+        }
+        UpdateActiveWindows();
+        CheckFinished();
     }
 }
 
-// ── Pause / Resume ────────────────────────────────────────────────────────────
-
 void GameState::Pause()
 {
-    if (m_phase != GamePhase::Playing) return;
-
+    if (m_phase != GamePhase::Playing && m_phase != GamePhase::Countdown) return;
+    m_pausedInitialCountdown = m_phase == GamePhase::Countdown && !m_resumeCountdown;
     m_phase = GamePhase::Paused;
-    if (m_musicStarted)
-    {
-        sakura::audio::AudioManager::GetInstance().PauseMusic();
-    }
-    LOG_DEBUG("GameState: 游戏已暂停，当前时间={}ms", m_currentTimeMs);
+    sakura::audio::AudioManager::GetInstance().PauseMusic();
 }
 
 void GameState::Resume()
 {
     if (m_phase != GamePhase::Paused) return;
-
-    m_playbackStartMs = std::max(0, m_currentTimeMs - RESUME_REWIND_MS);
-    m_currentTimeMs   = m_playbackStartMs;
-    m_countdownTimer  = COUNTDOWN_DURATION;
-    m_phase           = GamePhase::Countdown;
-
-    if (m_musicStarted)
-    {
-        // 保持 ma_sound 不销毁，仅 seek 到回退位置（音乐仍处于暂停状态）
-        auto& audio = sakura::audio::AudioManager::GetInstance();
-        double seekPos = static_cast<double>(m_playbackStartMs) / 1000.0;
-        audio.SetMusicPosition(seekPos);
-        // 不调用 StopMusic()，不重置 m_musicStarted
-        // 倒计时结束后通过 ResumeMusic() 恢复播放
-    }
-    UpdateActiveWindows();
-    LOG_DEBUG("GameState: 游戏恢复倒计时，起点={}ms", m_playbackStartMs);
+    m_resumeCountdown = !m_pausedInitialCountdown;
+    m_countdownTimer = COUNTDOWN_DURATION;
+    m_phase = GamePhase::Countdown;
 }
-
-// ── Reset ─────────────────────────────────────────────────────────────────────
 
 void GameState::Reset()
 {
-    auto& audio = sakura::audio::AudioManager::GetInstance();
-    audio.StopMusic();
-
-    // 重置所有音符的判定状态
-    for (auto& note : m_chartData.keyboardNotes)
-    {
-        note.isJudged  = false;
-        note.result    = JudgeResult::None;
-        note.renderY   = 0.0f;
-        note.alpha     = 1.0f;
-    }
-    for (auto& note : m_chartData.mouseNotes)
-    {
-        note.isJudged      = false;
-        note.result        = JudgeResult::None;
-        note.approachScale = 2.0f;
-        note.alpha         = 1.0f;
-    }
-
-    m_currentTimeMs  = 0;
-    m_playbackStartMs = 0;
-    m_musicStarted   = false;
-    m_countdownTimer = COUNTDOWN_DURATION;
-    m_phase          = GamePhase::Countdown;
-    m_kbActiveBegin  = 0;
-    m_kbActiveEnd    = 0;
-    m_msActiveBegin  = 0;
-    m_msActiveEnd    = 0;
-    m_forcedMissCount = 0;
+    Start(m_chartInfo, m_difficultyIndex, m_options);
 }
 
 // ── GetProgress ───────────────────────────────────────────────────────────────
@@ -347,15 +226,7 @@ float GameState::GetCurrentBPM(int timeMs) const
 
 int GameState::GetTotalNoteCount() const
 {
-    int count = static_cast<int>(m_chartData.keyboardNotes.size());
-    for (const auto& n : m_chartData.mouseNotes)
-    {
-        ++count;  // 头部判定（Circle 1次点击；Slider 起点点击）
-        // Slider 每个拐点额外算一次独立判定；Circle 只有头部点击这一次
-        if (n.type == NoteType::Slider)
-            count += static_cast<int>(n.sliderPath.size());  // 每个拐点算一次判定
-    }
-    return count;
+    return JudgmentCount(m_chartData);
 }
 
 // ── UpdateActiveWindows ────────────────────────────────────────────────────────
@@ -412,55 +283,14 @@ void GameState::UpdateActiveWindows()
 
 void GameState::CheckFinished()
 {
-    // 音乐已结束（或无音乐模式）
     auto& audio = sakura::audio::AudioManager::GetInstance();
-    bool musicEnded = !m_musicStarted
-                   || (!audio.IsPlaying() && !audio.IsPaused());
-
-    // 若音乐已结束，将所有仍未判定的音符强制判为 Miss
-    // （防止末尾 miss 窗口内的音符阻塞游戏结束流程）
-    if (musicEnded)
+    const bool segmentEnded = m_options.mode == PlayMode::Practice && m_options.endMs > m_options.startMs
+        && m_currentTimeMs >= m_options.endMs;
+    if (segmentEnded || (!audio.IsPlaying() && !audio.IsPaused() && m_currentTimeMs > m_chartEndMs + 200))
     {
-        m_forcedMissCount = 0;
-        for (auto& n : m_chartData.keyboardNotes)
-        {
-            if (!n.isJudged)
-            {
-                n.isJudged = true;
-                n.result   = JudgeResult::Miss;
-                ++m_forcedMissCount;
-            }
-        }
-        for (auto& n : m_chartData.mouseNotes)
-        {
-            if (!n.isJudged)
-            {
-                n.isJudged = true;
-                n.result   = JudgeResult::Miss;
-                ++m_forcedMissCount;
-                // Slider 头部未被点击时，拐点也算强制 Miss
-                if (n.type == NoteType::Slider)
-                    m_forcedMissCount += static_cast<int>(n.sliderPath.size());
-            }
-        }
-
+        audio.StopMusic();
         m_phase = GamePhase::Finished;
-        LOG_INFO("游戏结束！");
-        return;
     }
-
-    // 音乐仍在播放，检查是否所有音符都已判定
-    for (const auto& n : m_chartData.keyboardNotes)
-    {
-        if (!n.isJudged) return;
-    }
-    for (const auto& n : m_chartData.mouseNotes)
-    {
-        if (!n.isJudged) return;
-    }
-
-    // 所有音符已判定，等待音乐结束（通常是 AP 跑完）
-    // 实际上这里 musicEnded 已经是 false，留空让下帧再判断
 }
 
 } // namespace sakura::game

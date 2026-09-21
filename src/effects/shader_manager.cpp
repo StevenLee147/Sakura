@@ -25,7 +25,7 @@ bool ShaderManager::Initialize(SDL_Renderer* renderer, int screenW, int screenH)
     // 从 Config 读取效果开关
     auto& cfg = sakura::core::Config::GetInstance();
     m_effects[static_cast<size_t>(EffectType::Vignette)]  = true;   // 暗角默认开启
-    m_effects[static_cast<size_t>(EffectType::Blur)]      = cfg.Get<bool>("graphics.bloom", true);
+    m_effects[static_cast<size_t>(EffectType::Blur)]      = cfg.Get<bool>("graphics.glow", true);
     m_effects[static_cast<size_t>(EffectType::ChromaAberration)]  = false;  // 连击特效触发
     m_effects[static_cast<size_t>(EffectType::ColorCorrection)]   = false;  // 可选
 
@@ -36,6 +36,7 @@ bool ShaderManager::Initialize(SDL_Renderer* renderer, int screenW, int screenH)
 
 void ShaderManager::OnResize(int newW, int newH)
 {
+    if(newW==m_width && newH==m_height && m_offscreen)return;
     if (m_offscreen)
     {
         SDL_DestroyTexture(m_offscreen);
@@ -73,7 +74,8 @@ void ShaderManager::Shutdown()
 
 bool ShaderManager::BeginCapture()
 {
-    if (!m_renderer || !m_offscreen) return false;
+    if (!m_renderer || !m_offscreen || SDL_GetRenderTarget(m_renderer)==m_offscreen) return false;
+    m_previousTarget = SDL_GetRenderTarget(m_renderer);
 
     if (!SDL_SetRenderTarget(m_renderer, m_offscreen))
     {
@@ -88,7 +90,7 @@ SDL_Texture* ShaderManager::EndCapture()
     if (!m_renderer) return nullptr;
 
     // 恢复到默认渲染目标（屏幕）
-    SDL_SetRenderTarget(m_renderer, nullptr);
+    SDL_SetRenderTarget(m_renderer, m_previousTarget);
     return m_offscreen;
 }
 
@@ -162,66 +164,18 @@ void ShaderManager::DrawVignette(float intensity)
 
     intensity = std::clamp(intensity, 0.0f, 1.0f);
 
-    // 从屏幕四角向中心绘制渐变黑色矩形
-    // 半径：屏幕对角线长度的一定比例
-    const int layers = 16;
-    const float diag = std::sqrt(static_cast<float>(m_width * m_width + m_height * m_height));
-    const float maxRadius = diag * 0.5f * 0.75f;
-
-    SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-
-    for (int i = 0; i < layers; ++i)
-    {
-        float t      = static_cast<float>(i) / static_cast<float>(layers - 1);
-        float radius = maxRadius * (1.0f - t);
-
-        // alpha: 外层最不透明，内层透明
-        uint8_t a = static_cast<uint8_t>(intensity * 200.0f * t * t);
-
-        // 绘制覆盖层：4个三角形从角出发
-        int cx = m_width  / 2;
-        int cy = m_height / 2;
-
-        // 外矩形
-        int outerX = static_cast<int>(cx - radius);
-        int outerY = static_cast<int>(cy - radius);
-        int outerW = static_cast<int>(radius * 2.0f);
-        int outerH = static_cast<int>(radius * 2.0f);
-
-        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, a);
-
-        // 上带
-        if (outerY > 0)
-        {
-            SDL_FRect top = { 0.0f, 0.0f, static_cast<float>(m_width),
-                               static_cast<float>(outerY) };
-            SDL_RenderFillRect(m_renderer, &top);
-        }
-        // 下带
-        if (outerY + outerH < m_height)
-        {
-            SDL_FRect bot = { 0.0f, static_cast<float>(outerY + outerH),
-                               static_cast<float>(m_width),
-                               static_cast<float>(m_height - (outerY + outerH)) };
-            SDL_RenderFillRect(m_renderer, &bot);
-        }
-        // 左带
-        if (outerX > 0)
-        {
-            SDL_FRect lft = { 0.0f, static_cast<float>(outerY),
-                               static_cast<float>(outerX),
-                               static_cast<float>(outerH) };
-            SDL_RenderFillRect(m_renderer, &lft);
-        }
-        // 右带
-        if (outerX + outerW < m_width)
-        {
-            SDL_FRect rgt = { static_cast<float>(outerX + outerW), static_cast<float>(outerY),
-                               static_cast<float>(m_width - (outerX + outerW)),
-                               static_cast<float>(outerH) };
-            SDL_RenderFillRect(m_renderer, &rgt);
-        }
+    constexpr int count=64;
+    SDL_Vertex vertices[count*2]; int indices[count*6];
+    for(int i=0;i<count;++i) {
+        const float a=i*6.2831853f/count;
+        vertices[i*2]={{m_width*(0.5f+std::cos(a)*0.39f),m_height*(0.5f+std::sin(a)*0.39f)},{0,0,0,0},{0,0}};
+        vertices[i*2+1]={{m_width*(0.5f+std::cos(a)*0.80f),m_height*(0.5f+std::sin(a)*0.80f)},{0,0,0,intensity},{0,0}};
+        const int j=(i+1)%count;
+        indices[i*6]=i*2; indices[i*6+1]=i*2+1;indices[i*6+2]=j*2;
+        indices[i*6+3]=j*2;indices[i*6+4]=i*2+1;indices[i*6+5]=j*2+1;
     }
+    SDL_SetRenderDrawBlendMode(m_renderer,SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(m_renderer,nullptr,vertices,count*2,indices,count*6);
 }
 
 void ShaderManager::DrawChromaticAberration(SDL_Texture* tex, float intensity)
@@ -229,27 +183,27 @@ void ShaderManager::DrawChromaticAberration(SDL_Texture* tex, float intensity)
     if (!tex || !m_renderer) return;
 
     intensity = std::clamp(intensity, 0.0f, 1.0f);
-    int ofs = static_cast<int>(intensity * 8.0f);
+    int ofs = std::max(1, static_cast<int>(intensity * m_width * 0.003f));
 
     SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
     SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_ADD);
 
     // R 通道：向右/上偏移
     SDL_SetTextureColorMod(tex, 255, 0, 0);
-    SDL_SetTextureAlphaMod(tex, 180);
+    SDL_SetTextureAlphaMod(tex, static_cast<Uint8>(35*intensity));
     SDL_FRect dstR = { static_cast<float>(ofs), static_cast<float>(-ofs),
                         static_cast<float>(m_width), static_cast<float>(m_height) };
     SDL_RenderTexture(m_renderer, tex, nullptr, &dstR);
 
     // G 通道：无偏移
     SDL_SetTextureColorMod(tex, 0, 255, 0);
-    SDL_SetTextureAlphaMod(tex, 180);
+    SDL_SetTextureAlphaMod(tex, static_cast<Uint8>(35*intensity));
     SDL_FRect dstG = { 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height) };
     SDL_RenderTexture(m_renderer, tex, nullptr, &dstG);
 
     // B 通道：向左/下偏移
     SDL_SetTextureColorMod(tex, 0, 0, 255);
-    SDL_SetTextureAlphaMod(tex, 180);
+    SDL_SetTextureAlphaMod(tex, static_cast<Uint8>(35*intensity));
     SDL_FRect dstB = { static_cast<float>(-ofs), static_cast<float>(ofs),
                         static_cast<float>(m_width), static_cast<float>(m_height) };
     SDL_RenderTexture(m_renderer, tex, nullptr, &dstB);
@@ -297,8 +251,8 @@ bool ShaderManager::IsEffectEnabled(EffectType type) const
 
 void ShaderManager::ApplyPostProcess()
 {
-    // 后处理链：目前不在全局层级叠加暗角
-    // 暗角仅在明确需要的场景（如暂停）中由各场景主动调用 DrawVignette
+    if(sakura::core::Config::GetInstance().Get<bool>("graphics.vignette",true))
+        DrawVignette(0.26f);
 }
 
 } // namespace sakura::effects

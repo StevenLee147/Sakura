@@ -55,7 +55,7 @@ public:
     bool SaveChart();
 
     // 保存到指定路径（另存为）
-    bool SaveChartTo(const std::string& fullPath);
+    bool SaveChartTo(const std::string& fullPath, bool activate = true);
 
     // ── 谱面数据访问 ──────────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ public:
     int FindKeyboardNote(int timeMs, int lane, int toleranceMs = 80) const;
 
     // 选中/取消选中键盘音符
-    void SelectKeyboardNote(int index) { m_selectedKbNote = index; }
+    void SelectKeyboardNote(int index) { m_selectedKbNote = index; if(index>=0)m_selectedMouseNote=-1; }
     void ClearSelection()              { m_selectedKbNote = -1; m_selectedMouseNote = -1; }
     int  GetSelectedKbNote()    const  { return m_selectedKbNote; }
 
@@ -121,7 +121,7 @@ public:
     int FindMouseNote(int timeMs, float nx, float ny,
                       int toleranceMs = 80, float toleranceXY = 0.05f) const;
 
-    void SelectMouseNote(int index) { m_selectedMouseNote = index; }
+    void SelectMouseNote(int index) { m_selectedMouseNote = index; if(index>=0)m_selectedKbNote=-1; }
     int  GetSelectedMouseNote() const { return m_selectedMouseNote; }
 
     // ── Slider 构建 ───────────────────────────────────────────────────────────

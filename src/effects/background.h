@@ -20,7 +20,9 @@ class BackgroundRenderer
 {
 public:
     BackgroundRenderer();
-    ~BackgroundRenderer() = default;
+    ~BackgroundRenderer() { UnloadImage(); }
+    BackgroundRenderer(const BackgroundRenderer&)=delete;
+    BackgroundRenderer& operator=(const BackgroundRenderer&)=delete;
 
     // 加载背景图片（路径相对工作目录）
     // 若文件不存在则静默回退到 DefaultBackground
@@ -46,6 +48,8 @@ private:
     sakura::core::TextureHandle m_textureHandle = sakura::core::INVALID_HANDLE;
     float m_dimming     = 0.5f;   // 默认暗化 50%
     bool  m_blurEnabled = false;
+    SDL_Texture* m_blurred = nullptr;
+    int m_blurW=0,m_blurH=0;
 };
 
 // ── DefaultBackground ─────────────────────────────────────────────────────────

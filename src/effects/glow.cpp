@@ -1,4 +1,6 @@
 #include "glow.h"
+#include "core/config.h"
+#include "core/theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +37,10 @@ void GlowEffect::DrawGlow(sakura::core::Renderer& renderer,
                            float glowRange,
                            int layers)
 {
+    if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
+    const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
+    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
+    layers = std::max(1, layers);
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
     for (int i = layers; i >= 0; --i)
@@ -75,6 +81,10 @@ void GlowEffect::DrawGlowLine(sakura::core::Renderer& renderer,
                                float glowMultiplier,
                                int layers)
 {
+    if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
+    const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
+    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
+    layers = std::max(1, layers);
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
     for (int i = layers; i >= 0; --i)
@@ -96,6 +106,10 @@ void GlowEffect::DrawGlowBar(sakura::core::Renderer& renderer,
                               float glowExpand,
                               int layers)
 {
+    if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
+    const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
+    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
+    layers = std::max(1, layers);
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
     for (int i = layers; i >= 0; --i)

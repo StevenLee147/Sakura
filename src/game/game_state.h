@@ -5,6 +5,7 @@
 
 #include "chart.h"
 #include "note.h"
+#include "play_session.h"
 #include <span>
 #include <string>
 
@@ -36,7 +37,7 @@ public:
 
     // 开始一局游戏（加载谱面数据和音乐）
     // difficultyIndex: ChartInfo.difficulties 中的难度索引
-    bool Start(const ChartInfo& chartInfo, int difficultyIndex = 0);
+    bool Start(const ChartInfo& chartInfo, int difficultyIndex = 0, PlayOptions options = {});
 
     // 每帧更新（同步音乐播放位置作为游戏时间）
     void Update(float dt);
@@ -94,6 +95,10 @@ public:
 
     const ChartInfo&  GetChartInfo()  const { return m_chartInfo; }
     const ChartData&  GetChartData()  const { return m_chartData; }
+    ChartData& GetChartData() { return m_chartData; }
+    const PlayOptions& GetOptions() const { return m_options; }
+    bool TakeResumed() { bool value = m_resumed; m_resumed = false; return value; }
+    const std::string& GetError() const { return m_error; }
     int               GetDifficultyIndex() const { return m_difficultyIndex; }
 
     // 当前难度总音符数（键盘 + 鼠标）
@@ -128,6 +133,13 @@ private:
     ChartData   m_chartData;
     int         m_difficultyIndex  = 0;
     double      m_musicDuration    = 0.0;     // 音乐总时长（秒）
+    PlayOptions m_options;
+    std::string m_error;
+    bool m_resumeCountdown = false;
+    bool m_resumed = false;
+    bool m_pausedInitialCountdown = false;
+    int m_chartEndMs = 0;
+    double m_tailTimeMs = 0.0;
 
     // ── 活跃音符窗口索引 ──────────────────────────────────────────────────────
     // 使用首端/尾端索引，避免每帧遍历全部音符

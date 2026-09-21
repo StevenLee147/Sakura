@@ -1,37 +1,37 @@
 {
-    "version": 2,
-    "id": "spring_breeze",
-    "title": "Spring Breeze",
-    "artist": "Sakura Starter",
-    "charter": "Sakura Dev",
-    "source": "Phase 4 official test pack",
-    "tags": [
-        "official",
-        "normal",
-        "breeze"
-    ],
-    "music_file": "music.wav",
-    "cover_file": "cover.png",
-    "background_file": "cover.png",
-    "preview_time": 10000,
-    "bpm": 130.0,
-    "offset": 0,
-    "difficulties": [
-        {
-            "name": "Normal",
-            "level": 3.0,
-            "chart_file": "normal.json",
-            "note_count": 32,
-            "hold_count": 4,
-            "mouse_note_count": 8
-        },
-        {
-            "name": "Hard",
-            "level": 5.5,
-            "chart_file": "hard.json",
-            "note_count": 56,
-            "hold_count": 11,
-            "mouse_note_count": 24
-        }
-    ]
+  "version": 2,
+  "id": "spring_breeze",
+  "title": "Spring Breeze",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura",
+  "source": "Sakura Originals · Vol. 01",
+  "tags": [
+    "original",
+    "mixed",
+    "electronic"
+  ],
+  "music_file": "music.wav",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 14769,
+  "bpm": 130.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 3.0,
+      "chart_file": "normal.json",
+      "note_count": 132,
+      "hold_count": 9,
+      "mouse_note_count": 36
+    },
+    {
+      "name": "Hard",
+      "level": 5.5,
+      "chart_file": "hard.json",
+      "note_count": 244,
+      "hold_count": 9,
+      "mouse_note_count": 64
+    }
+  ]
 }

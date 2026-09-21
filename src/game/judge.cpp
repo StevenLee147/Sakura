@@ -100,8 +100,8 @@ JudgeResult Judge::JudgeMouseNote(MouseNote& note, int hitTimeMs, float hitX, fl
     }
 
     // 距离判定（归一化欧氏距离）
-    float dx = hitX - note.x;
-    float dy = hitY - note.y;
+    float dx = (hitX - note.x) * m_scaleX;
+    float dy = (hitY - note.y) * m_scaleY;
     float dist = std::sqrt(dx * dx + dy * dy);
 
     if (dist > GetMouseHitTolerance(note))
@@ -185,7 +185,7 @@ JudgeResult Judge::UpdateHoldTick(HoldState& state,
                                   const KeyboardNote& note,
                                   int currentTimeMs)
 {
-    if (!state.headJudged) return JudgeResult::None;
+    if (!state.headJudged || state.finalized) return JudgeResult::None;
 
     int holdEnd = note.time + note.duration;
 
@@ -204,7 +204,7 @@ JudgeResult Judge::UpdateHoldTick(HoldState& state,
     }
 
     // ── Hold 结束判定 ─────────────────────────────────────────────────────────
-    if (currentTimeMs > holdEnd + m_windows.good)
+    if (currentTimeMs >= holdEnd)
     {
         // 已持续到 hold 末端（或在容忍窗口内）→ 使用头部结果
         state.finalized = true;
@@ -271,8 +271,8 @@ JudgeResult Judge::UpdateSliderTracking(SliderState& state,
     else
     {
         auto [wx, wy] = note.sliderPath[wpIdx];
-        float dx   = mouseX - wx;
-        float dy   = mouseY - wy;
+        float dx   = (mouseX - wx) * m_scaleX;
+        float dy   = (mouseY - wy) * m_scaleY;
         float dist = std::sqrt(dx * dx + dy * dy);
 
         if (isMouseDown && dist <= SliderState::PATH_TOLERANCE)
@@ -317,6 +317,7 @@ std::pair<float, float> Judge::GetSliderPosition(const MouseNote& note, float t)
 
     // 构建完整路径（包含起点）
     // 路径总节点数 = 1(起点) + sliderPath.size()
+    t = std::isfinite(t) ? std::clamp(t, 0.0f, 1.0f) : 0.0f;
     size_t totalNodes = 1 + note.sliderPath.size();
     float segLen = 1.0f / static_cast<float>(totalNodes - 1);
 

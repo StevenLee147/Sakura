@@ -1,0 +1,823 @@
+{
+  "version": "0.6.0-beta",
+  "platform": "Windows x64",
+  "logic_tests": {
+    "Debug": {
+      "passed": 61,
+      "failed": 0
+    },
+    "Release": {
+      "passed": 61,
+      "failed": 0
+    }
+  },
+  "release_1600x900": [
+    {
+      "cpu_submission_ms_p95": 0.603,
+      "frame_ms_p95": 7.417500019073486,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "first_run",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.6611,
+      "frame_ms_p95": 7.184700012207031,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "first_run_skip",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 1.594,
+      "frame_ms_p95": 7.295200347900391,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "menu",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.554,
+      "frame_ms_p95": 7.453000068664551,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.4789,
+      "frame_ms_p95": 7.286399841308594,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select_practice",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3749,
+      "frame_ms_p95": 7.362299919128418,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3731,
+      "frame_ms_p95": 7.345900058746338,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_audio",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3298,
+      "frame_ms_p95": 7.4303998947143555,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_controls",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.29779999999999995,
+      "frame_ms_p95": 7.395699977874756,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_display",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3609,
+      "frame_ms_p95": 7.377999782562256,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_visual",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.2889,
+      "frame_ms_p95": 7.3805999755859375,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_data",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.15889999999999999,
+      "frame_ms_p95": 7.399700164794922,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "tutorial",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.2461,
+      "frame_ms_p95": 7.3531999588012695,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "stats",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3443,
+      "frame_ms_p95": 7.346799850463867,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.5236,
+      "frame_ms_p95": 7.383800029754639,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_properties",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 2.0265,
+      "frame_ms_p95": 7.382999897003174,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_preview",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.4051,
+      "frame_ms_p95": 7.566300392150879,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_return",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.3173,
+      "frame_ms_p95": 7.468699932098389,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "create",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.39049999999999996,
+      "frame_ms_p95": 7.378300189971924,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "create_complete",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.24309999999999998,
+      "frame_ms_p95": 7.429800033569336,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "calibration",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 1.6773,
+      "frame_ms_p95": 7.349300384521484,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "game",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 1.5308,
+      "frame_ms_p95": 7.321100234985352,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "pause",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 0.9559,
+      "frame_ms_p95": 7.290999889373779,
+      "height": 900,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "result",
+      "verified": true,
+      "width": 1600
+    },
+    {
+      "cpu_submission_ms_p95": 1.3972,
+      "frame_ms_p95": 7.268200397491455,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_live",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 2.0538,
+      "frame_ms_p95": 7.383900165557861,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_replay",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 1.1418,
+      "frame_ms_p95": 7.20829963684082,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_practice",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 1.7679,
+      "frame_ms_p95": 7.363100051879883,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_album",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 0.4529,
+      "frame_ms_p95": 7.288300037384033,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_missing_audio",
+      "verified": true,
+      "width": 1280
+    }
+  ],
+  "packaged_unicode_path_2560x1440": [
+    {
+      "cpu_submission_ms_p95": 0.4345,
+      "frame_ms_p95": 7.464699745178223,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "first_run",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 1.494,
+      "frame_ms_p95": 7.379199981689453,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "first_run_skip",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.6919,
+      "frame_ms_p95": 7.2098002433776855,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "menu",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.4615,
+      "frame_ms_p95": 7.333899974822998,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.6082000000000001,
+      "frame_ms_p95": 7.443199634552002,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select_practice",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3594,
+      "frame_ms_p95": 7.447499752044678,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3191,
+      "frame_ms_p95": 7.429200172424316,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_audio",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3184,
+      "frame_ms_p95": 7.426199913024902,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_controls",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3467,
+      "frame_ms_p95": 7.3862996101379395,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_display",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3507,
+      "frame_ms_p95": 7.434299945831299,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_visual",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.2876,
+      "frame_ms_p95": 7.453800201416016,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_data",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.15689999999999998,
+      "frame_ms_p95": 7.456600189208984,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "tutorial",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.23149999999999998,
+      "frame_ms_p95": 7.395299911499023,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "stats",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.43870000000000003,
+      "frame_ms_p95": 7.3805999755859375,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.5015999999999999,
+      "frame_ms_p95": 7.459099769592285,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_properties",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 2.0998,
+      "frame_ms_p95": 7.491499900817871,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_preview",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.4172,
+      "frame_ms_p95": 7.410699844360352,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_return",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.2843,
+      "frame_ms_p95": 7.47790002822876,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "create",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.3783,
+      "frame_ms_p95": 7.489299774169922,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "create_complete",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 0.2676,
+      "frame_ms_p95": 7.419899940490723,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "calibration",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 1.5843,
+      "frame_ms_p95": 7.371399879455566,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "game",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 1.4073,
+      "frame_ms_p95": 7.26170015335083,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "pause",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 1.1129,
+      "frame_ms_p95": 7.360000133514404,
+      "height": 1440,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "result",
+      "verified": true,
+      "width": 2560
+    },
+    {
+      "cpu_submission_ms_p95": 1.633,
+      "frame_ms_p95": 7.350800037384033,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_live",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 1.6575,
+      "frame_ms_p95": 7.381999969482422,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_replay",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 1.5829000000000002,
+      "frame_ms_p95": 7.356199741363525,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_practice",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 1.7613,
+      "frame_ms_p95": 7.357600212097168,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_album",
+      "verified": true,
+      "width": 1280
+    },
+    {
+      "cpu_submission_ms_p95": 0.5194,
+      "frame_ms_p95": 7.449699878692627,
+      "height": 800,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "verify_missing_audio",
+      "verified": true,
+      "width": 1280
+    }
+  ],
+  "release_3840x2160": [
+    {
+      "cpu_submission_ms_p95": 1.3493000000000002,
+      "frame_ms_p95": 7.181600093841553,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "menu",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.4951,
+      "frame_ms_p95": 7.358699798583984,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.4234,
+      "frame_ms_p95": 7.166100025177002,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "select_practice",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.42910000000000004,
+      "frame_ms_p95": 7.235000133514404,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.2721,
+      "frame_ms_p95": 7.271000385284424,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_audio",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.3483,
+      "frame_ms_p95": 7.337500095367432,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_controls",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.3056,
+      "frame_ms_p95": 7.296199798583984,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_display",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.3143,
+      "frame_ms_p95": 7.355400085449219,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_visual",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.2719,
+      "frame_ms_p95": 7.253199577331543,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "settings_data",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.1221,
+      "frame_ms_p95": 7.4008002281188965,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "tutorial",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.22490000000000002,
+      "frame_ms_p95": 7.252900123596191,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "stats",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.4074,
+      "frame_ms_p95": 7.422499656677246,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.5165000000000001,
+      "frame_ms_p95": 7.291399955749512,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_properties",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 1.861,
+      "frame_ms_p95": 7.2621002197265625,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "editor_preview",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.2732,
+      "frame_ms_p95": 7.256899833679199,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "create",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 0.2007,
+      "frame_ms_p95": 7.176700115203857,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "calibration",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 1.5490000000000002,
+      "frame_ms_p95": 7.300099849700928,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "game",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 1.2201000000000002,
+      "frame_ms_p95": 7.342599868774414,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "pause",
+      "verified": true,
+      "width": 3840
+    },
+    {
+      "cpu_submission_ms_p95": 1.1140999999999999,
+      "frame_ms_p95": 7.248799800872803,
+      "height": 2160,
+      "renderer": "gpu",
+      "saved": true,
+      "scene": "result",
+      "verified": true,
+      "width": 3840
+    }
+  ],
+  "audio_formats": [
+    {
+      "duration": 2.0,
+      "format": "wav",
+      "loaded": true,
+      "position_after_seek": 0.5199999809265137,
+      "spectrum": true,
+      "verified": true
+    },
+    {
+      "duration": 2.0,
+      "format": "mp3",
+      "loaded": true,
+      "position_after_seek": 0.5299999713897705,
+      "spectrum": true,
+      "verified": true
+    },
+    {
+      "duration": 2.0,
+      "format": "flac",
+      "loaded": true,
+      "position_after_seek": 0.5299999713897705,
+      "spectrum": true,
+      "verified": true
+    },
+    {
+      "duration": 2.0,
+      "format": "ogg",
+      "loaded": true,
+      "position_after_seek": 0.5299999713897705,
+      "spectrum": true,
+      "verified": true
+    }
+  ],
+  "image_formats": [
+    {
+      "format": "png",
+      "verified": true
+    },
+    {
+      "format": "jpg",
+      "verified": true
+    },
+    {
+      "format": "webp",
+      "verified": true
+    },
+    {
+      "format": "bmp",
+      "verified": true
+    }
+  ],
+  "measurement_note": "CPU p95 excludes SDL_RenderPresent/VSync wait; frame p95 includes it. Local samples, not end-to-end input latency."
+}

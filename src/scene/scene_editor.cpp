@@ -1,8 +1,12 @@
 // scene_editor.cpp — 谱面编辑器场景实现
 
 #include "scene_editor.h"
+#include "core/paths.h"
 #include "ui/visual_style.h"
 #include "scene_menu.h"
+#include "scene_chart_wizard.h"
+#include "scene_game.h"
+#include "game/chart_loader.h"
 #include "core/resource_manager.h"
 #include "audio/audio_manager.h"
 #include "ui/toast.h"
@@ -15,12 +19,23 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
 
 namespace sakura::scene
 {
 
 namespace
 {
+class EditPropertiesCommand final : public sakura::editor::EditorCommand {
+    sakura::game::ChartData beforeData,afterData;
+    sakura::game::ChartInfo beforeInfo,afterInfo;
+public:
+    EditPropertiesCommand(sakura::editor::EditorCore& core,sakura::game::ChartData data,sakura::game::ChartInfo info)
+        :beforeData(core.GetChartData()),afterData(std::move(data)),beforeInfo(core.GetChartInfo()),afterInfo(std::move(info)){}
+    void Execute(sakura::editor::EditorCore& core)override{core.GetChartData()=afterData;core.GetChartInfo()=afterInfo;core.ClearSelection();}
+    void Undo(sakura::editor::EditorCore& core)override{core.GetChartData()=beforeData;core.GetChartInfo()=beforeInfo;core.ClearSelection();}
+    std::string GetDescription()const override{return "编辑属性";}
+};
 constexpr float OVERVIEW_X = 0.77f;
 constexpr float OVERVIEW_Y = 0.06f;
 constexpr float OVERVIEW_W = 0.21f;
@@ -54,18 +69,34 @@ void SceneEditor::OnEnter()
     m_ctrlHeld    = false;
     m_shiftHeld   = false;
 
+    if(!m_initFolderPath.empty()) {
+        try {
+            namespace fs=std::filesystem;
+            const auto source=fs::weakly_canonical(m_initFolderPath);
+            const auto builtin=fs::weakly_canonical("resources/charts");
+            const auto relative=source.lexically_relative(builtin);
+            if(!relative.empty() && *relative.begin()!="..") {
+                const auto target=fs::path(sakura::core::Paths::User("charts"))/source.filename();
+                if(!fs::exists(target)) {fs::create_directories(target);fs::copy(source,target,fs::copy_options::recursive);}
+                m_initFolderPath=target.string();
+            }
+        }catch(const std::exception& e){
+            sakura::ui::ToastManager::Instance().Show(std::string("无法创建可编辑副本：")+e.what(),sakura::ui::ToastType::Error);
+            m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager));return;
+        }
+    }
     // 加载或新建谱面
     if (!m_initFolderPath.empty())
     {
         if (!m_core.LoadChart(m_initFolderPath, m_initDiffFile))
         {
-            LOG_WARN("[SceneEditor] 谱面加载失败，改为新建");
-            m_core.NewChart("new-chart", "新谱面", 120.0f);
+            sakura::ui::ToastManager::Instance().Show("谱面加载失败，请检查文件",sakura::ui::ToastType::Error);
+            m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager));return;
         }
     }
     else
     {
-        m_core.NewChart("new-chart", "新谱面", 120.0f);
+        m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager));return;
     }
 
     // 音频停止（回到编辑器时停止游戏音乐）
@@ -90,6 +121,10 @@ void SceneEditor::OnEnter()
     m_timeline.CenterOnTime(0);
 
     SetupToolbar();
+    m_btnProperties=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.50f,0.84f,0.17f,0.034f},"编辑属性",m_fontUI,0.018f);
+    m_btnProperties->SetTextAlign(sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::ApplyButton(m_btnProperties.get(),sakura::ui::ButtonVariant::Secondary);
+    m_btnProperties->SetOnClick([this]{OpenProperties();});
     UpdateToolButtons();
 }
 
@@ -158,7 +193,7 @@ void SceneEditor::SetupToolbar()
     // 重做按钮
     m_btnRedo = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.712f, 0.005f, 0.072f, 0.048f },
-        "↪ 重做", m_fontUI, 0.020f, 0.008f);
+        "重做", m_fontUI, 0.020f, 0.008f);
     m_btnRedo->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnRedo->SetTextPadding(0.0f);
     sakura::ui::VisualStyle::ApplyButton(m_btnRedo.get(), sakura::ui::ButtonVariant::Secondary);
@@ -174,7 +209,7 @@ void SceneEditor::SetupToolbar()
     // 保存按钮
     m_btnSave = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.82f, 0.005f, 0.08f, 0.048f },
-        "💾 保存", m_fontUI, 0.020f, 0.008f);
+        "保存", m_fontUI, 0.020f, 0.008f);
     m_btnSave->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnSave->SetTextPadding(0.0f);
     sakura::ui::VisualStyle::ApplyButton(m_btnSave.get(), sakura::ui::ButtonVariant::Accent);
@@ -187,17 +222,7 @@ void SceneEditor::SetupToolbar()
     m_btnBack->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnBack->SetTextPadding(0.0f);
     sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
-    m_btnBack->SetOnClick([this]()
-    {
-        if (m_core.IsDirty())
-        {
-            // 简单提示——后续可做弹窗确认，目前直接保存后退出
-            DoSave();
-        }
-        m_manager.SwitchScene(
-            std::make_unique<SceneMenu>(m_manager),
-            TransitionType::SlideRight, 0.4f);
-    });
+    m_btnBack->SetOnClick([this]() { RequestExit(); });
 
     // BeatSnap 调整 ↑↓
     m_btnSnapDec = std::make_unique<sakura::ui::Button>(
@@ -343,7 +368,7 @@ void SceneEditor::UpdateUndoRedoButtons()
         int cnt = m_core.GetRedoCount();
         std::string label = cnt > 0
             ? "↪ 重做(" + std::to_string(cnt) + ")"
-            : "↪ 重做";
+            : "重做";
         m_btnRedo->SetText(label);
     }
 }
@@ -398,7 +423,7 @@ void SceneEditor::SwitchDifficulty(int index)
     if (index == m_currentDiffIndex) return;
 
     // 先保存当前难度
-    if (m_core.IsDirty()) DoSave();
+    if (m_core.IsDirty()) { DoSave(); if(m_core.IsDirty()) return; }
 
     m_currentDiffIndex = index;
     const std::string& folderPath = m_core.GetFolderPath();
@@ -440,7 +465,7 @@ void SceneEditor::AddNewDifficulty()
     newFile += ".json";
 
     // 先保存当前
-    if (m_core.IsDirty()) DoSave();
+    if (m_core.IsDirty()) { DoSave(); if(m_core.IsDirty()) return; }
 
     // 从当前难度复制到新文件
     bool ok = m_core.SaveChartTo(info.folderPath + "/" + newFile);
@@ -451,13 +476,9 @@ void SceneEditor::AddNewDifficulty()
         return;
     }
 
-    // 更新 info.json 的难度列表
-    sakura::game::DifficultyInfo di;
-    di.name      = newName;
-    di.level     = 7.0f;
-    di.chartFile = newFile;
-    info.difficulties.push_back(di);
+    m_core.LoadChart(m_core.GetFolderPath(),newFile);
     m_currentDiffIndex = newIdx;
+    m_timeline.CenterOnTime(0);
 
     sakura::ui::ToastManager::Instance().Show(
         "已添加并切换到难度: " + newName, sakura::ui::ToastType::Info);
@@ -465,8 +486,115 @@ void SceneEditor::AddNewDifficulty()
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
 
+void SceneEditor::StartFullPreview(int fromMs){
+    m_core.StopPlayback();
+    if(m_core.IsDirty()){DoSave();if(m_core.IsDirty())return;}
+    if(m_core.GetChartData().keyboardNotes.empty()&&m_core.GetChartData().mouseNotes.empty()){
+        sakura::ui::ToastManager::Instance().Show("先放置一些音符，再开始试玩",sakura::ui::ToastType::Info);return;
+    }
+    sakura::game::PlayOptions options;options.mode=sakura::game::PlayMode::Practice;options.startMs=std::max(0,fromMs);options.returnToEditor=true;
+    m_manager.PushScene(std::make_unique<SceneGame>(m_manager,m_core.GetChartInfo(),m_currentDiffIndex,options),TransitionType::Fade,0.25f);
+}
+
+void SceneEditor::OpenProperties(){
+    m_preview.Stop();m_core.StopPlayback();m_propertyEditing=true;
+    m_propertyKeyboard=m_core.GetSelectedKbNote();m_propertyMouse=m_core.GetSelectedMouseNote();
+    std::vector<std::string> values;
+    const auto& data=m_core.GetChartData();
+    if(m_propertyKeyboard>=0&&m_propertyKeyboard<static_cast<int>(data.keyboardNotes.size())){
+        const auto& n=data.keyboardNotes[m_propertyKeyboard];
+        m_propertyLabels={"时间 / ms","轨道 / 1–4","持续时间 / ms（Tap 为 0）"};
+        values={std::to_string(n.time),std::to_string(n.lane+1),std::to_string(n.duration)};
+    }else if(m_propertyMouse>=0&&m_propertyMouse<static_cast<int>(data.mouseNotes.size())){
+        const auto& n=data.mouseNotes[m_propertyMouse];
+        m_propertyLabels={"时间 / ms","横向位置 / 0–1","纵向位置 / 0–1","持续时间 / ms（Circle 为 0）"};
+        values={std::to_string(n.time),std::to_string(n.x),std::to_string(n.y),std::to_string(n.sliderDuration)};
+    }else{
+        m_propertyKeyboard=m_propertyMouse=-1;const auto& info=m_core.GetChartInfo();const auto& d=info.difficulties[m_currentDiffIndex];
+        m_propertyLabels={"初始 BPM（后续变速点保留）","谱面偏移 / ms","难度名称","难度等级 / 1–20"};
+        values={std::to_string(info.bpm),std::to_string(info.offset),d.name,std::to_string(d.level)};
+    }
+    m_propertyInputs.clear();
+    for(size_t i=0;i<values.size();++i){
+        auto input=std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{0.53f,0.32f+i*0.088f,0.20f,0.047f},m_fontUI,0.023f,48);
+        input->SetText(values[i]);input->SetOnSubmit([this](const std::string&){ApplyProperties();});m_propertyInputs.push_back(std::move(input));
+    }
+    m_propertyApply=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.53f,0.73f,0.20f,0.053f},"应用修改",m_fontUI,0.024f);
+    m_propertyCancel=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.27f,0.73f,0.20f,0.053f},"取消",m_fontUI,0.024f);
+    for(auto* b:{m_propertyApply.get(),m_propertyCancel.get()})b->SetTextAlign(sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::ApplyButton(m_propertyApply.get(),sakura::ui::ButtonVariant::Primary);
+    sakura::ui::VisualStyle::ApplyButton(m_propertyCancel.get(),sakura::ui::ButtonVariant::Secondary);
+    m_propertyApply->SetOnClick([this]{ApplyProperties();});m_propertyCancel->SetOnClick([this]{CloseProperties();});
+}
+void SceneEditor::CloseProperties(){m_propertyEditing=false;for(auto& i:m_propertyInputs)i->SetFocused(false);}
+void SceneEditor::ApplyProperties(){
+    try{
+        auto number=[this](int i,double low,double high){size_t used=0;const auto& text=m_propertyInputs[i]->GetText();const double value=std::stod(text,&used);
+            if(used!=text.size()||!std::isfinite(value)||value<low||value>high)throw std::runtime_error("请输入范围内的有效数值");return value;};
+        auto data=m_core.GetChartData();auto info=m_core.GetChartInfo();
+        if(m_propertyKeyboard>=0){auto& n=data.keyboardNotes[m_propertyKeyboard];n.time=static_cast<int>(number(0,0,3600000));n.lane=static_cast<int>(number(1,1,4))-1;
+            n.duration=static_cast<int>(number(2,0,600000));n.type=n.duration>0?sakura::game::NoteType::Hold:sakura::game::NoteType::Tap;
+        }else if(m_propertyMouse>=0){auto& n=data.mouseNotes[m_propertyMouse];n.time=static_cast<int>(number(0,0,3600000));n.x=static_cast<float>(number(1,0,1));n.y=static_cast<float>(number(2,0,1));
+            n.sliderDuration=static_cast<int>(number(3,n.type==sakura::game::NoteType::Slider?1:0,n.type==sakura::game::NoteType::Slider?600000:0));
+        }else{
+            info.bpm=static_cast<float>(number(0,20,1000));info.offset=static_cast<int>(number(1,-10000,10000));
+            auto& d=info.difficulties[m_currentDiffIndex];d.name=m_propertyInputs[2]->GetText();if(d.name.empty())throw std::runtime_error("难度名称不能为空");d.level=static_cast<float>(number(3,1,20));
+            for(size_t i=0;i<info.difficulties.size();++i)if(i!=m_currentDiffIndex&&info.difficulties[i].name==d.name)throw std::runtime_error("难度名称已经存在");
+            if(!data.timingPoints.empty())data.timingPoints.front().bpm=info.bpm;
+        }
+        std::stable_sort(data.keyboardNotes.begin(),data.keyboardNotes.end(),[](const auto& a,const auto& b){return a.time<b.time;});
+        std::stable_sort(data.mouseNotes.begin(),data.mouseNotes.end(),[](const auto& a,const auto& b){return a.time<b.time;});
+        if(!sakura::game::ChartLoader{}.ValidateChartData(data))throw std::runtime_error("修改后的谱面数据无效");
+        m_core.ExecuteCommand(std::make_unique<EditPropertiesCommand>(m_core,std::move(data),std::move(info)));
+        CloseProperties();sakura::ui::ToastManager::Instance().Show("属性已更新 · Ctrl+Z 可撤销",sakura::ui::ToastType::Success);
+    }catch(const std::exception& e){sakura::ui::ToastManager::Instance().Show(e.what(),sakura::ui::ToastType::Warning);}
+}
+void SceneEditor::RenderProperties(sakura::core::Renderer& r){
+    sakura::ui::VisualStyle::DrawScrim(r);sakura::ui::VisualStyle::DrawPanel(r,{0.23f,0.20f,0.54f,0.64f},true,true);
+    r.DrawText(m_fontUI,m_propertyKeyboard>=0?"键盘音符属性":m_propertyMouse>=0?"鼠标音符属性":"谱面属性",0.27f,0.235f,0.035f,{239,223,234,255});
+    for(size_t i=0;i<m_propertyInputs.size();++i){r.DrawText(m_fontSmall,m_propertyLabels[i],0.27f,0.328f+i*0.088f,0.020f,{184,186,204,255});m_propertyInputs[i]->Render(r);}
+    r.DrawText(m_fontSmall,"Enter 应用 · Tab 切换输入框 · Esc 取消",0.27f,0.68f,0.018f,{152,160,184,255});
+    m_propertyApply->Render(r);m_propertyCancel->Render(r);
+}
+
+bool SceneEditor::CanClose() {
+    if(m_allowClose||!m_core.IsDirty())return true;
+    RequestExit(true);return false;
+}
+void SceneEditor::FinishExit(){
+    m_exitDialog=false;
+    if(m_closeWindow){m_allowClose=true;SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}
+    else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SlideRight,0.3f);
+}
+void SceneEditor::RequestExit(bool window){
+    if(m_exitDialog){m_closeWindow|=window;return;}
+    CloseProperties();m_closeWindow=window;
+    if(!m_core.IsDirty()){FinishExit();return;}
+    m_preview.Stop();m_core.StopPlayback();
+    m_exitDialog=true;m_exitButtons.clear();
+    const char* labels[]={"继续编辑","放弃修改","保存并退出"};
+    for(int i=0;i<3;++i){
+        auto button=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.28f+i*0.15f,0.57f,0.14f,0.055f},labels[i],m_fontUI,0.023f);
+        button->SetTextAlign(sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::ApplyButton(button.get(),i==2?sakura::ui::ButtonVariant::Primary:sakura::ui::ButtonVariant::Secondary);
+        button->SetOnClick([this,i]{if(i==0){m_exitDialog=false;return;}if(i==2){DoSave();if(m_core.IsDirty())return;}FinishExit();});
+        m_exitButtons.push_back(std::move(button));
+    }
+}
+
 void SceneEditor::OnUpdate(float dt)
 {
+    if(m_exitDialog){for(auto& button:m_exitButtons)button->Update(dt);return;}
+    if(m_propertyEditing){for(auto& i:m_propertyInputs)i->Update(dt);m_propertyApply->Update(dt);m_propertyCancel->Update(dt);return;}
+    if(m_btnProperties)m_btnProperties->Update(dt);
+    m_recoveryTimer+=dt;
+    if(m_recoveryTimer>=45){
+        m_recoveryTimer=0;
+        if(m_core.IsDirty()&&!m_core.GetChartInfo().folderPath.empty()){
+            const auto path=std::filesystem::path(m_core.GetChartInfo().folderPath)/("recovery_"+m_core.GetDiffFile());
+            if(!m_core.SaveChartTo(path.string(),false))sakura::ui::ToastManager::Instance().Show("恢复副本写入失败，请及时保存",sakura::ui::ToastType::Warning);
+        }
+    }
     // 预览模式下只更新预览
     if (m_preview.IsActive())
     {
@@ -505,14 +633,20 @@ void SceneEditor::OnRender(sakura::core::Renderer& renderer)
     else
         m_mouseArea.Render(renderer);
 
-    // 4. 属性面板（占位）
+    // 4. 音符属性与谱面信息
     RenderPropertyPanel(renderer);
 
     // 5. 底部全曲缩略轴
     RenderOverviewAxis(renderer);
 
-    // Toast 通知
-    sakura::ui::ToastManager::Instance().Render(renderer, m_fontSmall);
+    if(m_propertyEditing)RenderProperties(renderer);
+    if(m_exitDialog){
+        sakura::ui::VisualStyle::DrawScrim(renderer);
+        sakura::ui::VisualStyle::DrawPanel(renderer,{0.24f,0.34f,0.52f,0.34f},true,true);
+        renderer.DrawText(m_fontUI,"保存谱面的修改？",0.5f,0.39f,0.038f,{239,223,234,255},sakura::core::TextAlign::Center);
+        renderer.DrawText(m_fontSmall,"保存后可在曲库中立即演奏这张谱面。",0.5f,0.48f,0.022f,{170,175,196,255},sakura::core::TextAlign::Center);
+        for(auto& button:m_exitButtons)button->Render(renderer);
+    }
 }
 
 // ── RenderToolbar ─────────────────────────────────────────────────────────────
@@ -547,10 +681,7 @@ void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
         // 谱面标题（中央，包含 dirty 标记）
         std::string titleStr = m_core.GetChartInfo().title;
         if (m_core.IsDirty()) titleStr += " *";
-        renderer.DrawText(m_fontUI, titleStr,
-            0.503f, 0.028f, 0.018f,
-            sakura::core::Color{ 200, 180, 255, 200 },
-            sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawTextFit(renderer,m_fontUI,titleStr,0.307f,0.017f,0.019f,0.085f,{190,185,211,230});
     }
 
     if (m_btnSnapDec) m_btnSnapDec->Render(renderer);
@@ -563,7 +694,7 @@ void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
 
 void SceneEditor::RenderMouseArea(sakura::core::Renderer& renderer)
 {
-    // 占位面板：(0.42, 0.06, 0.33, 0.60)
+    // 鼠标编辑区域：(0.42, 0.06, 0.33, 0.60)
     sakura::ui::VisualStyle::DrawPanel(renderer, { 0.42f, 0.06f, 0.33f, 0.60f });
     renderer.DrawLine(0.42f, 0.06f, 0.75f, 0.06f,
         sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
@@ -689,6 +820,7 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
             sakura::core::TextAlign::Center);
     }
 
+    if(m_btnProperties)m_btnProperties->Render(renderer);
     // 快捷键提示
     renderer.DrawText(m_fontSmall, "1-4: 工具  Space: 播放  Del: 删除",
         px, 0.875f, 0.016f,
@@ -698,7 +830,7 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
         px, 0.898f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "F5/F6: 试玩  Ctrl+Shift+S: 备份",
+    renderer.DrawText(m_fontSmall, "F5/F6: 完整试玩  F8: 键盘预览",
         px, 0.921f, 0.016f,
         sakura::core::Color{ 120, 110, 160, 150 },
         sakura::core::TextAlign::Center);
@@ -845,6 +977,21 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
 
 void SceneEditor::OnEvent(const SDL_Event& event)
 {
+    if(m_propertyEditing){
+        if(event.type==SDL_EVENT_KEY_DOWN && event.key.scancode==SDL_SCANCODE_ESCAPE){CloseProperties();return;}
+        if(event.type==SDL_EVENT_KEY_DOWN && event.key.scancode==SDL_SCANCODE_TAB){
+            size_t next=0;for(size_t i=0;i<m_propertyInputs.size();++i)if(m_propertyInputs[i]->IsFocused())next=(i+1)%m_propertyInputs.size();
+            for(auto& i:m_propertyInputs)i->SetFocused(false);m_propertyInputs[next]->SetFocused(true);return;
+        }
+        for(auto& i:m_propertyInputs)i->HandleEvent(event);
+        if(m_propertyEditing){m_propertyApply->HandleEvent(event);m_propertyCancel->HandleEvent(event);}return;
+    }
+
+    if(m_exitDialog){
+        if(event.type==SDL_EVENT_KEY_DOWN&&event.key.scancode==SDL_SCANCODE_ESCAPE)m_exitDialog=false;
+        else for(auto& button:m_exitButtons)if(button->HandleEvent(event))break;
+        return;
+    }
     // 追踪 Ctrl/Shift 键状态
     if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
     {
@@ -877,7 +1024,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         if (sc == SDL_SCANCODE_F5)
         {
             m_core.StopPlayback();  // 停止编辑器播放
-            m_preview.Start(m_core.GetCurrentTimeMs());
+            StartFullPreview(m_core.GetCurrentTimeMs());
             sakura::ui::ToastManager::Instance().Show(
                 "▶ 开始试玩 (ESC 退出)", sakura::ui::ToastType::Info);
             return;
@@ -895,19 +1042,18 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             }
             startMs = std::max(0, startMs);
             m_core.StopPlayback();
-            m_preview.Start(startMs);
+            StartFullPreview(startMs);
             sakura::ui::ToastManager::Instance().Show(
                 "▶ 试玩 (从 -2s 处) (ESC 退出)", sakura::ui::ToastType::Info);
             return;
         }
 
+        if(sc==SDL_SCANCODE_F8){m_core.StopPlayback();m_preview.Start(m_core.GetCurrentTimeMs());return;}
+
         // ESC → 返回主菜单
         if (sc == SDL_SCANCODE_ESCAPE)
         {
-            if (m_core.IsDirty()) DoSave();
-            m_manager.SwitchScene(
-                std::make_unique<SceneMenu>(m_manager),
-                TransitionType::SlideRight, 0.4f);
+            RequestExit();
             return;
         }
 
@@ -930,7 +1076,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         {
             const auto& info    = m_core.GetChartInfo();
             std::string newFile = info.folderPath + "/backup_" + m_core.GetDiffFile();
-            bool ok = m_core.SaveChartTo(newFile);
+            bool ok = m_core.SaveChartTo(newFile, false);
             if (ok)
                 sakura::ui::ToastManager::Instance().Show(
                     "备份已保存到: backup_" + m_core.GetDiffFile(),
@@ -1038,6 +1184,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
         // Ctrl+滚轮由 timeline 处理，但 Ctrl 单独按下时不做其他事
     }
 
+    if(m_btnProperties && m_btnProperties->HandleEvent(event))return;
     if (HandleOverviewAxisEvent(event))
         return;
 

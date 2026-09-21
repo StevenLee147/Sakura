@@ -158,6 +158,7 @@ public:
     // 当前颜色 / 设置 / 预设名称
     const ThemeColors&   Colors()   const { return m_colors;   }
     const ThemeSettings& Settings() const { return m_settings; }
+    ThemeSettings& Settings() { return m_settings; }
     const ThemeSpacing&  Spacing()  const { return m_spacing;  }
     const ThemeTypography& Typography() const { return m_typography; }
     const ThemeRadii&    Radii()    const { return m_radii;    }

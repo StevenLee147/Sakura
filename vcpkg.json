@@ -1,6 +1,6 @@
 {
     "name": "sakura",
-    "version-string": "0.5.5",
+    "version-string": "0.6.0",
     "description": "Sakura-樱 混合模式音乐节奏游戏",
     "dependencies": [
         {
@@ -9,7 +9,7 @@
         },
         {
             "name": "sdl3-image",
-            "features": ["png", "webp"],
+            "features": ["png", "jpeg", "webp"],
             "platform": "windows"
         },
         {
@@ -21,6 +21,10 @@
         "spdlog",
         {
             "name": "miniaudio",
+            "platform": "windows"
+        },
+        {
+            "name": "stb",
             "platform": "windows"
         }
     ],

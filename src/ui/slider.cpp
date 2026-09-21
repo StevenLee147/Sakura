@@ -164,7 +164,7 @@ void Slider::Render(sakura::core::Renderer& renderer)
     {
         renderer.DrawText(m_fontHandle, m_label,
                           m_bounds.x,
-                          trackCY,
+                          trackCY-renderer.MeasureText(m_fontHandle,"Ag",m_normFontSize).height*0.5f,
                           m_normFontSize,
                           m_labelColor,
                           sakura::core::TextAlign::Left);
@@ -197,7 +197,7 @@ void Slider::Render(sakura::core::Renderer& renderer)
         std::string valStr = FormatValue(m_value);
         renderer.DrawText(m_fontHandle, valStr,
                           trackX + trackW + m_bounds.width * 0.02f,
-                          trackCY,
+                          trackCY-renderer.MeasureText(m_fontHandle,"Ag",m_normFontSize).height*0.5f,
                           m_normFontSize,
                           m_labelColor,
                           sakura::core::TextAlign::Left);

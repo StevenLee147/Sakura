@@ -20,7 +20,10 @@ public:
     static void Shutdown();
 
 #if SAKURA_HAS_SPDLOG
-    static std::shared_ptr<spdlog::logger>& GetLogger() { return s_logger; }
+    static std::shared_ptr<spdlog::logger> GetLogger()
+    {
+        return s_logger ? s_logger : spdlog::default_logger();
+    }
 
 private:
     static std::shared_ptr<spdlog::logger> s_logger;

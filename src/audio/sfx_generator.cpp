@@ -1,4 +1,4 @@
-// sfx_generator.cpp — 合成占位音效 WAV 文件生成器
+// sfx_generator.cpp — 合成合成音效 WAV 文件生成器
 
 #include "sfx_generator.h"
 #include "utils/logger.h"
@@ -52,6 +52,10 @@ bool SfxGenerator::WriteWav(std::string_view path,
 
     int fadeStart = static_cast<int>(numSamples * (1.0f - fadeRatio));
 
+    uint32_t noiseState=static_cast<uint32_t>(frequency*79);
+    float phase=0;
+    const bool drum=path.find("drum")!=std::string_view::npos;
+    const bool soft=path.find("soft")!=std::string_view::npos;
     for (int i = 0; i < numSamples; ++i)
     {
         float t   = static_cast<float>(i) / SAMPLE_RATE;
@@ -65,13 +69,18 @@ bool SfxGenerator::WriteWav(std::string_view path,
             env *= (1.0f - fadeT);
         }
         // 首部短暂冲击包络（前 5ms）
-        int attackSamples = SAMPLE_RATE * 5 / 1000;
+        int attackSamples = SAMPLE_RATE / 2000;
         if (i < attackSamples)
         {
             env *= static_cast<float>(i) / static_cast<float>(attackSamples);
         }
 
-        float sample = env * std::sinf(kTwoPi * frequency * t);
+        noiseState=noiseState*1664525u+1013904223u;
+        const float noise=(static_cast<float>((noiseState>>16)&65535)/32767.5f-1);
+        phase+=kTwoPi*frequency*(drum?0.40f+0.85f*std::exp(-t*90):1.0f)/SAMPLE_RATE;
+        env*=std::exp(-t*(soft?45.0f:drum?65.0f:55.0f));
+        const float body=std::sin(phase)+(soft?0.04f:0.18f)*std::sin(phase*2.76f);
+        const float sample=env*(body*0.74f+noise*(drum?0.40f:0.20f)*std::exp(-t*280));
         samples[i] = static_cast<int16_t>(sample * 32767.0f);
     }
 
@@ -197,7 +206,7 @@ void SfxGenerator::GenerateDefaults(std::string_view basePath)
     WriteWav(ui + "calibration_beat.wav", 1760.0f, 35, 0.55f, 0.35f);
     WriteWav(ui + "calibration_hit.wav",  1320.0f, 25, 0.40f, 0.30f);
 
-    LOG_INFO("[SfxGenerator] 占位音效已生成至 {}", basePath);
+    LOG_INFO("[SfxGenerator] 合成音效已生成至 {}", basePath);
 }
 
 } // namespace sakura::audio

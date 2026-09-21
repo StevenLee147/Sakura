@@ -4,6 +4,8 @@
 #include "scene_settings.h"
 #include "audio/audio_manager.h"
 #include "core/config.h"
+#include "core/paths.h"
+#include "utils/file_io.h"
 #include "core/input.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -13,9 +15,28 @@
 #include <cmath>
 #include <numeric>
 #include <string>
+#include <filesystem>
 
 namespace sakura::scene
 {
+namespace {
+std::string MetronomeFile() {
+    const auto path=sakura::core::Paths::User("cache/calibration-v1.wav");
+    if(std::filesystem::exists(path))return path;
+    constexpr int rate=44100,samples=rate*60;
+    std::string wav;wav.reserve(44+samples*2);
+    auto u16=[&](uint16_t v){wav.push_back(static_cast<char>(v));wav.push_back(static_cast<char>(v>>8));};
+    auto u32=[&](uint32_t v){u16(static_cast<uint16_t>(v));u16(static_cast<uint16_t>(v>>16));};
+    wav+="RIFF";u32(36+samples*2);wav+="WAVEfmt ";u32(16);u16(1);u16(1);u32(rate);u32(rate*2);u16(2);u16(16);wav+="data";u32(samples*2);
+    for(int i=0;i<samples;++i){
+        const int beatSample=(i-rate)%(rate/2);
+        const double t=beatSample/static_cast<double>(rate);
+        const double click=i>=rate && beatSample<rate/30 ? std::sin(6.283185307*1200*t)*std::exp(-t*140)*0.65 : 0;
+        u16(static_cast<uint16_t>(static_cast<int16_t>(click*32767)));
+    }
+    return sakura::utils::AtomicWrite(path,wav)?path:"";
+}
+}
 
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
@@ -70,6 +91,7 @@ void SceneCalibration::OnEnter()
 
 void SceneCalibration::OnExit()
 {
+    sakura::audio::AudioManager::GetInstance().StopMusic();
     LOG_INFO("[SceneCalibration] 退出延迟校准");
 }
 
@@ -85,6 +107,13 @@ void SceneCalibration::Retry()
     m_hasResult      = false;
     m_resultAvg      = 0;
     m_resultStddev   = 0;
+    m_lastSampleBeat = -1;
+    if(m_btnApply)m_btnApply->SetEnabled(false);
+    auto& audio=sakura::audio::AudioManager::GetInstance();
+    audio.SetPlaybackSpeed(1);
+    const auto path=MetronomeFile();
+    m_audioReady=!path.empty()&&audio.PlayMusic(path);
+    if(!m_audioReady)sakura::ui::ToastManager::Instance().Show("无法播放校准节拍，请检查音频设备",sakura::ui::ToastType::Error,6);
 }
 
 // ── ComputeResult ─────────────────────────────────────────────────────────────
@@ -122,7 +151,9 @@ void SceneCalibration::ApplyResult()
 
     sakura::core::Config::GetInstance().Set(
         std::string(sakura::core::ConfigKeys::kAudioOffset), m_resultAvg);
-    sakura::core::Config::GetInstance().Save();
+    if(!sakura::core::Config::GetInstance().Save()){
+        sakura::ui::ToastManager::Instance().Show("偏移保存失败，请检查用户目录",sakura::ui::ToastType::Error);return;
+    }
 
     sakura::ui::ToastManager::Instance().Show(
         std::string("偏移已设置为 ") + std::to_string(m_resultAvg) + "ms",
@@ -139,30 +170,26 @@ void SceneCalibration::ApplyResult()
 
 void SceneCalibration::OnUpdate(float dt)
 {
-    m_totalTimeMs += dt * 1000.0f;
-    m_beatTimer   += dt;
+    auto& audio=sakura::audio::AudioManager::GetInstance();
+    m_totalTimeMs=static_cast<float>(audio.GetMusicPosition()*1000);
+    m_beatTimer=std::fmod(m_totalTimeMs/1000.0f,BEAT_INTERVAL);
     m_pulseAnim    = std::max(0.0f, m_pulseAnim - dt * 4.0f);
-
-    if (m_beatTimer >= BEAT_INTERVAL)
-    {
-        m_beatTimer = std::fmod(m_beatTimer, BEAT_INTERVAL);
-        m_lastBeatTimeMs = static_cast<int>(m_totalTimeMs);
-        m_pulseAnim      = 1.0f;
-        sakura::audio::AudioManager::GetInstance().PlayUISFX(
-            sakura::audio::UISFXType::CalibrationBeat);
-    }
+    const int beat=static_cast<int>(m_totalTimeMs/500)*500;
+    if(beat>=1000&&beat!=m_lastBeatTimeMs){m_lastBeatTimeMs=beat;m_pulseAnim=1;}
+    if(m_audioReady&&!m_hasResult&&!audio.IsPlaying()&&!audio.IsPaused())Retry();
 
     if (m_btnApply)  m_btnApply->Update(dt);
     if (m_btnRetry)  m_btnRetry->Update(dt);
     if (m_btnBack)   m_btnBack->Update(dt);
 
-    sakura::ui::ToastManager::Instance().Update(dt);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
 
 void SceneCalibration::OnEvent(const SDL_Event& event)
 {
+    if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST)sakura::audio::AudioManager::GetInstance().PauseMusic();
+    if(event.type==SDL_EVENT_WINDOW_FOCUS_GAINED)sakura::audio::AudioManager::GetInstance().ResumeMusic();
     if (m_btnApply) m_btnApply->HandleEvent(event);
     if (m_btnRetry) m_btnRetry->HandleEvent(event);
     if (m_btnBack)  m_btnBack->HandleEvent(event);
@@ -171,24 +198,18 @@ void SceneCalibration::OnEvent(const SDL_Event& event)
     {
         if (event.key.scancode == SDL_SCANCODE_SPACE)
         {
-            // 收集偏差
-            int hitTimeMs  = static_cast<int>(m_totalTimeMs);
-            int lastBeat   = m_lastBeatTimeMs;
-            int nextBeat   = m_lastBeatTimeMs + static_cast<int>(BEAT_INTERVAL * 1000.0f);
-
-            // 选择最近的节拍
-            int diffLast = hitTimeMs - lastBeat;
-            int diffNext = nextBeat  - hitTimeMs;
-            int diff     = (diffLast < diffNext) ? diffLast : -diffNext;
-
-            if (std::abs(diff) <= IGNORE_THRESH)
+            if(m_hasResult||!m_audioReady)return;
+            const auto now=SDL_GetTicksNS();
+            const int age=event.common.timestamp && event.common.timestamp<=now ? static_cast<int>(std::min<Uint64>((now-event.common.timestamp)/1000000,200)) : 0;
+            const int hitTimeMs=static_cast<int>(sakura::audio::AudioManager::GetInstance().GetMusicPosition()*1000)-age;
+            const int nearest=static_cast<int>(std::lround((hitTimeMs-1000)/500.0));
+            const int diff=hitTimeMs-(1000+nearest*500);
+            if (nearest>=4 && nearest!=m_lastSampleBeat && std::abs(diff) <= IGNORE_THRESH)
             {
+                m_lastSampleBeat=nearest;
                 m_samples.push_back(diff);
                 if (static_cast<int>(m_samples.size()) > MAX_SAMPLES)
                     m_samples.pop_front();
-
-                sakura::audio::AudioManager::GetInstance().PlayUISFX(
-                    sakura::audio::UISFXType::CalibrationHit);
 
                 if (static_cast<int>(m_samples.size()) >= MAX_SAMPLES)
                     ComputeResult();
@@ -221,9 +242,9 @@ void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
         0.5f, 0.06f, 0.045f, { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
 
     // 说明
-    renderer.DrawText(m_font, "音符触线且听到节拍时按下空格键",
+    renderer.DrawText(m_font, "跟随听到的节拍按空格，动画仅作参考",
         0.5f, 0.14f, 0.028f, { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_font, "收集 20 次后自动计算偏差",
+    renderer.DrawText(m_font, "先听 4 拍，再收集 20 次 · 请使用实际游玩的音频设备",
         0.5f, 0.18f, 0.024f, { 150, 150, 170, 160 }, sakura::core::TextAlign::Center);
 
     // 下落式校准动画（类似音游下落判定观察）
@@ -279,12 +300,12 @@ void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
             { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
         renderer.DrawText(m_font, stdStr, 0.5f, 0.66f, 0.026f,
             { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
-        renderer.DrawText(m_font, qualStr, 0.5f, 0.70f, 0.024f,
+        renderer.DrawText(m_font, qualStr, 0.5f, 0.805f, 0.024f,
             qualColor, sakura::core::TextAlign::Center);
     }
     else
     {
-        renderer.DrawText(m_font, "校准中...",
+        renderer.DrawText(m_font, !m_audioReady?"音频未就绪":m_totalTimeMs<2800?"先聆听节拍…":"校准中…",
             0.5f, 0.62f, 0.028f, { 160, 160, 180, 160 }, sakura::core::TextAlign::Center);
     }
 
@@ -294,7 +315,7 @@ void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
     if (m_btnBack)  m_btnBack->Render(renderer);
 
     // Toast
-    sakura::ui::ToastManager::Instance().Render(renderer, m_font, 0.024f);
+
 }
 
 } // namespace sakura::scene

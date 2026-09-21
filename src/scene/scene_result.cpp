@@ -4,6 +4,7 @@
 #include "scene_select.h"
 #include "scene_game.h"
 #include "core/resource_manager.h"
+#include "core/config.h"
 #include "audio/audio_manager.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
@@ -26,10 +27,11 @@ namespace sakura::scene
 
 SceneResult::SceneResult(SceneManager& mgr,
                          sakura::game::GameResult result,
-                         sakura::game::ChartInfo  chartInfo)
+                         sakura::game::ChartInfo  chartInfo, sakura::game::PlayOptions options)
     : m_manager(mgr)
     , m_result(std::move(result))
     , m_chartInfo(std::move(chartInfo))
+    , m_options(std::move(options))
 {
 }
 
@@ -48,7 +50,7 @@ void SceneResult::OnEnter()
 
     m_scoreTimer   = 0.0f;
     m_displayScore = 0;
-    m_resultPP     = sakura::game::PPCalculator::CalculatePP(m_result, m_result.difficultyLevel);
+    m_resultPP     = m_result.assisted ? 0 : sakura::game::PPCalculator::CalculatePP(m_result, m_result.difficultyLevel);
     m_elemTimer    = 0.0f;
 
     // 评级弹入动画复位
@@ -58,12 +60,12 @@ void SceneResult::OnEnter()
 
     // ── 按钮 ──────────────────────────────────────────────────────────────────
     m_btnRetry = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{0.27f, 0.935f, 0.18f, 0.048f},
-        "重玩", m_fontUI);
+        sakura::core::NormRect{0.77f, 0.913f, 0.19f, 0.054f},
+        "再次演奏 / R", m_fontUI, 0.024f);
 
     m_btnBack = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{0.55f, 0.935f, 0.18f, 0.048f},
-        "返回", m_fontUI);
+        sakura::core::NormRect{0.04f, 0.913f, 0.16f, 0.054f},
+        "返回曲库 / Enter", m_fontUI, 0.022f);
 
     sakura::ui::VisualStyle::ApplyButton(m_btnRetry.get(), sakura::ui::ButtonVariant::Primary);
     sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
@@ -73,7 +75,7 @@ void SceneResult::OnEnter()
         // 重新构造同一谱面的 SceneGame（使用与本局相同的难度）
         m_manager.SwitchScene(
             std::make_unique<SceneGame>(m_manager, m_chartInfo,
-                                        m_result.difficultyIndex),
+                                        m_result.difficultyIndex, m_options),
             sakura::scene::TransitionType::Fade, 0.4f);
     });
 
@@ -84,13 +86,31 @@ void SceneResult::OnEnter()
             sakura::scene::TransitionType::Fade, 0.4f);
     });
 
+    m_btnRetry->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnBack->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnReplay=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.57f,0.913f,0.18f,0.054f},"查看回放",m_fontUI,0.023f);
+    m_btnReplay->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnReplay->SetEnabled(!m_result.replayFile.empty() || m_options.mode==sakura::game::PlayMode::Replay);
+    m_btnReplay->SetOnClick([this]{auto options=m_options;options.mode=sakura::game::PlayMode::Replay;
+        if(!m_result.replayFile.empty())options.replayFile=m_result.replayFile;
+        m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_chartInfo,m_result.difficultyIndex,options));});
+    for(int error:m_result.hitErrors){++m_histogram[std::clamp((150-error)*41/301,0,40)];m_meanError+=error;}
+    if(!m_result.hitErrors.empty()){
+        m_meanError/=m_result.hitErrors.size();for(int error:m_result.hitErrors)m_deviation+=(error-m_meanError)*(error-m_meanError);
+        m_deviation=std::sqrt(m_deviation/m_result.hitErrors.size());
+    }
     // 停止可能残留的音乐
     sakura::audio::AudioManager::GetInstance().StopMusic();
 
     // ── 保存成绩到数据库 ──────────────────────────────────────────────────────
-    sakura::data::Database::GetInstance().SaveScore(m_result);
+    if (!m_result.assisted) {
+        auto& db=sakura::data::Database::GetInstance();const auto best=db.GetBestScore(m_result.chartId,m_result.difficulty,m_result.chartHash);
+        m_newBest=!best || m_result.score>best->score; m_scoreDelta=m_result.score-(best?best->score:0);
+        m_savedScore=db.SaveScore(m_result);
+        if(!m_savedScore)sakura::ui::ToastManager::Instance().Show("成绩未能保存，请检查数据目录和剩余空间",sakura::ui::ToastType::Error,6);
+    }
 
-    for (const auto& achievement : sakura::game::AchievementManager::GetInstance().CheckAndUnlock(m_result))
+    if (m_savedScore) for (const auto& achievement : sakura::game::AchievementManager::GetInstance().CheckAndUnlock(m_result))
     {
         sakura::ui::ToastManager::Instance().Show(
             "成就解锁: " + achievement.definition.title,
@@ -120,6 +140,7 @@ void SceneResult::OnExit()
 
 void SceneResult::OnUpdate(float dt)
 {
+    if(sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion",false))dt=10;
     m_elemTimer  += dt;
     m_scoreTimer += dt;
 
@@ -161,8 +182,9 @@ void SceneResult::OnUpdate(float dt)
 
     // 粒子更新
     m_particles.Update(dt);
-    sakura::ui::ToastManager::Instance().Update(dt);
 
+
+    if (m_btnReplay) m_btnReplay->Update(dt);
     if (m_btnRetry) m_btnRetry->Update(dt);
     if (m_btnBack)  m_btnBack ->Update(dt);
 }
@@ -210,239 +232,54 @@ const char* SceneResult::GradeText(sakura::game::Grade grade)
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
 
-void SceneResult::OnRender(sakura::core::Renderer& renderer)
+void SceneResult::OnRender(sakura::core::Renderer& r)
 {
-    sakura::ui::VisualStyle::DrawSceneBackground(renderer);
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.30f, 0.64f, 0.58f }, false, true);
-
-    // ── 元素 0：标题 "RESULT" ─────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(0);
-        renderer.DrawText(m_fontUI, "RESULT",
-                          0.50f, 0.04f, 0.04f,
-                          sakura::core::Color{200, 200, 255,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
+    using namespace sakura::core;
+    using sakura::ui::VisualStyle;
+    const Color pink{235,174,194,255},dim{160,169,191,255},white{242,235,241,255};
+    auto number=[](double value,int p){std::ostringstream s;s<<std::fixed<<std::setprecision(p)<<value;return s.str();};
+    VisualStyle::DrawSceneBackground(r);
+    r.DrawText(m_fontUI,"PERFORMANCE / 演奏记录",0.04f,0.045f,0.040f,white);
+    VisualStyle::DrawTextFit(r,m_fontUI,m_result.chartTitle+"   /   "+m_result.difficulty+"  Lv."+number(m_result.difficultyLevel,0),0.04f,0.108f,0.024f,0.75f,dim);
+    VisualStyle::DrawPanel(r,{0.04f,0.19f,0.40f,0.67f});
+    const auto grade=GradeColor(m_result.grade);
+    r.DrawCircleOutline(0.24f,0.378f,0.126f,grade.WithAlpha(45),0.001f,96);
+    r.DrawArc(0.24f,0.378f,0.136f,-90,-90+360*m_result.accuracy/100,grade.WithAlpha(175),0.003f,96);
+    r.DrawText(m_fontGrade,GradeText(m_result.grade),0.24f,0.283f,0.124f,grade,TextAlign::Center);
+    const std::string badge=m_result.isAllPerfect?"ALL PERFECT":m_result.isFullCombo?"FULL COMBO":"TRACK COMPLETE";
+    r.DrawText(m_fontUI,badge,0.24f,0.53f,0.019f,pink,TextAlign::Center);
+    r.DrawText(m_fontScore,std::to_string(m_displayScore),0.24f,0.568f,0.072f,white,TextAlign::Center);
+    r.DrawText(m_fontUI,"准确率",0.14f,0.686f,0.018f,dim,TextAlign::Center);
+    r.DrawText(m_fontUI,number(m_result.accuracy,2)+"%",0.14f,0.718f,0.034f,white,TextAlign::Center);
+    r.DrawText(m_fontUI,"最大连击",0.34f,0.686f,0.018f,dim,TextAlign::Center);
+    r.DrawText(m_fontUI,std::to_string(m_result.maxCombo)+"×",0.34f,0.718f,0.034f,white,TextAlign::Center);
+    const std::string status=m_result.assisted?"辅助演奏 · 不记录成绩与 PP":!m_savedScore?"保存失败 · 请检查存储空间":m_newBest?"NEW BEST  /  新纪录  +"+std::to_string(m_scoreDelta):"成绩已保存  /  "+number(m_resultPP,2)+" PP";
+    r.DrawText(m_fontUI,status,0.24f,0.805f,0.019f,pink,TextAlign::Center);
+    VisualStyle::DrawPanel(r,{0.47f,0.19f,0.49f,0.37f});
+    r.DrawText(m_fontUI,"JUDGMENTS / 判定",0.495f,0.21f,0.022f,white);
+    const char* labels[]={"PERFECT","GREAT","GOOD","BAD","MISS"};
+    const int counts[]={m_result.perfectCount,m_result.greatCount,m_result.goodCount,m_result.badCount,m_result.missCount};
+    const Color colors[]={{248,211,152,255},{142,209,225,255},{163,215,182,255},{235,166,136,255},{222,125,146,255}};
+    const int max=*std::max_element(std::begin(counts),std::end(counts));
+    for(int i=0;i<5;++i){float y=0.27f+i*0.052f;
+        r.DrawText(m_fontUI,labels[i],0.495f,y,0.019f,colors[i]);
+        r.DrawRoundedRect({0.59f,y+0.012f,0.265f,0.009f},0.004f,{66,64,86,100});
+        if(counts[i])r.DrawRoundedRect({0.59f,y+0.012f,0.265f*counts[i]/std::max(1,max),0.009f},0.004f,colors[i].WithAlpha(180));
+        r.DrawText(m_fontUI,std::to_string(counts[i]),0.93f,y,0.022f,white,TextAlign::Right);
     }
-
-    // ── 元素 1：评级大字（弹入缩放动画）────────────────────────────────────
-    {
-        float a     = ElemAlpha(1);
-        auto  col   = GradeColor(m_result.grade);
-        col.a       = static_cast<uint8_t>(a * 255);
-        // 使用 m_gradeScale 使字体大小随动画缩放，最小 0.01 防止 0 崩溃
-        float scaledSize = std::max(0.12f * m_gradeScale, 0.01f);
-        renderer.DrawText(m_fontGrade, GradeText(m_result.grade),
-                          0.50f, 0.11f, scaledSize, col,
-                          sakura::core::TextAlign::Center);
-
-        // 评级字母发光（SS/S 金色，A 绿色，其余白色）
-        if (a > 0.3f && m_gradeScale > 0.3f)
-        {
-            auto glowCol = GradeColor(m_result.grade);
-            glowCol.a = static_cast<uint8_t>(a * 120);
-            sakura::effects::GlowEffect::PulseGlow(
-                renderer,
-                0.50f, 0.175f,
-                0.04f * m_gradeScale,   // sizeMin
-                0.07f * m_gradeScale,   // sizeMax
-                glowCol,                // baseColor
-                m_gradeScaleTimer,      // phase
-                0.5f,                   // frequency
-                3);                     // layers
-        }
-    }
-
-    // ── 元素 2：FC / AP 标记 ──────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(2);
-        if (m_result.isAllPerfect)
-        {
-            renderer.DrawText(m_fontUI, "★ ALL PERFECT ★",
-                              0.50f, 0.27f, 0.025f,
-                              sakura::core::Color{255, 220, 50,
-                                  static_cast<uint8_t>(a * 255)},
-                              sakura::core::TextAlign::Center);
-        }
-        else if (m_result.isFullCombo)
-        {
-            renderer.DrawText(m_fontUI, "✦ FULL COMBO ✦",
-                              0.50f, 0.27f, 0.025f,
-                              sakura::core::Color{100, 220, 255,
-                                  static_cast<uint8_t>(a * 255)},
-                              sakura::core::TextAlign::Center);
-        }
-    }
-
-    // ── 元素 3：曲名 + 难度 ───────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(3);
-        std::string titleStr = m_result.chartTitle + "  [" + m_result.difficulty + "]";
-        renderer.DrawText(m_fontUI, titleStr,
-                          0.50f, 0.335f, 0.025f,
-                          sakura::core::Color{200, 180, 255,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-    }
-
-    // ── 元素 4：分数滚动数字 ──────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(4);
-        std::string scoreStr = std::to_string(m_displayScore);
-        // 补零到 7 位
-        while (scoreStr.size() < 7) scoreStr = "0" + scoreStr;
-        renderer.DrawText(m_fontScore, scoreStr,
-                          0.50f, 0.41f, 0.065f,
-                          sakura::core::Color{255, 255, 255,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-    }
-
-    // ── 元素 5：准确率 ────────────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(5);
-        std::ostringstream accSS;
-        accSS << std::fixed << std::setprecision(2) << m_result.accuracy << "%";
-        renderer.DrawText(m_fontUI, "准确率",
-                          0.28f, 0.53f, 0.022f,
-                          sakura::core::Color{160, 160, 200,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontUI, accSS.str(),
-                          0.28f, 0.555f, 0.030f,
-                          sakura::core::Color{255, 255, 255,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-    }
-
-    // ── 元素 6：本局 PP ──────────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(6);
-        std::ostringstream ppSS;
-        ppSS << std::fixed << std::setprecision(2) << m_resultPP << " PP";
-        renderer.DrawText(m_fontUI, "本局 PP",
-                          0.50f, 0.60f, 0.020f,
-                          sakura::core::Color{210, 190, 110,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontUI, ppSS.str(),
-                          0.50f, 0.625f, 0.028f,
-                          sakura::core::Color{255, 235, 150,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-    }
-
-    // ── 元素 7：最大连击 ──────────────────────────────────────────────────────
-    {
-        float a = ElemAlpha(7);
-        renderer.DrawText(m_fontUI, "最大连击",
-                          0.72f, 0.53f, 0.022f,
-                          sakura::core::Color{160, 160, 200,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontUI, std::to_string(m_result.maxCombo) + "x",
-                          0.72f, 0.555f, 0.030f,
-                          sakura::core::Color{255, 255, 255,
-                              static_cast<uint8_t>(a * 255)},
-                          sakura::core::TextAlign::Center);
-    }
-
-    // ── 元素 8：判定统计（5 行）─────────────────────────────────────────────
-    {
-        float a = ElemAlpha(8);
-        struct JudgeRow { const char* label; int count; sakura::core::Color color; };
-        JudgeRow rows[] =
-        {
-            { "Perfect", m_result.perfectCount, {255, 220,  80, 255} },
-            { "Great",   m_result.greatCount,   {100, 220, 255, 255} },
-            { "Good",    m_result.goodCount,    { 80, 200,  80, 255} },
-            { "Bad",     m_result.badCount,     {220, 120,  40, 255} },
-            { "Miss",    m_result.missCount,    {220,  60,  60, 255} },
-        };
-        for (int i = 0; i < 5; ++i)
-        {
-            float y = 0.62f + i * 0.038f;
-            auto  c = rows[i].color;
-            c.a = static_cast<uint8_t>(a * 255);
-            renderer.DrawText(m_fontUI, rows[i].label,
-                              0.38f, y, 0.022f, c, sakura::core::TextAlign::Right);
-            renderer.DrawText(m_fontUI, std::to_string(rows[i].count),
-                              0.62f, y, 0.022f, c, sakura::core::TextAlign::Left);
-        }
-    }
-
-    // ── 元素 9：偏差分布图（横轴 ±150 ms）─────────────────────────────────
-    {
-        float a = ElemAlpha(9);
-        if (a > 0.0f && !m_result.hitErrors.empty())
-        {
-            constexpr float CHART_CX = 0.50f;
-            constexpr float CHART_Y  = 0.845f;
-            constexpr float CHART_W  = 0.60f;
-            constexpr float CHART_H  = 0.04f;
-            constexpr float MAX_ERR  = 150.0f;
-
-            // 背景轨道
-            renderer.DrawFilledRect(
-                { CHART_CX - CHART_W * 0.5f, CHART_Y,
-                  CHART_W, CHART_H },
-                sakura::core::Color{40, 40, 70,
-                    static_cast<uint8_t>(a * 200)});
-
-            // 中心线（0 ms）
-            renderer.DrawLine(
-                CHART_CX, CHART_Y,
-                CHART_CX, CHART_Y + CHART_H,
-                sakura::core::Color{120, 120, 200,
-                    static_cast<uint8_t>(a * 180)},
-                0.0015f);
-
-            // 每个音符偏差点
-            for (int err : m_result.hitErrors)
-            {
-                float normX = static_cast<float>(err) / MAX_ERR * 0.5f;
-                normX = std::clamp(normX, -0.5f, 0.5f);
-                float px = CHART_CX + normX * CHART_W;
-                float col_t = std::abs(normX);
-                uint8_t r = static_cast<uint8_t>(80  + col_t * 175);
-                uint8_t g = static_cast<uint8_t>(200 - col_t * 140);
-                renderer.DrawCircleFilled(px,
-                                          CHART_Y + CHART_H * 0.5f,
-                                          0.003f,
-                                          sakura::core::Color{r, g, 100,
-                                              static_cast<uint8_t>(a * 200)},
-                                          16);
-            }
-
-            // 轴标签
-            renderer.DrawText(m_fontUI, "-150ms",
-                              CHART_CX - CHART_W * 0.5f - 0.01f,
-                              CHART_Y + CHART_H * 0.5f - 0.01f,
-                              0.016f,
-                              sakura::core::Color{150, 150, 180,
-                                  static_cast<uint8_t>(a * 200)},
-                              sakura::core::TextAlign::Right);
-            renderer.DrawText(m_fontUI, "+150ms",
-                              CHART_CX + CHART_W * 0.5f + 0.01f,
-                              CHART_Y + CHART_H * 0.5f - 0.01f,
-                              0.016f,
-                              sakura::core::Color{150, 150, 180,
-                                  static_cast<uint8_t>(a * 200)},
-                              sakura::core::TextAlign::Left);
-        }
-    }
-
-    // ── 元素 10：按钮 ─────────────────────────────────────────────────────────
-    if (ElemAlpha(10) > 0.0f)
-    {
-        if (m_btnRetry) m_btnRetry->Render(renderer);
-        if (m_btnBack)  m_btnBack ->Render(renderer);
-    }
-
-    // 粒子层（最上层渲染）
-    m_particles.Render(renderer);
-
-    sakura::ui::ToastManager::Instance().Render(renderer, m_fontUI, 0.022f);
+    VisualStyle::DrawPanel(r,{0.47f,0.59f,0.49f,0.27f});
+    r.DrawText(m_fontUI,"TIMING / 击打偏差",0.495f,0.612f,0.022f,white);
+    r.DrawText(m_fontUI,m_result.hitErrors.empty()?"没有有效击打数据":"平均 "+number(m_meanError,1)+" ms  /  标准差 "+number(m_deviation,1)+" ms",0.932f,0.623f,0.017f,dim,TextAlign::Right);
+    const int peak=std::max(1,*std::max_element(m_histogram.begin(),m_histogram.end()));
+    for(int i=0;i<41;++i){const float h=0.112f*m_histogram[40-i]/peak;const float x=0.503f+i*0.0104f;
+        r.DrawFilledRect({x,0.795f-h,0.0078f,h},std::abs(i-20)<=3?Color{243,210,158,225}:Color{154,187,211,190});}
+    r.DrawLine(0.501f,0.796f,0.931f,0.796f,{134,143,168,120},0.001f);
+    r.DrawLine(0.715f,0.675f,0.715f,0.80f,{221,201,213,75},0.001f);
+    r.DrawText(m_fontUI,"EARLY  +150 ms",0.50f,0.811f,0.015f,dim);
+    r.DrawText(m_fontUI,"0",0.715f,0.811f,0.015f,dim,TextAlign::Center);
+    r.DrawText(m_fontUI,"−150 ms  LATE",0.932f,0.811f,0.015f,dim,TextAlign::Right);
+    m_btnBack->Render(r);m_btnReplay->Render(r);m_btnRetry->Render(r);
+    m_particles.Render(r);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
@@ -451,7 +288,7 @@ void SceneResult::OnEvent(const SDL_Event& event)
 {
     // ESC → 返回选歌（与"返回"按钮相同行为）
     if (event.type == SDL_EVENT_KEY_DOWN &&
-        event.key.scancode == SDL_SCANCODE_ESCAPE)
+        (event.key.scancode == SDL_SCANCODE_ESCAPE || event.key.scancode == SDL_SCANCODE_RETURN))
     {
         m_manager.SwitchScene(
             std::make_unique<SceneSelect>(m_manager),
@@ -459,6 +296,8 @@ void SceneResult::OnEvent(const SDL_Event& event)
         return;
     }
 
+    if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_R){m_btnRetry->Activate();return;}
+    if(m_btnReplay)m_btnReplay->HandleEvent(event);
     if (m_btnRetry) m_btnRetry->HandleEvent(event);
     if (m_btnBack)  m_btnBack ->HandleEvent(event);
 }

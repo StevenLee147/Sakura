@@ -1,4 +1,6 @@
 #include "screen_shake.h"
+#include "core/config.h"
+#include "core/theme.h"
 
 #include <cmath>
 #include <random>
@@ -27,6 +29,9 @@ float ScreenShake::Noise(float t, float seed)
 
 void ScreenShake::Trigger(float intensity, float duration, float decay)
 {
+    const auto& cfg=sakura::core::Config::GetInstance();
+    if(!sakura::core::Theme::GetInstance().Settings().shakeEnabled || cfg.Get<bool>("graphics.reduced_motion",false)) return;
+    intensity *= cfg.Get<float>("graphics.effect_intensity",0.75f);
     // 如果已有更强震动，保留较强的
     if (intensity >= m_intensity || m_timer <= 0.0f)
     {
@@ -45,6 +50,7 @@ void ScreenShake::Trigger(float intensity, float duration, float decay)
 
 std::pair<float, float> ScreenShake::Update(float dt)
 {
+    if (!sakura::core::Theme::GetInstance().Settings().shakeEnabled || sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion",false)) Stop();
     if (m_timer <= 0.0f)
         return { 0.0f, 0.0f };
 

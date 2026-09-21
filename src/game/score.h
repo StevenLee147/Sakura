@@ -28,7 +28,7 @@ public:
     // 每次产生判定时调用
     // result: 判定结果
     // hitError: 偏差（毫秒，可选，用于偏差图）
-    void OnJudge(JudgeResult result, int hitError = 0);
+    void OnJudge(JudgeResult result, int hitError = 0, bool recordTiming = true);
 
     // ── 查询 ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,8 @@ public:
 
 private:
     int   m_totalNoteCount  = 0;
-    float m_baseScorePerNote = 0.0f;
+    double m_baseScorePerNote = 0.0;
+    double m_exactScore = 0.0;
 
     int   m_score          = 0;
     float m_accuracySum    = 0.0f;    // 加权准确率之和（未除以总数）

@@ -120,7 +120,7 @@ void Button::Render(sakura::core::Renderer& renderer)
     bgColor.a = static_cast<uint8_t>(bgColor.a * m_opacity);
 
     // 计算展开效果（如果宽度有弹性变化）
-    float hoverExp = sakura::utils::EaseOutCubic(m_hoverProgress) * 0.02f; // 横向最多膨胀 2%
+    float hoverExp = sakura::utils::EaseOutCubic(m_hoverProgress) * 0.002f; // 横向最多膨胀 2%
 
     // 计算缩放后的实际矩形
     float cx = m_bounds.x + m_bounds.width  * 0.5f;
@@ -155,7 +155,7 @@ void Button::Render(sakura::core::Renderer& renderer)
         textColor.a = static_cast<uint8_t>(textColor.a * m_opacity);
 
         float textX = cx;
-        float textY = cy - m_normFontSize * 0.5f;
+        float textY = cy - renderer.MeasureText(m_fontHandle,m_text,m_normFontSize).height * 0.5f;
         
         if (m_textAlign == sakura::core::TextAlign::Left) {
             textX = scaledRect.x + m_textPadding;

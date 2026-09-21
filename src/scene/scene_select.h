@@ -1,80 +1,55 @@
 #pragma once
-
-// scene_select.h — 选歌场景
-
 #include "scene.h"
 #include "scene_manager.h"
-#include "core/renderer.h"
-#include "core/resource_manager.h"
 #include "game/chart.h"
+#include "game/play_session.h"
 #include "ui/button.h"
-#include "ui/scroll_list.h"
-
+#include "ui/text_input.h"
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
 #include <vector>
 
-namespace sakura::scene
-{
-
-// SceneSelect — 选歌界面
-// 布局（归一化）：
-//   标题   "SELECT SONG"           (0.5, 0.04, 居中)
-//   左侧   ScrollList              (0.02, 0.10, 0.45, 0.80)
-//   右侧   详情面板                 (0.50, 0.10, 0.48, 0.80)
-//   底部   "返回" / "开始"按钮      y=0.93
-//
-//   歌曲预览：选中 0.5s 后播放 previewTime 位置音乐（淡入淡出）
-class SceneSelect final : public Scene
-{
+namespace sakura::scene {
+class SceneSelect final : public Scene {
 public:
-    explicit SceneSelect(SceneManager& mgr);
-
+    explicit SceneSelect(SceneManager& manager) : m_manager(manager) {}
+    sakura::game::PlayMode CurrentMode() const { return m_options.mode; }
     void OnEnter() override;
-    void OnExit()  override;
+    void OnExit() override;
     void OnUpdate(float dt) override;
     void OnRender(sakura::core::Renderer& renderer) override;
     void OnEvent(const SDL_Event& event) override;
-
 private:
     SceneManager& m_manager;
-
-    // 谱面列表（OnEnter 扫描填充）
     std::vector<sakura::game::ChartInfo> m_charts;
-    int m_selectedChart    = -1;  // 当前选中曲目下标
-    int m_selectedDifficulty = 0; // 当前选中难度下标
-
-    // UI 组件
-    std::unique_ptr<sakura::ui::ScrollList> m_songList;
-    std::unique_ptr<sakura::ui::Button>     m_btnBack;
-    std::unique_ptr<sakura::ui::Button>     m_btnStart;
-
-    // 难度选择按钮（最多 8 个）
-    static constexpr int MAX_DIFF_BUTTONS = 8;
-    std::vector<std::unique_ptr<sakura::ui::Button>> m_diffButtons;
-
-    // 字体
-    sakura::core::FontHandle m_fontUI    = sakura::core::INVALID_HANDLE;
-    sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
-
-    // 音乐预览
-    float m_previewTimer  = 0.0f;   // 选中后计时，超过 0.5s 开始预览
-    bool  m_previewPlaying = false;  // 当前是否正在预览
-    int   m_lastPreviewChart = -1;   // 上次预览的曲目，避免重复触发
-    static constexpr float PREVIEW_DELAY = 0.5f;
-
-    // 封面纹理（当前选中曲目）
-    sakura::core::TextureHandle m_coverTexture = sakura::core::INVALID_HANDLE;
-
-    // 内部工具
-    void SetupUI();
-    void RefreshDifficultyButtons();
-    void UpdateSongList();
-    void OnSongSelected(int index);
-    void StartPreview();
-    void StopPreview();
-    void RenderDetailPanel(sakura::core::Renderer& renderer);
-
-    std::string FormatListItem(const sakura::game::ChartInfo& info) const;
+    std::vector<int> m_visible;
+    std::set<std::string> m_favorites;
+    int m_selected = -1, m_difficulty = 0, m_scroll = 0, m_sort = 0;
+    bool m_onlyFavorites = false, m_rebuild = false;
+    float m_previewTimer = 0, m_time = 0;
+    bool m_previewPlaying = false;
+    sakura::core::FontHandle m_font = 0;
+    sakura::core::TextureHandle m_cover = 0;
+    std::optional<sakura::game::GameResult> m_best;
+    int m_noteCount = 0, m_chartEnd = 0;
+    sakura::game::PlayOptions m_options;
+    std::unique_ptr<sakura::ui::TextInput> m_search, m_startInput, m_endInput;
+    std::vector<std::unique_ptr<sakura::ui::Button>> m_buttons, m_detailButtons;
+    struct DialogState { std::mutex mutex; bool ready = false; std::string path; };
+    std::shared_ptr<DialogState> m_dialog = std::make_shared<DialogState>();
+    void Scan();
+    void Filter();
+    void Select(int index, int difficulty = -1);
+    void SelectRelative(int delta);
+    void BuildDetail();
+    void Start(sakura::game::PlayMode mode);
+    void ImportFolder();
+    void AcceptImport(const std::string& path);
+    void Favorite();
+    void Back();
+    std::unique_ptr<sakura::ui::Button> Button(sakura::core::NormRect rect, const std::string& label,
+        std::function<void()> action, bool primary = false);
 };
-
-} // namespace sakura::scene
+}

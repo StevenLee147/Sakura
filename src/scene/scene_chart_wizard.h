@@ -107,8 +107,8 @@ private:
         std::string filePath;
         std::string errorMessage;
     };
-    std::mutex m_pendingDialogMutex;
-    std::vector<PendingDialogResult> m_pendingDialogResults;
+    struct DialogMailbox { std::mutex mutex; std::vector<PendingDialogResult> results; };
+    std::shared_ptr<DialogMailbox> m_mailbox = std::make_shared<DialogMailbox>();
 };
 
 } // namespace sakura::scene

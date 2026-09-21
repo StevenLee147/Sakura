@@ -1,6 +1,8 @@
 // scene_chart_wizard.cpp — 新建谱面向导实现
 
 #include "scene_chart_wizard.h"
+#include "core/paths.h"
+#include "utils/file_io.h"
 #include "scene_menu.h"
 #include "scene_editor.h"
 #include "core/resource_manager.h"
@@ -81,7 +83,7 @@ void SceneChartWizard::SetupFields()
         "必填：BPM（如 120 或 120.5）",
         "可选：初始偏移（毫秒，如 0）",
         "必填：难度名称（如 Normal）",
-        "可选：点击右侧添加，选择音乐源文件",
+        "必填：点击右侧添加，选择音乐源文件",
         "可选：点击右侧添加，选择封面源文件",
         "可选：点击右侧添加，选择背景源文件",
         "自动生成（可修改输出目录）"
@@ -108,7 +110,7 @@ void SceneChartWizard::SetupFields()
         if (!title.empty())
         {
             std::string slug = Slugify(title);
-            m_fields[FIELD_OUTPUT_DIR]->SetText("resources/charts/" + slug);
+            m_fields[FIELD_OUTPUT_DIR]->SetText(sakura::core::Paths::User("charts/" + slug));
         }
     });
 }
@@ -217,7 +219,7 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
     constexpr float FIELD_Y0   = 0.175f;
     constexpr float FIELD_STEP = 0.068f;
 
-    bool required[FIELD_COUNT] = { true, false, true, false, true, false, false, false, false };
+    bool required[FIELD_COUNT] = { true, false, true, false, true, true, false, false, false };
 
     for (int i = 0; i < FIELD_COUNT; ++i)
     {
@@ -359,11 +361,12 @@ std::string SceneChartWizard::Slugify(const std::string& title)
     std::string result;
     for (unsigned char c : title)
     {
-        if (std::isalnum(c))
+        if (c >= 128) // Preserve UTF-8 titles instead of collapsing every CJK title to "chart".
+            result += static_cast<char>(c);
+        else if (std::isalnum(c))
             result += static_cast<char>(std::tolower(c));
         else if (std::isspace(c) || c == '-' || c == '_')
             result += '_';
-        // 多字节 UTF-8 字节跳过（不影响简单 ASCII）
     }
     if (result.empty()) result = "chart";
     return result;
@@ -398,8 +401,8 @@ bool SceneChartWizard::ValidateAndCreate()
     }
 
     float bpm = 120.0f;
-    try { bpm = std::stof(bpmStr); } catch (...) {}
-    if (bpm < 10.0f || bpm > 999.0f)
+    try { size_t used=0;bpm = std::stof(bpmStr,&used);if(used!=bpmStr.size())bpm=0; } catch (...) {bpm=0;}
+    if (!std::isfinite(bpm) || bpm < 10.0f || bpm > 999.0f)
     {
         ShowError("BPM 必须在 10~999 之间");
         FocusField(FIELD_BPM);
@@ -407,7 +410,7 @@ bool SceneChartWizard::ValidateAndCreate()
     }
 
     int offsetMs = 0;
-    try { offsetMs = std::stoi(offsetStr); } catch (...) {}
+    try { size_t used=0;offsetMs = std::stoi(offsetStr,&used);if(used!=offsetStr.size() || std::abs(static_cast<long long>(offsetMs))>60000)throw std::invalid_argument("offset"); } catch (...) {ShowError("偏移必须为 −60000 到 60000 的整数");return false;}
 
     if (diffName.empty())
     {
@@ -418,15 +421,23 @@ bool SceneChartWizard::ValidateAndCreate()
 
     if (outFolder.empty())
     {
-        outFolder = "resources/charts/" + Slugify(title);
+        outFolder = sakura::core::Paths::User("charts/" + Slugify(title));
     }
 
+    if(fs::exists(fs::path(outFolder)/"info.json")){ShowError("该目录已有谱面，请选择一个新目录");return false;}
+    if(musicSource.empty()){ShowError("请选择音乐文件");FocusField(FIELD_MUSIC_SRC);return false;}
     // 生成难度文件名
     std::string diffFile = Slugify(diffName) + ".json";
 
-    if (!CreateChartFiles(outFolder, title, artist, bpm, offsetMs, diffName,
-                          musicSource, coverSource, backgroundSource))
-        return false;
+    const fs::path staging=outFolder+".creating-"+std::to_string(SDL_GetTicksNS());
+    try{
+        if(fs::exists(outFolder)&&!fs::is_empty(outFolder)){ShowError("请选择空目录，避免覆盖已有文件");return false;}
+        if(!CreateChartFiles(staging.string(),title,artist,bpm,offsetMs,diffName,musicSource,coverSource,backgroundSource)){
+            std::error_code cleanup;fs::remove_all(staging,cleanup);return false;
+        }
+        if(fs::exists(outFolder))fs::remove(outFolder); // confirmed empty above
+        fs::rename(staging,outFolder);
+    }catch(const std::exception& e){std::error_code cleanup;fs::remove_all(staging,cleanup);ShowError(std::string("创建失败：")+e.what());return false;}
 
     sakura::ui::ToastManager::Instance().Show(
         "谱面已创建，正在打开编辑器...", sakura::ui::ToastType::Success);
@@ -508,14 +519,12 @@ bool SceneChartWizard::CreateChartFiles(const std::string& folderPath,
         info["difficulties"]     = json::array({ diff });
 
         std::string infoPath = folderPath + "/info.json";
-        std::ofstream f(infoPath);
-        if (!f.is_open())
+        if (!sakura::utils::AtomicWrite(infoPath,info.dump(2)))
         {
             ShowError("无法写入 info.json");
             return false;
         }
-        f << info.dump(4);
-        f.close();
+
         LOG_INFO("[SceneChartWizard] 写入 info.json: {}", infoPath);
     }
 
@@ -535,14 +544,12 @@ bool SceneChartWizard::CreateChartFiles(const std::string& folderPath,
         chart["mouse_notes"]     = json::array();
 
         std::string chartPath = folderPath + "/" + diffFile;
-        std::ofstream f(chartPath);
-        if (!f.is_open())
+        if (!sakura::utils::AtomicWrite(chartPath,chart.dump(2)))
         {
             ShowError("无法写入难度文件: " + diffFile);
             return false;
         }
-        f << chart.dump(4);
-        f.close();
+
         LOG_INFO("[SceneChartWizard] 写入难度文件: {}", chartPath);
     }
 
@@ -581,7 +588,7 @@ bool SceneChartWizard::CopyResourceToChartFolder(const std::string& sourcePath,
         outFileName = standardBaseName + ".png";
     else
         outFileName = standardBaseName + normalizeExtension("", defaultExtension);
-    if (sourcePath.empty()) return true;
+    if (sourcePath.empty()) {outFileName.clear();return true;}
 
     const auto* sourceUtf8 = reinterpret_cast<const char8_t*>(sourcePath.c_str());
     fs::path source = fs::path(std::u8string(sourceUtf8, sourceUtf8 + sourcePath.size()));
@@ -654,28 +661,28 @@ void SceneChartWizard::OpenResourceFileDialog(int fieldIndex)
 {
     struct DialogRequest
     {
-        SceneChartWizard* wizard = nullptr;
+        std::shared_ptr<DialogMailbox> mailbox;
         int field = -1;
     };
 
     auto req = std::make_unique<DialogRequest>();
-    req->wizard = this;
+    req->mailbox = m_mailbox;
     req->field  = fieldIndex;
     SDL_ClearError();
     SDL_ShowOpenFileDialog(
         [](void* userdata, const char* const* filelist, int)
         {
             std::unique_ptr<DialogRequest> holder(static_cast<DialogRequest*>(userdata));
-            if (!holder || !holder->wizard) return;
+            if (!holder) return;
+            std::lock_guard lock(holder->mailbox->mutex);
             if (!filelist)
             {
                 const char* err = SDL_GetError();
-                holder->wizard->QueueResourceFileError(
-                    std::string("打开文件选择器失败: ") + (err ? err : "未知错误"));
+                holder->mailbox->results.push_back({-1,"",std::string("打开文件选择器失败: ") + (err ? err : "未知错误")});
                 return;
             }
             if (filelist[0] == nullptr) return; // 用户主动取消，属于正常行为
-            holder->wizard->QueueResourceFileSelection(holder->field, filelist[0]);
+            holder->mailbox->results.push_back({holder->field,filelist[0],""});
         },
         req.release(),
         nullptr, nullptr, 0, nullptr, false);
@@ -686,23 +693,23 @@ void SceneChartWizard::OpenResourceFileDialog(int fieldIndex)
 
 void SceneChartWizard::QueueResourceFileSelection(int fieldIndex, const std::string& filePath)
 {
-    std::scoped_lock lock(m_pendingDialogMutex);
-    m_pendingDialogResults.push_back(PendingDialogResult{ fieldIndex, filePath, "" });
+    std::scoped_lock lock(m_mailbox->mutex);
+    m_mailbox->results.push_back(PendingDialogResult{ fieldIndex, filePath, "" });
 }
 
 void SceneChartWizard::QueueResourceFileError(const std::string& errorMsg)
 {
-    std::scoped_lock lock(m_pendingDialogMutex);
-    m_pendingDialogResults.push_back(PendingDialogResult{ -1, "", errorMsg });
+    std::scoped_lock lock(m_mailbox->mutex);
+    m_mailbox->results.push_back(PendingDialogResult{ -1, "", errorMsg });
 }
 
 void SceneChartWizard::ApplyPendingDialogResults()
 {
     std::vector<PendingDialogResult> pending;
     {
-        std::scoped_lock lock(m_pendingDialogMutex);
-        if (m_pendingDialogResults.empty()) return;
-        pending.swap(m_pendingDialogResults);
+        std::scoped_lock lock(m_mailbox->mutex);
+        if (m_mailbox->results.empty()) return;
+        pending.swap(m_mailbox->results);
     }
 
     for (const auto& item : pending)

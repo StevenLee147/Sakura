@@ -81,6 +81,7 @@ struct ChartData
 // GameResult — 一局游戏的完整结果，用于传递给结算界面和数据库
 struct GameResult
 {
+    std::string chartHash;
     std::string chartId;            // 谱面 ID
     std::string chartTitle;         // 曲目名称（显示用）
     std::string difficulty;         // 难度名称
@@ -104,6 +105,10 @@ struct GameResult
 
     long long playedAt   = 0;       // Unix 时间戳（秒）
     std::vector<int> hitErrors;     // 每个音符的判定偏差（毫秒）
+    int totalJudgments = 0;
+    bool assisted = false;         // demonstration / practice / replay never enter personal records
+    float playbackRate = 1.0f;
+    std::string replayFile;
 };
 
 } // namespace sakura::game

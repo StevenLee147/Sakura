@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS scores (
     is_full_combo    INTEGER NOT NULL DEFAULT 0,
     is_all_perfect   INTEGER NOT NULL DEFAULT 0,
     played_at        INTEGER NOT NULL DEFAULT 0,
-    hit_errors_json  TEXT    NOT NULL DEFAULT '[]'
+    hit_errors_json  TEXT    NOT NULL DEFAULT '[]',
+    chart_hash       TEXT    NOT NULL DEFAULT ''
 );
 )sql";
 
@@ -246,9 +247,23 @@ void Database::Shutdown()
 
 bool Database::CreateTables()
 {
-    return ExecSQL(SQL_CREATE_SCORES)
-        && ExecSQL(SQL_CREATE_STATISTICS)
-        && ExecSQL(SQL_CREATE_ACHIEVEMENTS);
+    sqlite3_stmt* statement=nullptr;
+    int version=0;bool existed=false;
+    if(sqlite3_prepare_v2(m_db,"PRAGMA user_version",-1,&statement,nullptr)==SQLITE_OK && sqlite3_step(statement)==SQLITE_ROW)version=sqlite3_column_int(statement,0);
+    sqlite3_finalize(statement);statement=nullptr;
+    if(sqlite3_prepare_v2(m_db,"SELECT 1 FROM sqlite_master WHERE type='table' AND name='scores'",-1,&statement,nullptr)==SQLITE_OK)existed=sqlite3_step(statement)==SQLITE_ROW;
+    sqlite3_finalize(statement);
+    if(version>3){LOG_ERROR("[Database] 存档来自更新版本，保持原样");return false;}
+    if(!ExecSQL("BEGIN IMMEDIATE"))return false;
+    bool ok=true;
+    if(version<2 && existed)ok=ExecSQL("ALTER TABLE scores RENAME TO legacy_scores_v1");
+    if(version==2 && existed)ok=ExecSQL("ALTER TABLE scores ADD COLUMN chart_hash TEXT NOT NULL DEFAULT ''");
+    ok=ok && ExecSQL(SQL_CREATE_SCORES) && ExecSQL(SQL_CREATE_STATISTICS) && ExecSQL(SQL_CREATE_ACHIEVEMENTS)
+        && ExecSQL("CREATE INDEX IF NOT EXISTS idx_scores_revision ON scores(chart_id,difficulty,chart_hash,score DESC)")
+        && ExecSQL("PRAGMA user_version=3");
+    if(ok)ok=ExecSQL("COMMIT");
+    if(!ok)ExecSQL("ROLLBACK");
+    return ok;
 }
 
 bool Database::ExecSQL(const char* sql) const
@@ -297,6 +312,7 @@ sakura::game::GameResult Database::RowToGameResult(sqlite3_stmt* stmt) const
     r.isAllPerfect   = sqlite3_column_int(stmt, COL_IS_AP) != 0;
     r.playedAt       = sqlite3_column_int64(stmt, COL_PLAYED_AT);
     r.hitErrors      = JsonToHitErrors(getStr(COL_HIT_ERRORS));
+    r.chartHash      = getStr(17);
 
     return r;
 }
@@ -305,8 +321,54 @@ sakura::game::GameResult Database::RowToGameResult(sqlite3_stmt* stmt) const
 // SaveScore
 // ═════════════════════════════════════════════════════════════════════════════
 
+bool Database::BackupTo(const std::string& path) const
+{
+    if (!m_db) return false;
+    sqlite3* destination = nullptr;
+    if (sqlite3_open(path.c_str(), &destination) != SQLITE_OK)
+    { if (destination) sqlite3_close(destination); return false; }
+    auto* backup = sqlite3_backup_init(destination, "main", m_db, "main");
+    const bool copied = backup && sqlite3_backup_step(backup, -1) == SQLITE_DONE;
+    const bool finished = backup && sqlite3_backup_finish(backup) == SQLITE_OK;
+    sqlite3_close(destination);
+    return copied && finished;
+}
+
+bool Database::RestoreFrom(const std::string& path)
+{
+    if (!m_db) return false;
+    sqlite3* source = nullptr;
+    if (sqlite3_open_v2(path.c_str(), &source, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
+    { if (source) sqlite3_close(source); return false; }
+    sqlite3_stmt* check = nullptr;
+    bool valid = sqlite3_prepare_v2(source, "PRAGMA quick_check", -1, &check, nullptr) == SQLITE_OK;
+    valid = valid && sqlite3_step(check) == SQLITE_ROW &&
+        std::string(reinterpret_cast<const char*>(sqlite3_column_text(check, 0))) == "ok";
+    if (check) sqlite3_finalize(check);
+    check = nullptr;
+    for(const char* query:{"SELECT chart_id,chart_title,difficulty,difficulty_level,score,accuracy,max_combo,grade,perfect_count,great_count,good_count,bad_count,miss_count,is_full_combo,is_all_perfect,played_at,hit_errors_json FROM scores LIMIT 0",
+        "SELECT key,value FROM statistics LIMIT 0","SELECT id,unlocked_at FROM achievements LIMIT 0"}){
+        if(sqlite3_prepare_v2(source,query,-1,&check,nullptr)!=SQLITE_OK)valid=false;
+        if(check)sqlite3_finalize(check);check=nullptr;
+    }
+    if (!valid) { sqlite3_close(source); return false; }
+    Database staged;
+    if(!staged.Initialize(":memory:")){sqlite3_close(source);return false;}
+    auto copy=[](sqlite3* destination,sqlite3* origin){
+        auto* backup=sqlite3_backup_init(destination,"main",origin,"main");
+        if(!backup)return false;
+        const bool copied=sqlite3_backup_step(backup,-1)==SQLITE_DONE;
+        const bool finished=sqlite3_backup_finish(backup)==SQLITE_OK;
+        return copied&&finished;
+    };
+    const bool stagedOk=copy(staged.m_db,source);
+    sqlite3_close(source);
+    return stagedOk && staged.CreateTables() && copy(m_db,staged.m_db);
+}
+
 bool Database::SaveScore(const sakura::game::GameResult& result)
 {
+    if (result.assisted) return false;
     if (!m_db)
     {
         LOG_WARN("[Database] SaveScore: 数据库未打开");
@@ -318,13 +380,15 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
             chart_id, chart_title, difficulty, difficulty_level,
             score, accuracy, max_combo, grade,
             perfect_count, great_count, good_count, bad_count, miss_count,
-            is_full_combo, is_all_perfect, played_at, hit_errors_json
-        ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?);
+            is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
+        ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?);
     )sql";
 
+    if(!ExecSQL("BEGIN IMMEDIATE"))return false;
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     {
+        ExecSQL("ROLLBACK");
         LOG_ERROR("[Database] SaveScore prepare 失败: {}", sqlite3_errmsg(m_db));
         return false;
     }
@@ -350,6 +414,7 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
     sqlite3_bind_int64(stmt, 16, playedAt);
     sqlite3_bind_text (stmt, 17, hitJson.c_str(),             -1, SQLITE_TRANSIENT);
 
+    sqlite3_bind_text(stmt, 18, result.chartHash.c_str(), -1, SQLITE_TRANSIENT);
     bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     if (!ok)
         LOG_ERROR("[Database] SaveScore step 失败: {}", sqlite3_errmsg(m_db));
@@ -359,10 +424,14 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
 
     sqlite3_finalize(stmt);
 
-    // 同步更新统计
-    IncrementStatistic("total_play_count",   1.0);
-    IncrementStatistic("total_play_time_seconds", result.playTimeSeconds);
+    // A failed insert must not increment play counts.
+    if (ok)
+    {
+        ok=IncrementStatistic("total_play_count", 1.0) && IncrementStatistic("total_play_time_seconds", result.playTimeSeconds);
+    }
 
+    if(ok)ok=ExecSQL("COMMIT");
+    if(!ok)ExecSQL("ROLLBACK");
     return ok;
 }
 
@@ -372,7 +441,7 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
 
 std::optional<sakura::game::GameResult> Database::GetBestScore(
     const std::string& chartId,
-    const std::string& difficulty) const
+    const std::string& difficulty, const std::string& chartHash) const
 {
     if (!m_db) return std::nullopt;
 
@@ -380,9 +449,9 @@ std::optional<sakura::game::GameResult> Database::GetBestScore(
         SELECT chart_id, chart_title, difficulty, difficulty_level,
                score, accuracy, max_combo, grade,
                perfect_count, great_count, good_count, bad_count, miss_count,
-               is_full_combo, is_all_perfect, played_at, hit_errors_json
+               is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
         FROM scores
-        WHERE chart_id = ? AND difficulty = ?
+        WHERE chart_id = ? AND difficulty = ? AND (? = '' OR chart_hash = ?)
         ORDER BY score DESC
         LIMIT 1;
     )sql";
@@ -397,6 +466,8 @@ std::optional<sakura::game::GameResult> Database::GetBestScore(
     sqlite3_bind_text(stmt, 1, chartId.c_str(),    -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, difficulty.c_str(), -1, SQLITE_TRANSIENT);
 
+    sqlite3_bind_text(stmt, 3, chartHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, chartHash.c_str(), -1, SQLITE_TRANSIENT);
     std::optional<sakura::game::GameResult> result;
     if (sqlite3_step(stmt) == SQLITE_ROW)
         result = RowToGameResult(stmt);
@@ -420,7 +491,7 @@ std::vector<sakura::game::GameResult> Database::GetTopScores(
         SELECT chart_id, chart_title, difficulty, difficulty_level,
                score, accuracy, max_combo, grade,
                perfect_count, great_count, good_count, bad_count, miss_count,
-               is_full_combo, is_all_perfect, played_at, hit_errors_json
+               is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
         FROM scores
         WHERE chart_id = ? AND difficulty = ?
         ORDER BY score DESC
@@ -458,7 +529,7 @@ std::vector<sakura::game::GameResult> Database::GetAllBestScores() const
         SELECT chart_id, chart_title, difficulty, difficulty_level,
                score, accuracy, max_combo, grade,
                perfect_count, great_count, good_count, bad_count, miss_count,
-               is_full_combo, is_all_perfect, played_at, hit_errors_json
+               is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
         FROM scores AS s1
         WHERE score = (
             SELECT MAX(score) FROM scores AS s2
@@ -738,7 +809,7 @@ std::vector<sakura::game::GameResult> Database::GetRecentScores(int limit) const
         SELECT chart_id, chart_title, difficulty, difficulty_level,
                score, accuracy, max_combo, grade,
                perfect_count, great_count, good_count, bad_count, miss_count,
-               is_full_combo, is_all_perfect, played_at, hit_errors_json
+               is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
         FROM scores
         ORDER BY played_at DESC, id DESC
         LIMIT ?;

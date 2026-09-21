@@ -13,6 +13,9 @@ class VisualStyle
 {
 public:
     static void DrawSceneBackground(sakura::core::Renderer& renderer);
+    static void DrawSakuraLandscape(sakura::core::Renderer& renderer, float time, float opacity = 1.0f);
+    static void DrawTextFit(sakura::core::Renderer& renderer, sakura::core::FontHandle font,
+        std::string_view text, float x, float y, float size, float width, sakura::core::Color color);
     static void DrawPlayfieldBackground(sakura::core::Renderer& renderer);
     static void DrawPanel(sakura::core::Renderer& renderer,
                           sakura::core::NormRect rect,

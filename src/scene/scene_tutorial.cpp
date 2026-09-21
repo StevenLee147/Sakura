@@ -48,6 +48,7 @@ void SceneTutorial::OnEnter()
     m_fontSmall = rm.GetDefaultFontHandle();
 
     m_lessons = sakura::game::BuildTutorialLessons();
+    for(int i=0;i<4;++i)m_laneKeys[i]=static_cast<SDL_Scancode>(sakura::core::Config::GetInstance().Get<int>("input.key_lane_"+std::to_string(i),m_laneKeys[i]));
     SetupPromptButtons();
 
     if (m_showFirstRunPrompt
@@ -201,9 +202,8 @@ int SceneTutorial::LaneFromScancode(SDL_Scancode scancode) const
 
 const char* SceneTutorial::LaneLabel(int lane) const
 {
-    static constexpr const char* kLabels[4] = { "A", "S", "D", "F" };
     if (lane < 0 || lane >= 4) return "?";
-    return kLabels[lane];
+    return SDL_GetScancodeName(m_laneKeys[lane]);
 }
 
 void SceneTutorial::OnUpdate(float dt)
@@ -773,7 +773,7 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
             return runtimeNote.note.type == sakura::game::NoteType::Slider;
         });
     renderer.DrawText(m_fontSmall,
-        hasSlider ? "Slide 节点容差：0.10" : "Circle 容差：0.10",
+        hasSlider ? "按住左键，跟随亮点滑动" : "接近圈与目标重合时点击",
         MOUSE_X, MOUSE_Y + MOUSE_H + 0.03f, 0.018f,
         { 175, 190, 215, 210 },
         sakura::core::TextAlign::Left);

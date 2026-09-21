@@ -1,395 +1,183 @@
 #include "scene_manager.h"
+#include "core/config.h"
 #include "utils/logger.h"
-#include "core/renderer.h"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace sakura::scene
 {
-
 SceneManager::SceneManager() = default;
+SceneManager::~SceneManager() { Clear(); }
 
-SceneManager::~SceneManager()
+void SceneManager::Clear()
 {
-    // 退出时逐层弹栈，调 OnExit
+    m_pendingScene.reset();
+    m_pendingIsPop = m_pendingIsPush = false;
+    m_isTransitioning = false;
     while (!m_sceneStack.empty())
     {
         m_sceneStack.back()->OnExit();
         m_sceneStack.pop_back();
     }
-
-    if (m_texFrom)
-    {
-        SDL_DestroyTexture(m_texFrom);
-        m_texFrom = nullptr;
-    }
-    if (m_texTo)
-    {
-        SDL_DestroyTexture(m_texTo);
-        m_texTo = nullptr;
-    }
+    if (m_texFrom) SDL_DestroyTexture(m_texFrom);
+    if (m_texTo) SDL_DestroyTexture(m_texTo);
+    m_texFrom = m_texTo = nullptr;
 }
-
-// ── 场景获取 ──────────────────────────────────────────────────────────────────
 
 Scene* SceneManager::GetCurrentScene() const
 {
-    if (m_sceneStack.empty()) return nullptr;
-    return m_sceneStack.back().get();
+    return m_sceneStack.empty() ? nullptr : m_sceneStack.back().get();
 }
 
-// ── 场景切换请求 ──────────────────────────────────────────────────────────────
-
-void SceneManager::SwitchScene(std::unique_ptr<Scene> newScene,
-                                TransitionType transition,
-                                float durationSec)
+void SceneManager::SwitchScene(std::unique_ptr<Scene> scene, TransitionType type, float duration)
 {
-    // 任何时候都可以请求切换，但等当前帧末尾才真正执行
-    m_pendingScene    = std::move(newScene);
-    m_pendingIsPush   = false;
-    m_pendingIsPop    = false;
-    m_transitionType  = transition;
-    m_transitionDuration = durationSec;
-    LOG_DEBUG("SceneManager::SwitchScene 已请求 (transition={})",
-        static_cast<int>(transition));
+    m_pendingScene = std::move(scene);
+    m_pendingIsPush = m_pendingIsPop = false;
+    m_transitionType = type;
+    m_transitionDuration = std::max(0.05f, duration);
 }
 
-void SceneManager::PushScene(std::unique_ptr<Scene> newScene,
-                              TransitionType transition,
-                              float durationSec)
+void SceneManager::PushScene(std::unique_ptr<Scene> scene, TransitionType type, float duration)
 {
-    m_pendingScene    = std::move(newScene);
-    m_pendingIsPush   = true;
-    m_pendingIsPop    = false;
-    m_transitionType  = transition;
-    m_transitionDuration = durationSec;
-    LOG_DEBUG("SceneManager::PushScene 已请求");
+    SwitchScene(std::move(scene), type, duration);
+    m_pendingIsPush = true;
 }
 
-void SceneManager::PopScene(TransitionType transition, float durationSec)
+void SceneManager::PopScene(TransitionType type, float duration)
 {
-    if (m_sceneStack.size() <= 1)
+    if (m_sceneStack.size() < 2) return;
+    m_pendingScene.reset();
+    m_pendingIsPop = true;
+    m_pendingIsPush = false;
+    m_transitionType = type;
+    m_transitionDuration = std::max(0.05f, duration);
+}
+
+void SceneManager::ApplyPendingSwitch()
+{
+    const bool pop = m_pendingIsPop;
+    const bool push = m_pendingIsPush;
+    auto next = std::move(m_pendingScene);
+    // Clear flags before callbacks, which may request a fallback scene on load failure.
+    m_pendingIsPop = m_pendingIsPush = false;
+    if (pop)
     {
-        LOG_WARN("SceneManager::PopScene: 栈中只剩一个场景，无法弹出");
+        m_sceneStack.back()->OnExit();
+        m_sceneStack.pop_back();
         return;
     }
-    m_pendingIsPop    = true;
-    m_pendingIsPush   = false;
-    m_pendingScene    = nullptr;
-    m_transitionType  = transition;
-    m_transitionDuration = durationSec;
-    LOG_DEBUG("SceneManager::PopScene 已请求");
+    if (!next) return;
+    if (!push)
+        while (!m_sceneStack.empty())
+        {
+            m_sceneStack.back()->OnExit();
+            m_sceneStack.pop_back();
+        }
+    m_sceneStack.push_back(std::move(next));
+    m_sceneStack.back()->OnEnter();
 }
-
-// ── 主循环委托 ────────────────────────────────────────────────────────────────
 
 void SceneManager::Update(float dt)
 {
     if (m_isTransitioning)
     {
         m_transitionTimer += dt;
-
-        if (m_transitionTimer >= m_transitionDuration)
+        if (!m_switched && m_transitionTimer >= m_transitionDuration * 0.5f)
         {
-            // 过渡结束——应用待切换场景
-            m_isTransitioning = false;
+            m_switched = true;
             ApplyPendingSwitch();
         }
-        else
-        {
-            // 过渡进行中，更新新场景（如果有）
-            if (!m_sceneStack.empty())
-            {
-                m_sceneStack.back()->OnUpdate(dt);
-            }
-            return;
-        }
+        if (m_transitionTimer < m_transitionDuration) return;
+        m_isTransitioning = false;
+        if (m_texFrom) SDL_DestroyTexture(m_texFrom);
+        m_texFrom = nullptr;
+        if(m_texTo)SDL_DestroyTexture(m_texTo);
+        m_texTo=nullptr;
     }
-
-    // 检查是否有待处理的场景切换（无过渡动画立即执行，有过渡则开始录制快照）
     if (m_pendingScene || m_pendingIsPop)
     {
-        if (m_transitionType == TransitionType::None)
-        {
-            // 无过渡：立即切换
-            float noTrans = 0.0f;
-            (void)noTrans;
+        if (m_transitionType == TransitionType::None || m_sceneStack.empty() ||
+            sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false))
             ApplyPendingSwitch();
-        }
         else
         {
-            // 开始过渡（需要在 Render 阶段录制快照纹理）
-            m_isTransitioning  = true;
-            m_transitionTimer  = 0.0f;
-            // 实际快照在 Render 中第一帧录制
+            m_isTransitioning = true;
+            m_switched = false;
+            m_transitionTimer = 0.0f;
         }
         return;
     }
-
-    // 正常更新
-    if (!m_sceneStack.empty())
-    {
-        m_sceneStack.back()->OnUpdate(dt);
-    }
-}
-
-void SceneManager::Render(sakura::core::Renderer& renderer)
-{
-    if (m_sceneStack.empty()) return;
-
-    if (m_isTransitioning)
-    {
-        RenderTransition(renderer);
-        return;
-    }
-
-    // 正常渲染（从栈底到栈顶，透明场景会显示下层内容）
-    for (auto& scene : m_sceneStack)
-    {
-        if (scene.get() == m_sceneStack.back().get() || scene->IsTransparent())
-        {
-            scene->OnRender(renderer);
-        }
-    }
+    if (auto* scene = GetCurrentScene()) scene->OnUpdate(dt);
 }
 
 void SceneManager::HandleEvent(const SDL_Event& event)
 {
-    if (m_isTransitioning) return;  // 过渡中忽略事件
-
-    if (!m_sceneStack.empty())
-    {
-        m_sceneStack.back()->OnEvent(event);
-    }
+    if (m_isTransitioning || m_pendingScene || m_pendingIsPop) return;
+    if (auto* scene = GetCurrentScene()) scene->OnEvent(event);
 }
 
-// ── 应用待切换场景 ────────────────────────────────────────────────────────────
-
-void SceneManager::ApplyPendingSwitch()
+void SceneManager::RenderStack(sakura::core::Renderer& renderer)
 {
-    if (m_pendingIsPop)
-    {
-        // 弹出栈顶
-        if (!m_sceneStack.empty())
-        {
-            m_sceneStack.back()->OnExit();
-            m_sceneStack.pop_back();
-        }
-        m_pendingIsPop = false;
-        // Pop 仅移除覆盖场景: 下层场景在 Push 时没有 OnExit, 不应再次触发 OnEnter。
-        LOG_DEBUG("SceneManager: 场景已弹出，栈深={}", m_sceneStack.size());
-        return;
-    }
-
-    if (!m_pendingScene) return;
-
-    if (m_pendingIsPush)
-    {
-        // 压入新场景（保留当前）
-        if (!m_sceneStack.empty())
-        {
-            // 当前场景不调 OnExit（只是被覆盖）
-        }
-        m_sceneStack.push_back(std::move(m_pendingScene));
-        m_sceneStack.back()->OnEnter();
-
-        m_pendingIsPush = false;
-        LOG_DEBUG("SceneManager: 场景已压栈，栈深={}", m_sceneStack.size());
-    }
-    else
-    {
-        // 替换当前（清空栈并放入新场景）
-        while (!m_sceneStack.empty())
-        {
-            m_sceneStack.back()->OnExit();
-            m_sceneStack.pop_back();
-        }
-        m_sceneStack.push_back(std::move(m_pendingScene));
-        m_sceneStack.back()->OnEnter();
-
-        LOG_DEBUG("SceneManager: 场景已切换，栈深={}", m_sceneStack.size());
-    }
-
-    // 清理离屏快照
-    if (m_texFrom)
-    {
-        SDL_DestroyTexture(m_texFrom);
-        m_texFrom = nullptr;
-    }
-    if (m_texTo)
-    {
-        SDL_DestroyTexture(m_texTo);
-        m_texTo = nullptr;
-    }
+    if (m_sceneStack.empty()) return;
+    size_t first = m_sceneStack.size() - 1;
+    while (first > 0 && m_sceneStack[first]->IsTransparent()) --first;
+    for (size_t i = first; i < m_sceneStack.size(); ++i) m_sceneStack[i]->OnRender(renderer);
 }
 
-// ── 过渡渲染 ──────────────────────────────────────────────────────────────────
+void SceneManager::Render(sakura::core::Renderer& renderer)
+{
+    if (m_isTransitioning) RenderTransition(renderer);
+    else RenderStack(renderer);
+}
 
 void SceneManager::RenderTransition(sakura::core::Renderer& renderer)
 {
-    SDL_Renderer* sdlRenderer = renderer.GetSDLRenderer();
-    const int sw = renderer.GetScreenWidth();
-    const int sh = renderer.GetScreenHeight();
-    const float t = std::clamp(m_transitionTimer / m_transitionDuration, 0.0f, 1.0f);
-
-    // 首帧：录制源场景快照
-    if (!m_texFrom && !m_sceneStack.empty())
-    {
-        // 在过渡中，当前栈顶还是"旧"场景（pending 尚未应用）
-        // 创建离屏纹理保存源快照
-        m_texFrom = SDL_CreateTexture(sdlRenderer,
-            SDL_PIXELFORMAT_RGBA8888,
-            SDL_TEXTUREACCESS_TARGET,
-            sw, sh);
-
-        if (m_texFrom)
-        {
-            SDL_SetRenderTarget(sdlRenderer, m_texFrom);
-            SDL_SetRenderDrawColor(sdlRenderer, 15, 15, 35, 255);
-            SDL_RenderClear(sdlRenderer);
-
-            // 渲染旧场景到快照
-            for (auto& scene : m_sceneStack)
-            {
-                scene->OnRender(renderer);
-            }
-
-            SDL_SetRenderTarget(sdlRenderer, nullptr);
+    auto* native=renderer.GetSDLRenderer();
+    const float width=static_cast<float>(renderer.GetScreenWidth()),height=static_cast<float>(renderer.GetScreenHeight());
+    const float t=std::clamp(m_transitionTimer/m_transitionDuration,0.0f,1.0f);
+    auto*& texture=m_switched?m_texTo:m_texFrom;
+    if(!texture){
+        texture=SDL_CreateTexture(native,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,static_cast<int>(width),static_cast<int>(height));
+        if(texture){
+            auto* previous=SDL_GetRenderTarget(native);
+            SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_BLEND);
+            if(SDL_SetRenderTarget(native,texture)){
+                SDL_SetRenderDrawColor(native,12,15,26,255);SDL_RenderClear(native);
+                RenderStack(renderer);renderer.Flush();SDL_SetRenderTarget(native,previous);
+            }else{SDL_DestroyTexture(texture);texture=nullptr;}
         }
     }
-
-    // 根据过渡类型渲染
-    switch (m_transitionType)
-    {
-        case TransitionType::Fade:
-        {
-            // 先画源场景（使用快照 texFrom）
-            if (m_texFrom)
-            {
-                SDL_SetTextureAlphaMod(m_texFrom, static_cast<uint8_t>((1.0f - t) * 255));
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, nullptr);
-            }
-            else
-            {
-                // 没有快照时直接渲染旧场景
-                for (auto& scene : m_sceneStack)
-                {
-                    scene->OnRender(renderer);
-                }
-            }
-
-            // 叠加一层逐渐加深的过渡遮罩
-            uint8_t alpha = static_cast<uint8_t>(t * 255);
-            SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, alpha);
-            SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
-            SDL_RenderFillRect(sdlRenderer, nullptr);
-            break;
+    if(!texture){RenderStack(renderer);return;}
+    const float progress=m_switched?std::clamp((t-0.5f)*2,0.0f,1.0f):std::clamp(t*2,0.0f,1.0f);
+    const float eased=progress*progress*(3-2*progress);
+    const float amount=m_switched?1-eased:eased;
+    SDL_SetRenderDrawColor(native,12,15,26,255);SDL_RenderClear(native);
+    SDL_FRect destination{0,0,width,height};
+    switch(m_transitionType){
+    case TransitionType::SlideLeft:destination.x=(m_switched?1:-1)*amount*width;break;
+    case TransitionType::SlideRight:destination.x=(m_switched?-1:1)*amount*width;break;
+    case TransitionType::SlideUp:destination.y=(m_switched?1:-1)*amount*height;break;
+    case TransitionType::SlideDown:destination.y=(m_switched?-1:1)*amount*height;break;
+    case TransitionType::Scale:
+        destination.w=width*(1-0.12f*amount);destination.h=height*(1-0.12f*amount);
+        destination.x=(width-destination.w)*0.5f;destination.y=(height-destination.h)*0.5f;
+        SDL_SetTextureAlphaMod(texture,static_cast<Uint8>((1-amount)*255));break;
+    case TransitionType::CircleWipe:{
+        constexpr int segments=96;SDL_Vertex vertices[segments+2];int indices[segments*3];
+        const float radius=std::sqrt(width*width+height*height)*0.51f*(1-amount);
+        vertices[0]={{width/2,height/2},{1,1,1,1},{0.5f,0.5f}};
+        for(int i=0;i<=segments;++i){
+            const float angle=i*6.283185307f/segments;
+            const float x=width/2+std::cos(angle)*radius,y=height/2+std::sin(angle)*radius;
+            vertices[i+1]={{x,y},{1,1,1,1},{x/width,y/height}};
+            if(i<segments){indices[i*3]=0;indices[i*3+1]=i+1;indices[i*3+2]=i+2;}
         }
-
-        case TransitionType::SlideLeft:
-        {
-            // 源场景向左滑出，目标场景从右滑入
-            if (m_texFrom)
-            {
-                float offsetX = -t * static_cast<float>(sw);
-                SDL_FRect srcDest = { offsetX, 0.0f, static_cast<float>(sw), static_cast<float>(sh) };
-                SDL_SetTextureAlphaMod(m_texFrom, 255);
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, &srcDest);
-            }
-
-            // 新场景从右側预渲染（简化：显示黑色占位 + 进度条）
-            float newX = static_cast<float>(sw) * (1.0f - t);
-            SDL_SetRenderDrawColor(sdlRenderer, 15, 15, 35, 255);
-            SDL_FRect newDest = { newX, 0.0f, static_cast<float>(sw), static_cast<float>(sh) };
-            SDL_RenderFillRect(sdlRenderer, &newDest);
-            break;
-        }
-
-        case TransitionType::SlideRight:
-        {
-            if (m_texFrom)
-            {
-                float offsetX = t * static_cast<float>(sw);
-                SDL_FRect srcDest = { offsetX, 0.0f, static_cast<float>(sw), static_cast<float>(sh) };
-                SDL_SetTextureAlphaMod(m_texFrom, 255);
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, &srcDest);
-            }
-            float newX = -(static_cast<float>(sw) * (1.0f - t));
-            SDL_SetRenderDrawColor(sdlRenderer, 15, 15, 35, 255);
-            SDL_FRect newDest = { newX, 0.0f, static_cast<float>(sw), static_cast<float>(sh) };
-            SDL_RenderFillRect(sdlRenderer, &newDest);
-            break;
-        }
-
-        case TransitionType::SlideUp:
-        {
-            if (m_texFrom)
-            {
-                float offsetY = -t * static_cast<float>(sh);
-                SDL_FRect srcDest = { 0.0f, offsetY, static_cast<float>(sw), static_cast<float>(sh) };
-                SDL_SetTextureAlphaMod(m_texFrom, 255);
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, &srcDest);
-            }
-            break;
-        }
-
-        case TransitionType::SlideDown:
-        {
-            if (m_texFrom)
-            {
-                float offsetY = t * static_cast<float>(sh);
-                SDL_FRect srcDest = { 0.0f, offsetY, static_cast<float>(sw), static_cast<float>(sh) };
-                SDL_SetTextureAlphaMod(m_texFrom, 255);
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, &srcDest);
-            }
-            break;
-        }
-
-        case TransitionType::Scale:
-        {
-            // 新场景从中心缩放出现
-            if (m_texFrom)
-            {
-                SDL_SetTextureAlphaMod(m_texFrom, static_cast<uint8_t>((1.0f - t) * 255));
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, nullptr);
-            }
-            // 叠加一层从中心扩展的矩形（简化 Scale 效果）
-            float scale     = t;
-            float cx        = static_cast<float>(sw) * 0.5f;
-            float cy        = static_cast<float>(sh) * 0.5f;
-            float halfW     = cx * scale;
-            float halfH     = cy * scale;
-            SDL_SetRenderDrawColor(sdlRenderer, 15, 15, 35, 255);
-            SDL_FRect scaleDest = { cx - halfW, cy - halfH, halfW * 2.0f, halfH * 2.0f };
-            SDL_RenderFillRect(sdlRenderer, &scaleDest);
-            break;
-        }
-
-        case TransitionType::CircleWipe:
-        {
-            // 简化圆形遮罩（用渐变遮罩替代）
-            if (m_texFrom)
-            {
-                SDL_SetTextureAlphaMod(m_texFrom, 255);
-                SDL_RenderTexture(sdlRenderer, m_texFrom, nullptr, nullptr);
-            }
-            // 叠加带透明度的遮罩
-            renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 1.0f },
-                sakura::core::Color(0, 0, 0, static_cast<uint8_t>(t * 200)));
-            break;
-        }
-
-        default:
-            // 未知类型：直接 Fade
-            {
-                uint8_t alpha = static_cast<uint8_t>(t * 255);
-                SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, alpha);
-                SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
-                SDL_RenderFillRect(sdlRenderer, nullptr);
-            }
-            break;
+        SDL_RenderGeometry(native,texture,vertices,segments+2,indices,segments*3);return;
     }
+    default:SDL_SetTextureAlphaMod(texture,static_cast<Uint8>((1-amount)*255));break;
+    }
+    SDL_RenderTexture(native,texture,nullptr,&destination);
+    SDL_SetTextureAlphaMod(texture,255);
 }
-
 } // namespace sakura::scene

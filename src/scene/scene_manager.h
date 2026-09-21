@@ -58,6 +58,7 @@ public:
 
     // 获取当前顶部场景（可能为 nullptr）
     Scene* GetCurrentScene() const;
+    void Clear();
 
 private:
     // 执行挂起的场景切换
@@ -65,6 +66,8 @@ private:
 
     // 过渡动画渲染
     void RenderTransition(sakura::core::Renderer& renderer);
+    void RenderStack(sakura::core::Renderer& renderer);
+    bool m_switched = false;
 
     // ── 场景栈 ────────────────────────────────────────────────────────────────
     std::vector<std::unique_ptr<Scene>> m_sceneStack;

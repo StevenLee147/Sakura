@@ -10,6 +10,7 @@
 #include <string_view>
 #include <array>
 #include <unordered_map>
+#include <vector>
 
 // 前向声明 miniaudio 类型（避免在头文件中包含大型单文件库）
 struct ma_engine;
@@ -67,7 +68,9 @@ public:
     // 播放音乐（path 相对于工作目录）
     // loops: -1 = 无限循环, 0 = 播放一次, n = 循环 n 次
     // startPositionSeconds: 起播位置（秒），在 ma_sound_start 前 seek，避免竞争
-    bool PlayMusic(const std::string& path, int loops = 0, double startPositionSeconds = 0.0);
+    bool PlayMusic(const std::string& path, int loops = 0, double startPositionSeconds = 0.0,
+                   bool startPaused = false);
+    void Update(float dt);
 
     // 使用已加载的 MusicHandle 播放（通过句柄反查原始路径）
     bool PlayMusicFromHandle(sakura::core::MusicHandle handle, int loops = 0);
@@ -118,7 +121,7 @@ public:
     // ── Hitsound 系统 ─────────────────────────────────────────────────────────
 
     // 加载 hitsound 集（从 resources/sound/sfx/{name}/ 读取）
-    // 若文件不存在，先调用 SfxGenerator 生成占位文件
+    // 若文件不存在，先调用 SfxGenerator 生成合成文件
     bool LoadHitsoundSet(std::string_view name);
 
     // 播放 hitsound（直接指定 HitsoundType）
@@ -149,6 +152,11 @@ private:
 
     ma_engine* m_engine    = nullptr;   // miniaudio 高层引擎
     ma_sound*  m_music     = nullptr;   // 当前背景音乐 sound 对象
+    ma_decoder* m_musicDecoder = nullptr;
+    std::vector<unsigned char> m_compressedMusic;
+    ma_sound* m_sfxGroup = nullptr;
+    std::unordered_map<std::string, std::array<ma_sound*, 4>> m_sfxCache;
+    void CacheSFX(const std::string& path);
     std::string m_musicPath;            // 当前音乐文件路径
 
     float m_masterVolume   = 1.0f;

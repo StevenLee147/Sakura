@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <string_view>
 #include <unordered_map>
 
@@ -222,7 +223,10 @@ public:
     int GetScreenHeight() const;
 
     // ── 原生访问器 ────────────────────────────────────────────────────────────
-    SDL_Renderer*  GetSDLRenderer() const { return m_renderer; }
+    SDL_Renderer* GetSDLRenderer() const { Flush(); return m_renderer; }
+    void Flush() const;
+    void ReleaseTextResources();
+    void DrawPetal(float cx, float cy, float size, float rotation, Color color);
 
     // 获取底层 GPU 设备（SDL 3.2+，可能为 nullptr）
     SDL_GPUDevice* GetGPUDevice()   const;
@@ -243,6 +247,7 @@ private:
                                               int pixelFontSize);
     void TrimTextCache();
     void ClearTextCache();
+    void QueueGeometry(const SDL_Vertex* vertices, int vertexCount, const int* indices, int indexCount);
 
     static constexpr std::size_t MAX_TEXT_CACHE_ENTRIES = 256;
 
@@ -250,6 +255,10 @@ private:
     SDL_Window*   m_window   = nullptr;
     std::unordered_map<std::string, TextCacheEntry> m_textCache;
     uint64_t m_textCacheUseCounter = 0;
+    std::unordered_map<uint64_t, TTF_Font*> m_sizedFonts;
+    mutable std::vector<SDL_Vertex> m_vertices;
+    mutable std::vector<int> m_indices;
+    int m_width = 0, m_height = 0;
 
     // 屏幕震动用 viewport 偏移（像素）
     int m_shakeOffsetX = 0;

@@ -62,6 +62,9 @@ bool Renderer::Initialize(SDL_Window* window)
         return false;
     }
 
+    SDL_GetCurrentRenderOutputSize(m_renderer, &m_width, &m_height);
+    m_vertices.reserve(16384);
+    m_indices.reserve(32768);
     // 启用 Alpha 混合
     SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
 
@@ -71,7 +74,7 @@ bool Renderer::Initialize(SDL_Window* window)
 
 void Renderer::Destroy()
 {
-    ClearTextCache();
+    ReleaseTextResources();
 
     if (m_renderer)
     {
@@ -82,13 +85,51 @@ void Renderer::Destroy()
     m_window = nullptr;
 }
 
+void Renderer::ReleaseTextResources()
+{
+    Flush();
+    ClearTextCache();
+    for (auto& [key, font] : m_sizedFonts) TTF_CloseFont(font);
+    m_sizedFonts.clear();
+}
+
+void Renderer::DrawPetal(float cx, float cy, float size, float rotation, Color color)
+{
+    constexpr int segments = 24;
+    SDL_Vertex vertices[segments + 2]{};
+    int indices[segments * 3]{};
+    const float scale = size * std::min(m_width, m_height);
+    const float c = std::cos(rotation), sn = std::sin(rotation);
+    vertices[0] = {{cx * m_width, cy * m_height}, color.ToSDLFColor(), {0,0}};
+    for (int i = 0; i <= segments; ++i)
+    {
+        const float a = static_cast<float>(i) / segments * 6.2831853f;
+        float x = std::cos(a), y = std::sin(a) * 0.52f;
+        if (i == 0 || i == segments) x = 0.72f; // characteristic split tip
+        vertices[i + 1] = {{cx * m_width + (x * c - y * sn) * scale,
+            cy * m_height + (x * sn + y * c) * scale}, color.ToSDLFColor(), {0,0}};
+        if (i < segments) { indices[i*3] = 0; indices[i*3+1] = i+1; indices[i*3+2] = i+2; }
+    }
+    QueueGeometry(vertices, segments + 2, indices, segments * 3);
+}
+
 void Renderer::BeginFrame()
 {
-    // SDL_Renderer 无需显式 BeginFrame，但我们保留此接口供扩展
+    int width = 0, height = 0;
+    SDL_GetCurrentRenderOutputSize(m_renderer, &width, &height);
+    if (width != m_width || height != m_height)
+    {
+        Flush();
+        ClearTextCache();
+        for (auto& [key, font] : m_sizedFonts) TTF_CloseFont(font);
+        m_sizedFonts.clear();
+        m_width = width; m_height = height;
+    }
 }
 
 void Renderer::EndFrame()
 {
+    Flush();
     // 渲染结束：重置 viewport 再提交
     SDL_SetRenderViewport(m_renderer, nullptr);
     SDL_RenderPresent(m_renderer);
@@ -108,6 +149,7 @@ void Renderer::ResetViewportShake()
 
 void Renderer::Clear(Color color)
 {
+    Flush();
     // 先重置 viewport 填充全屏背景
     SDL_SetRenderViewport(m_renderer, nullptr);
     SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
@@ -154,38 +196,18 @@ float Renderer::ToPixelH(float normH) const
 
 void Renderer::DrawFilledRect(NormRect rect, Color color)
 {
-    SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
-    SDL_FRect pixelRect = rect.ToPixel(GetScreenWidth(), GetScreenHeight());
-    SDL_RenderFillRect(m_renderer, &pixelRect);
+    if (color.a == 0 || rect.width <= 0 || rect.height <= 0) return;
+    DrawGradientRect(rect, color, color, color, color);
 }
 
 void Renderer::DrawRectOutline(NormRect rect, Color color, float normThickness)
 {
-    // 将外框拆解为四个填充矩形（上/下/左/右边框）
-    int sw = GetScreenWidth();
-    int sh = GetScreenHeight();
-
-    float pxX = rect.x      * sw;
-    float pxY = rect.y      * sh;
-    float pxW = rect.width  * sw;
-    float pxH = rect.height * sh;
-    float t   = normThickness * std::min(sw, sh);  // 边框粗细（像素）
-
-    SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
-
-    // 上边
-    SDL_FRect top    = { pxX,           pxY,           pxW,  t  };
-    // 下边
-    SDL_FRect bottom = { pxX,           pxY + pxH - t, pxW,  t  };
-    // 左边
-    SDL_FRect left   = { pxX,           pxY + t,       t,    pxH - 2*t };
-    // 右边
-    SDL_FRect right  = { pxX + pxW - t, pxY + t,       t,    pxH - 2*t };
-
-    SDL_RenderFillRect(m_renderer, &top);
-    SDL_RenderFillRect(m_renderer, &bottom);
-    SDL_RenderFillRect(m_renderer, &left);
-    SDL_RenderFillRect(m_renderer, &right);
+    const float px = normThickness * std::min(m_width, m_height);
+    const float tx = px / std::max(1, m_width), ty = px / std::max(1, m_height);
+    DrawFilledRect({rect.x, rect.y, rect.width, ty}, color);
+    DrawFilledRect({rect.x, rect.y + rect.height - ty, rect.width, ty}, color);
+    DrawFilledRect({rect.x, rect.y + ty, tx, rect.height - 2 * ty}, color);
+    DrawFilledRect({rect.x + rect.width - tx, rect.y + ty, tx, rect.height - 2 * ty}, color);
 }
 
 void Renderer::DrawGradientRect(NormRect rect, Color colorTopLeft, Color colorTopRight, Color colorBottomLeft, Color colorBottomRight)
@@ -213,7 +235,7 @@ void Renderer::DrawGradientRect(NormRect rect, Color colorTopLeft, Color colorTo
 
     int indices[6] = {0, 1, 2, 0, 2, 3};
 
-    SDL_RenderGeometry(m_renderer, nullptr, verts, 4, indices, 6);
+    QueueGeometry(verts, 4, indices, 6);
 }
 
 // ── 混合模式 ──────────────────────────────────────────────────────────────────
@@ -228,29 +250,31 @@ void Renderer::SetBlendMode(BlendMode mode)
         case BlendMode::Additive:  sdlMode = SDL_BLENDMODE_ADD;   break;
         case BlendMode::Multiply:  sdlMode = SDL_BLENDMODE_MUL;   break;
     }
+    Flush();
     SDL_SetRenderDrawBlendMode(m_renderer, sdlMode);
 }
 
 // ── 屏幕信息 ──────────────────────────────────────────────────────────────────
 
-int Renderer::GetScreenWidth() const
+int Renderer::GetScreenWidth() const { return m_width; }
+int Renderer::GetScreenHeight() const { return m_height; }
+
+void Renderer::Flush() const
 {
-    int w = 0, h = 0;
-    if (m_renderer)
-    {
-        SDL_GetCurrentRenderOutputSize(m_renderer, &w, &h);
-    }
-    return w;
+    if (m_renderer && !m_vertices.empty())
+        SDL_RenderGeometry(m_renderer, nullptr, m_vertices.data(), static_cast<int>(m_vertices.size()),
+            m_indices.data(), static_cast<int>(m_indices.size()));
+    m_vertices.clear();
+    m_indices.clear();
 }
 
-int Renderer::GetScreenHeight() const
+void Renderer::QueueGeometry(const SDL_Vertex* vertices, int vertexCount, const int* indices, int indexCount)
 {
-    int w = 0, h = 0;
-    if (m_renderer)
-    {
-        SDL_GetCurrentRenderOutputSize(m_renderer, &w, &h);
-    }
-    return h;
+    if (!m_renderer) return;
+    if (m_vertices.size() + vertexCount > 16000) Flush();
+    const int base = static_cast<int>(m_vertices.size());
+    m_vertices.insert(m_vertices.end(), vertices, vertices + vertexCount);
+    for (int i = 0; i < indexCount; ++i) m_indices.push_back(base + indices[i]);
 }
 
 SDL_GPUDevice* Renderer::GetGPUDevice() const
@@ -300,6 +324,7 @@ void Renderer::DrawText(FontHandle fontHandle,
     SDL_FRect dest = { pxX, pxY, entry->width, entry->height };
     SDL_SetTextureColorMod(entry->texture, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(entry->texture, color.a);
+    Flush();
     SDL_RenderTexture(m_renderer, entry->texture, nullptr, &dest);
     SDL_SetTextureColorMod(entry->texture, 255, 255, 255);
     SDL_SetTextureAlphaMod(entry->texture, 255);
@@ -318,34 +343,10 @@ TextMetrics Renderer::MeasureText(FontHandle fontHandle,
 {
     if (!m_renderer || text.empty()) return {};
 
-    TTF_Font* font = ResourceManager::GetInstance().GetFont(fontHandle);
-    if (!font) return {};
-
-    const float targetPixelSize = normFontSize * static_cast<float>(GetScreenHeight());
-    const float originalSize    = TTF_GetFontSize(font);
-
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, targetPixelSize);
-    }
-
-    int w = 0, h = 0;
-    std::string textStr(text);
-    TTF_GetStringSize(font, textStr.c_str(), 0, &w, &h);
-
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, originalSize);
-    }
-
-    const int screenW = GetScreenWidth();
-    const int screenH = GetScreenHeight();
-    if (screenW <= 0 || screenH <= 0) return {};
-
-    return {
-        static_cast<float>(w) / static_cast<float>(screenW),
-        static_cast<float>(h) / static_cast<float>(screenH)
-    };
+    const int pixelSize = std::max(1, static_cast<int>(std::lround(normFontSize * m_height)));
+    auto* entry = const_cast<Renderer*>(this)->GetOrCreateTextCacheEntry(fontHandle, text, pixelSize);
+    if (!entry || m_width <= 0 || m_height <= 0) return {};
+    return {entry->width / m_width, entry->height / m_height};
 }
 
 Renderer::TextCacheEntry* Renderer::GetOrCreateTextCacheEntry(FontHandle fontHandle,
@@ -368,28 +369,27 @@ Renderer::TextCacheEntry* Renderer::GetOrCreateTextCacheEntry(FontHandle fontHan
         return &it->second;
     }
 
-    TTF_Font* font = ResourceManager::GetInstance().GetFont(fontHandle);
-    if (!font)
+    const uint64_t fontKey = (static_cast<uint64_t>(fontHandle) << 32) | static_cast<uint32_t>(pixelFontSize);
+    TTF_Font* font = nullptr;
+    if (const auto cached = m_sizedFonts.find(fontKey); cached != m_sizedFonts.end()) font = cached->second;
+    else
     {
-        LOG_WARN("Renderer::DrawText: 无效 FontHandle {}", fontHandle);
-        return nullptr;
+        auto* base = ResourceManager::GetInstance().GetFont(fontHandle);
+        if (!base) return nullptr;
+        font = TTF_CopyFont(base);
+        if (!font) return nullptr;
+        TTF_SetFontSize(font, static_cast<float>(pixelFontSize));
+        // Bound font copies as well as textures; animated headings can use many sizes.
+        if (m_sizedFonts.size() >= 96)
+        {
+            TTF_CloseFont(m_sizedFonts.begin()->second);
+            m_sizedFonts.erase(m_sizedFonts.begin());
+        }
+        m_sizedFonts.emplace(fontKey, font);
     }
-
-    const float originalSize = TTF_GetFontSize(font);
-    const float targetPixelSize = static_cast<float>(pixelFontSize);
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, targetPixelSize);
-    }
-
-    SDL_Color white = { 255, 255, 255, 255 };
-    std::string textStr(text);
+    SDL_Color white = {255, 255, 255, 255};
+    const std::string textStr(text);
     SDL_Surface* surface = TTF_RenderText_Blended(font, textStr.c_str(), 0, white);
-
-    if (std::abs(targetPixelSize - originalSize) > 0.5f)
-    {
-        TTF_SetFontSize(font, originalSize);
-    }
 
     if (!surface)
     {
@@ -478,6 +478,7 @@ void Renderer::DrawSprite(TextureHandle texHandle,
     SDL_Texture* tex = ResourceManager::GetInstance().GetTexture(texHandle);
     if (!tex || !m_renderer) return;
 
+    Flush();
     SDL_FRect dstRect = dest.ToPixel(GetScreenWidth(), GetScreenHeight());
     SDL_SetTextureColorMod(tex, tint.r, tint.g, tint.b);
     SDL_SetTextureAlphaMod(tex, static_cast<uint8_t>(alpha * 255.0f));
@@ -517,6 +518,7 @@ void Renderer::DrawSpriteEx(TextureHandle texHandle,
         src.width  * texW,
         src.height * texH
     };
+    Flush();
     SDL_FRect dstRect = dest.ToPixel(GetScreenWidth(), GetScreenHeight());
 
     SDL_SetTextureColorMod(tex, tint.r, tint.g, tint.b);
@@ -590,16 +592,15 @@ void Renderer::DrawCircleFilled(float cx, float cy, float normRadius,
 
     const SDL_FColor fc = color.ToSDLFColor();
 
-    std::vector<SDL_Vertex> verts;
-    std::vector<int> indices;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear(); indices.clear();
     verts.reserve(static_cast<size_t>(segments + 2));
     indices.reserve(static_cast<size_t>(segments * 3));
 
     BuildCircleGeometry(pxCX, pxCY, pxR, segments, 0.0f, kPi * 2.0f, fc, verts, indices);
 
-    SDL_RenderGeometry(m_renderer, nullptr,
-        verts.data(), static_cast<int>(verts.size()),
-        indices.data(), static_cast<int>(indices.size()));
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
 }
 
 void Renderer::DrawCircleOutline(float cx, float cy, float normRadius,
@@ -619,8 +620,9 @@ void Renderer::DrawCircleOutline(float cx, float cy, float normRadius,
     const float innerR = pxR - pxThick * 0.5f;
 
     // 环形：外圈 & 内圈顶点，每段两个三角形
-    std::vector<SDL_Vertex> verts;
-    std::vector<int> indices;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear(); indices.clear();
     const int n = segments;
     verts.reserve(static_cast<size_t>((n + 1) * 2));
     indices.reserve(static_cast<size_t>(n * 6));
@@ -641,9 +643,7 @@ void Renderer::DrawCircleOutline(float cx, float cy, float normRadius,
         }
     }
 
-    SDL_RenderGeometry(m_renderer, nullptr,
-        verts.data(), static_cast<int>(verts.size()),
-        indices.data(), static_cast<int>(indices.size()));
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
 }
 
 void Renderer::DrawLine(float x1, float y1, float x2, float y2,
@@ -678,7 +678,7 @@ void Renderer::DrawLine(float x1, float y1, float x2, float y2,
     };
     int indices[] = { 0, 1, 2, 1, 3, 2 };
 
-    SDL_RenderGeometry(m_renderer, nullptr, verts, 4, indices, 6);
+    QueueGeometry(verts, 4, indices, 6);
 }
 
 void Renderer::DrawArc(float cx, float cy, float normRadius,
@@ -701,8 +701,9 @@ void Renderer::DrawArc(float cx, float cy, float normRadius,
 
     const SDL_FColor fc = color.ToSDLFColor();
 
-    std::vector<SDL_Vertex> verts;
-    std::vector<int> indices;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear(); indices.clear();
     verts.reserve(static_cast<size_t>((segments + 1) * 2));
     indices.reserve(static_cast<size_t>(segments * 6));
 
@@ -723,9 +724,7 @@ void Renderer::DrawArc(float cx, float cy, float normRadius,
         }
     }
 
-    SDL_RenderGeometry(m_renderer, nullptr,
-        verts.data(), static_cast<int>(verts.size()),
-        indices.data(), static_cast<int>(indices.size()));
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
 }
 
 void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
@@ -749,23 +748,21 @@ void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
     if (filled)
     {
         // 三个填充矩形（水平中间 + 上/下带圆角的矩形通过三角扇补全）
-        SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
-
         // 中心矩形（水平延展，高度 = pxH - 2r）
         SDL_FRect mid = { pxX, pxY + r, pxW, pxH - 2.0f * r };
-        SDL_RenderFillRect(m_renderer, &mid);
+        DrawFilledRect({mid.x / sw, mid.y / sh, mid.w / sw, mid.h / sh}, color);
         // 上/下横条（宽 = pxW - 2r，高 = r）
         SDL_FRect top = { pxX + r, pxY,              pxW - 2.0f * r, r };
         SDL_FRect bot = { pxX + r, pxY + pxH - r,   pxW - 2.0f * r, r };
-        SDL_RenderFillRect(m_renderer, &top);
-        SDL_RenderFillRect(m_renderer, &bot);
+        DrawFilledRect({top.x / sw, top.y / sh, top.w / sw, top.h / sh}, color);
+        DrawFilledRect({bot.x / sw, bot.y / sh, bot.w / sw, bot.h / sh}, color);
 
         // 四个角扇形
         struct CornerDef { float cx; float cy; float startDeg; };
         const CornerDef corners[4] = {
             { pxX + pxW - r, pxY + r,        -90.0f },   // 右上
             { pxX + r,       pxY + r,        -180.0f },  // 左上
-            { pxX + r,       pxY + pxH - r,   180.0f },  // 左下
+            { pxX + r,       pxY + pxH - r,    90.0f },  // 左下
             { pxX + pxW - r, pxY + pxH - r,    0.0f }    // 右下
         };
 
@@ -774,13 +771,12 @@ void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
             const float startRad = c.startDeg * kPi / 180.0f;
             const float endRad   = startRad + kPi * 0.5f;
 
-            std::vector<SDL_Vertex> verts;
-            std::vector<int> indices;
+            static thread_local std::vector<SDL_Vertex> verts;
+            static thread_local std::vector<int> indices;
+            verts.clear(); indices.clear();
             BuildCircleGeometry(c.cx, c.cy, r, cornerSegments,
                                 startRad, endRad, fc, verts, indices);
-            SDL_RenderGeometry(m_renderer, nullptr,
-                verts.data(), static_cast<int>(verts.size()),
-                indices.data(), static_cast<int>(indices.size()));
+            QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
         }
     }
     else

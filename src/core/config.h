@@ -125,6 +125,7 @@ public:
 
     // 直接获取 JSON 根节点（调试用）
     const nlohmann::json& GetRoot() const { return m_data; }
+    void Restore(const nlohmann::json& data) { m_data = data; ApplyDefaults(); m_dirty = true; }
 
 private:
     Config() = default;

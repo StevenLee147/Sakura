@@ -58,7 +58,7 @@ void ScenePause::OnEnter()
             std::make_unique<SceneGame>(
                 m_manager,
                 m_gameState.GetChartInfo(),
-                m_gameState.GetDifficultyIndex()),
+                m_gameState.GetDifficultyIndex(), m_gameState.GetOptions()),
             sakura::scene::TransitionType::Fade, 0.3f);
     });
     m_btnBack->SetOnClick([this]()
@@ -87,9 +87,9 @@ void ScenePause::Resume()
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
 
-void ScenePause::OnUpdate(float /*dt*/)
+void ScenePause::OnUpdate(float dt)
 {
-    // 无动画
+    m_btnResume->Update(dt);m_btnRestart->Update(dt);m_btnBack->Update(dt);
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
@@ -100,6 +100,7 @@ void ScenePause::OnRender(sakura::core::Renderer& renderer)
     sakura::ui::VisualStyle::DrawScrim(renderer, 0.62f);
 
     // 暂停时额外晕影强化沉浸感
+    renderer.Flush();
     sakura::effects::ShaderManager::GetInstance().DrawVignette(0.35f);
 
     sakura::ui::VisualStyle::DrawPanel(renderer, {0.30f, 0.25f, 0.40f, 0.50f}, true, true);
@@ -110,6 +111,7 @@ void ScenePause::OnRender(sakura::core::Renderer& renderer)
                       sakura::core::Color{255, 255, 255, 255},
                       sakura::core::TextAlign::Center);
 
+    renderer.DrawText(m_fontUI,"放松一下。继续后将倒数三秒。",0.5f,0.375f,0.019f,{170,177,199,255},sakura::core::TextAlign::Center);
     // ── 按钮 ─────────────────────────────────────────────────────────────────
     m_btnResume ->Render(renderer);
     m_btnRestart->Render(renderer);

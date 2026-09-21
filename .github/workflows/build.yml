@@ -31,7 +31,7 @@ jobs:
             configure_preset: "release"
             build_preset:     "release"
             artifact_suffix:  "release"
-            run_tests:        false
+            run_tests:        true
 
     steps:
       - name: Checkout
@@ -66,9 +66,9 @@ jobs:
         if: matrix.config.run_tests
         shell: pwsh
         run: |
-          $binDir = "build/${{ matrix.config.artifact_suffix }}/Debug"
+          $config = if ("${{ matrix.config.artifact_suffix }}" -eq "debug") { "Debug" } else { "Release" }
           ctest --test-dir "build/${{ matrix.config.artifact_suffix }}" `
-                --build-config Debug `
+                --build-config $config `
                 --output-on-failure `
                 --no-tests=error `
                 --timeout 60
@@ -85,32 +85,18 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-          $exePath = "$buildDir/Sakura.exe"
-          if (Test-Path $exePath) {
-            Copy-Item $exePath $outDir
-          } else {
-            Get-ChildItem -Recurse "build/$preset" -Filter "*.exe" | ForEach-Object {
-              Copy-Item $_.FullName $outDir
-            }
-          }
-
-          $vcpkgBin = "build/$preset/vcpkg_installed/x64-windows/bin"
-          if (Test-Path $vcpkgBin) {
-            Copy-Item "$vcpkgBin/*.dll" $outDir -ErrorAction SilentlyContinue
-          }
-          if ($preset -eq "debug") {
-            $dbgBin = "build/$preset/vcpkg_installed/x64-windows/debug/bin"
-            if (Test-Path $dbgBin) {
-              Copy-Item "$dbgBin/*.dll" $outDir -ErrorAction SilentlyContinue
-            }
-          }
-          if (Test-Path "resources") {
-            Copy-Item "resources" "$outDir/resources" -Recurse -ErrorAction SilentlyContinue
-          }
-
-          # 打包成 zip（供 Release job 使用）
           if ($preset -eq "release") {
-            Compress-Archive -Path "$outDir/*" -DestinationPath "artifacts/Sakura-win64.zip" -Force
+            python scripts/package_release.py --build-dir "build/$preset" --output-dir artifacts/package
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $package = Get-ChildItem artifacts/package -Directory | Select-Object -First 1
+            Copy-Item "$($package.FullName)/*" $outDir -Recurse
+            $archive = Get-ChildItem artifacts/package -Filter '*.zip' | Select-Object -First 1
+            Copy-Item $archive.FullName artifacts/Sakura-win64.zip
+          } else {
+            Copy-Item "$buildDir/Sakura.exe" $outDir
+            Copy-Item "$buildDir/*.dll" $outDir
+            Copy-Item "$buildDir/resources" "$outDir/resources" -Recurse
+            Copy-Item "$buildDir/config" "$outDir/config" -Recurse
           }
 
       - name: Upload artifact

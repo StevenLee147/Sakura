@@ -96,6 +96,7 @@ private:
     ShaderManager() = default;
 
     SDL_Renderer* m_renderer  = nullptr;
+    SDL_Texture*  m_previousTarget = nullptr;
     SDL_Texture*  m_offscreen = nullptr;   // 全屏 offscreen 缓冲
     int           m_width     = 0;
     int           m_height    = 0;

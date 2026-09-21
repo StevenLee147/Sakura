@@ -1,104 +1,47 @@
-# Sakura-樱 依赖库清单
+# Sakura 依赖与构建
 
-> 所有依赖通过 vcpkg manifest mode 管理（`vcpkg.json`）
+以 `vcpkg.json` 和其中固定的 baseline 为准。当前桌面发行目标是 Windows x64，编译标准 C++20。
 
----
+| 组件 | 实际用途 |
+|---|---|
+| SDL3 | 窗口、输入、文件选择器、GPU renderer、2D 绘图与呈现 |
+| SDL3_image，png/jpeg/webp features | PNG、JPEG、WebP、BMP 图片读取与 PNG 保存 |
+| SDL3_ttf / FreeType | Noto Sans SC 字体渲染 |
+| miniaudio | 播放时钟、WAV/MP3/FLAC 解码、混音、音量、变速、跳转 |
+| stb_vorbis | miniaudio 的 OGG Vorbis 解码支持 |
+| nlohmann/json | 谱面、设置、回放、备份元信息 |
+| SQLite3 | 本地成绩、统计与成就；当前数据库 schema 3 |
+| spdlog / fmt | 日志与格式化 |
 
-## 核心依赖
+运行时优先使用 SDL 的 `gpu` renderer，失败时由 SDL 选择可用后端。后处理使用渲染目标、纹理和几何绘图；当前发行不依赖外部 SPIR-V 文件。音频使用 miniaudio，未使用 SDL_mixer。当前离线功能不依赖 SDL_net。
 
-| 库名 | vcpkg 包名 | 版本要求 | 用途 | 许可证 |
-|------|-----------|----------|------|--------|
-| **SDL3** | `sdl3` | ≥ 3.2.0 | 窗口管理、事件处理、输入、GPU API | Zlib |
-| **SDL3_image** | `sdl3-image` | ≥ 3.2.0 | 图片加载（PNG/JPG/WebP） | Zlib |
-| **SDL3_ttf** | `sdl3-ttf` | ≥ 3.2.0 | TrueType/OpenType 字体渲染 | Zlib |
-| **SDL3_mixer** | `sdl3-mixer` | ≥ 3.2.0 | 音频混合播放（WAV/FLAC/OGG/MP3） | Zlib |
-| **SDL3_net** | `sdl3-net` | ≥ 3.0.0 | 网络通信（后期在线功能） | Zlib |
-| **nlohmann/json** | `nlohmann-json` | ≥ 3.11.0 | JSON 解析/序列化（配置、谱面数据） | MIT |
-| **SQLite3** | `sqlite3` | ≥ 3.45.0 | 本地数据库（成绩、设置、成就） | Public Domain |
-| **spdlog** | `spdlog` | ≥ 1.13.0 | 高性能日志框架 | MIT |
+WAV/MP3/FLAC 使用文件流播放；OGG Vorbis 保留压缩数据并使用可跳转的内存解码器，避免 callback decoder 无法返回时长的问题。OGG 单文件限制 256 MiB，频谱分析使用独立解码游标。变速同时影响音高。
 
----
+## Windows 开发
 
-## SDL3 GPU API 说明
-
-SDL3 新增了跨后端 GPU 抽象层，会根据系统自动选择最佳后端：
-- **Windows**: 优先 Vulkan，回退 D3D12 → D3D11
-- 不需要单独安装 Vulkan SDK（SDL3 内部处理）
-- Shader 使用 SDL3 内置的跨后端 Shader 编译方案
-
----
-
-## SDL3_mixer 音频格式支持
-
-SDL3_mixer 通过内置和可选的后端支持多种格式：
-
-| 格式 | 支持方式 | 备注 |
-|------|----------|------|
-| WAV | 内置 | 无损无压缩，精确同步首选 |
-| FLAC | 内置 | 无损压缩 |
-| OGG Vorbis | 内置 (libvorbis) | 推荐的有损压缩格式 |
-| MP3 | 内置 | 兼容性好 |
-| Opus | 可选 (libopus) | 新一代编解码器 |
-
----
-
-## 字体资源
-
-| 字体 | 来源 | 许可证 | 用途 |
-|------|------|--------|------|
-| **Noto Sans CJK** | Google Fonts | OFL 1.1 | 主要UI字体，完整CJK支持 |
-
-- 下载地址：https://fonts.google.com/noto/specimen/Noto+Sans+SC
-- 建议使用 `NotoSansSC-Regular.ttf` 和 `NotoSansSC-Bold.ttf`
-- 嵌入到 `resources/fonts/` 目录
-
----
-
-## 构建工具链
-
-| 工具 | 版本要求 | 用途 |
-|------|----------|------|
-| **MSVC** | VS 2022 Build Tools (v143) | C++20 编译器 |
-| **CMake** | ≥ 3.25 | 构建系统 |
-| **Ninja** | 最新 | CMake 生成器（推荐） |
-| **vcpkg** | 最新 | C++ 包管理器 |
-| **Git** | 最新 | 版本控制 |
-
----
-
-## VS Code 推荐扩展
-
-| 扩展 | ID | 用途 |
-|------|-----|------|
-| C/C++ | `ms-vscode.cpptools` | IntelliSense、调试 |
-| CMake Tools | `ms-vscode.cmake-tools` | CMake 集成 |
-| CMake Language Support | `twxs.cmake` | CMake 语法高亮 |
-| GitHub Copilot | `github.copilot` | AI 编程助手 |
-
----
-
-## vcpkg 安装步骤
+安装 Visual Studio 2022 / Build Tools（v143，含 Windows SDK）、CMake 3.25+、Git 和 vcpkg。
 
 ```powershell
-# 1. 安装 vcpkg（如果尚未安装）
-git clone https://github.com/microsoft/vcpkg.git
-cd vcpkg
-.\bootstrap-vcpkg.bat
-
-# 2. 设置环境变量
-[System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", "C:\path\to\vcpkg", "User")
-
-# 3. 在项目目录中，CMake 会自动读取 vcpkg.json 并安装依赖
-cmake --preset debug
-cmake --build --preset debug
+$env:VCPKG_ROOT = 'C:\path\to\vcpkg'
+cmake --preset debug -DSAKURA_BUILD_TESTS=ON
+cmake --build --preset debug --parallel
+ctest --test-dir build/debug -C Debug --output-on-failure
 ```
 
----
+Release 对应 `release` preset。Visual Studio 生成器支持在同一个构建目录中生成多个配置：`cmake --build build/debug --config Release`。
 
-## 注意事项
+## 逻辑测试
 
-1. **SDL3 状态**：SDL3 于 2025 年正式发布稳定版。vcpkg 中已有 SDL3 及其子库的 port。
-2. **GPU API Shader**：SDL3 GPU API 使用平台无关的 Shader 格式，通过 `SDL_CreateGPUShader` 加载。开发时可用 HLSL/GLSL 编写，通过 SDL 工具编译。
-3. **SQLite3**：vcpkg 中的包名为 `sqlite3`，CMake target 为 `unofficial::sqlite3::sqlite3`。
-4. **spdlog**：默认 header-only 模式。如需编译模式，在 vcpkg triplet 中配置。
-5. **Linux / 沙箱测试构建**：当 `nlohmann_json` 或 `sqlite3` 的 vcpkg CMake config 不可用时，项目会回退到头文件/系统库查找；若 `spdlog` 缺失，则仅对无 UI 的测试路径启用 no-op logger 以避免配置阶段被阻塞。
+`SakuraTests` 不依赖窗口、音频设备或 GPU；可用于 Windows CTest 和 Linux `ci-linux` preset。系统环境缺少 vcpkg package config 时，可通过 CMake 提供 nlohmann/json 头文件、SQLite3 库以及可选 spdlog。桌面程序始终要求完整依赖。
+
+## 打包
+
+```powershell
+python scripts/package_release.py --build-dir build/release
+```
+
+脚本自动定位 Visual Studio 的 x64 CRT；找不到时使用 `--crt-dir` 指向 `Microsoft.VC143.CRT`。输出包括 App-local DLL、字体及依赖许可证、内置曲目、成就配置、中文说明、每个文件的 SHA256 清单和 ZIP 的校验文件。不会收集开发者存档、日志、缓存或本机设置。
+
+最低运行系统 Windows 10 1903，使用 UTF-8 activeCodePage manifest 支持中文安装路径和数据路径。Windows 11 同样支持。仓库不存入第三方源码或预编译 DLL。
+
+许可证索引见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。

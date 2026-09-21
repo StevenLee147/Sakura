@@ -1,4 +1,8 @@
 #include "app.h"
+#include "paths.h"
+#include <filesystem>
+#include <algorithm>
+#include "ui/toast.h"
 #include "config.h"
 #include "theme.h"
 #include "utils/logger.h"
@@ -41,9 +45,9 @@ std::string ResolveDatabasePath()
     if (!envPath.empty())
         return envPath;
 
-    return sakura::core::Config::GetInstance().Get<std::string>(
-        std::string(sakura::core::ConfigKeys::kDatabasePath),
-        "data/sakura.db");
+    auto path = std::filesystem::path(sakura::core::Config::GetInstance().Get<std::string>(
+        sakura::core::ConfigKeys::kDatabasePath, "data/sakura.db"));
+    return path.is_absolute() ? path.generic_string() : sakura::core::Paths::User(path.generic_string());
 }
 }
 
@@ -64,11 +68,11 @@ App::~App()
 bool App::Initialize()
 {
     // ── 日志系统最先初始化 ─────────────────────────────────────────────────────
-    sakura::utils::Logger::Init("logs/sakura.log");
+    sakura::utils::Logger::Init(Paths::User("logs/sakura.log"));
 
     LOG_INFO("正在初始化 Sakura-樱...");
     // ── 配置系统 ────────────────────────────────────────────────────────────────
-    Config::GetInstance().Load("config/settings.json");
+    Config::GetInstance().Load(Paths::User("config/settings.json"));
     Theme::GetInstance().Initialize();
 
     // ── 数据库 ───────────────────────────────────────────────────────────────────
@@ -89,7 +93,9 @@ bool App::Initialize()
     LOG_INFO("SDL 初始化成功");
 
     // ── 窗口 ──────────────────────────────────────────────────────────────────
-    if (!m_window.Create("Sakura-樱", 1920, 1080))
+    if (!m_window.Create("Sakura-樱",
+        Config::GetInstance().Get<int>(ConfigKeys::kWindowWidth, 1600),
+        Config::GetInstance().Get<int>(ConfigKeys::kWindowHeight, 900)))
     {
         return false;
     }
@@ -99,7 +105,7 @@ bool App::Initialize()
     {
         return false;
     }
-    Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
+    Input::SetScreenSize(m_window.GetWidth(), m_window.GetHeight());
 
     // ── 资源管理器 ───────────────────────────────────────────────────────────
     if (!ResourceManager::GetInstance().Initialize(m_renderer.GetSDLRenderer()))
@@ -128,7 +134,7 @@ bool App::Initialize()
     // 加载默认 hitsound 集并注册 Button 全局 UI 音效
     {
         auto& am = sakura::audio::AudioManager::GetInstance();
-        am.LoadHitsoundSet("default");
+        am.LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound", "default"));
 
         sakura::ui::Button::SetGlobalHoverSFX([&am]()
         {
@@ -138,31 +144,6 @@ bool App::Initialize()
         {
             am.PlayUISFX(sakura::audio::UISFXType::ButtonClick);
         });
-    }
-
-    // ── 谱面加载器验证（Step 1.3 验收）──────────────────────────────────────────
-    {
-        sakura::game::ChartLoader loader;
-        auto charts = loader.ScanCharts("resources/charts/");
-        if (!charts.empty())
-        {
-            const auto& firstChart = charts[0];
-            if (!firstChart.difficulties.empty())
-            {
-                std::string chartDataPath = firstChart.folderPath + "/"
-                                          + firstChart.difficulties[0].chartFile;
-                auto chartData = loader.LoadChartData(chartDataPath);
-                if (chartData)
-                {
-                    bool valid = loader.ValidateChartData(*chartData);
-                    LOG_INFO("谱面验证 [{}]: 键盘音符={}, 鼠标音符={}, 校验={}",
-                             firstChart.id,
-                             chartData->keyboardNotes.size(),
-                             chartData->mouseNotes.size(),
-                             valid ? "通过" : "失败");
-                }
-            }
-        }
     }
 
     // ── 初始场景 ──────────────────────────────────────────────────────────────
@@ -179,28 +160,33 @@ void App::Run()
 {
     LOG_INFO("主循环启动...");
     m_running     = true;
-    m_accumulator = 0.0;
+    m_timer.Reset();
 
     while (m_running)
     {
+        const Uint64 frameStart = SDL_GetTicksNS();
         m_timer.Tick();
         const float dt = m_timer.GetDeltaTime();
 
         // ── 事件处理 ──────────────────────────────────────────────────────────
         ProcessEvents();
 
-        // ── 固定时间步长更新（最多 MAX_STEPS 步，防止死亡螺旋）────────────
-        m_accumulator += static_cast<double>(dt);
-        int steps = 0;
-        while (m_accumulator >= FIXED_TIMESTEP && steps < MAX_STEPS)
-        {
-            Update(static_cast<float>(FIXED_TIMESTEP));
-            m_accumulator -= FIXED_TIMESTEP;
-            ++steps;
-        }
+        // Judge against the audio clock on every displayed frame. A fixed 60 Hz
+        // scene update adds latency and makes high-refresh displays visibly stutter.
+        const Uint64 updateStart=SDL_GetTicksNS();
+        Update(dt);
+        m_updateCpuMs=(SDL_GetTicksNS()-updateStart)/1000000.0;
 
         // ── 可变帧率渲染 ──────────────────────────────────────────────────────
         Render();
+        int limit = Config::GetInstance().Get<int>(ConfigKeys::kFpsLimit, 240);
+        if (SDL_GetWindowFlags(m_window.GetSDLWindow()) & SDL_WINDOW_MINIMIZED) limit = 30;
+        if (limit > 0)
+        {
+            const Uint64 budget = 1000000000ULL / static_cast<Uint64>(limit);
+            const Uint64 elapsed = SDL_GetTicksNS() - frameStart;
+            if (elapsed < budget) SDL_DelayPrecise(budget - elapsed);
+        }
 
         // ── FPS 日志（每 3 秒输出一次）────────────────────────────────────────
         m_fpsLogTimer += dt;
@@ -219,7 +205,13 @@ void App::Run()
 
 void App::Shutdown()
 {
+    if (m_shutdown) return;
+    m_shutdown = true;
     LOG_INFO("正在关闭 Sakura-樱...");
+    // Scene OnExit owns textures/audio; run it while both subsystems are alive.
+    m_sceneManager.Clear();
+    sakura::ui::Button::SetGlobalHoverSFX({});
+    sakura::ui::Button::SetGlobalClickSFX({});
 
     // 先关闭音频（避免资源释放竞争）
     sakura::audio::AudioManager::GetInstance().Shutdown();
@@ -228,6 +220,7 @@ void App::Shutdown()
     sakura::effects::ShaderManager::GetInstance().Shutdown();
 
     // 释放所有资源（渲染器销毁前）
+    m_renderer.ReleaseTextResources();
     ResourceManager::GetInstance().ReleaseAll();
 
     m_renderer.Destroy();
@@ -251,13 +244,18 @@ void App::ProcessEvents()
     while (SDL_PollEvent(&event))
     {
         // 先转发给 Window 处理（F11、resize 等）
-        m_window.HandleEvent(event);
+        const bool windowConsumed = m_window.HandleEvent(event);
+        // SDL pointer coordinates are window units, which differ from framebuffer
+        // pixels under Windows display scaling. Normalize in window coordinates.
+        int inputW = 0, inputH = 0;
+        SDL_GetWindowSize(m_window.GetSDLWindow(), &inputW, &inputH);
+        Input::SetScreenSize(inputW, inputH);
 
         // 输入系统处理
         Input::ProcessEvent(event);
 
         // 场景事件处理
-        m_sceneManager.HandleEvent(event);
+        if (!windowConsumed) m_sceneManager.HandleEvent(event);
 
         // 再转发给子类
         OnEvent(event);
@@ -265,15 +263,23 @@ void App::ProcessEvents()
         switch (event.type)
         {
             case SDL_EVENT_QUIT:
-                m_running = false;
+                if(!m_sceneManager.GetCurrentScene() || m_sceneManager.GetCurrentScene()->CanClose())m_running = false;
                 break;
             case SDL_EVENT_WINDOW_RESIZED:
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
-                // 通知 ShaderManager 屏幕尺寸变化
+            {
+                int renderW=0,renderH=0;
+                SDL_GetRenderOutputSize(m_renderer.GetSDLRenderer(),&renderW,&renderH);
+                m_renderer.Flush();
                 sakura::effects::ShaderManager::GetInstance().OnResize(
-                    m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
+                    renderW, renderH);
+                if(event.type==SDL_EVENT_WINDOW_RESIZED && !m_window.IsFullscreen()) {
+                    Config::GetInstance().Set(ConfigKeys::kWindowWidth,inputW);
+                    Config::GetInstance().Set(ConfigKeys::kWindowHeight,inputH);
+                    m_appliedWidth=inputW;m_appliedHeight=inputH;
+                }
                 break;
+            }
             // ESC 键由各场景自行处理（主菜单弹确认框，游戏中暂停，其他场景返回上级）
             default:
                 break;
@@ -284,18 +290,44 @@ void App::ProcessEvents()
 void App::Update(float dt)
 {
     // 同步屏幕尺寸给输入系统（用于归一化鼠标坐标）
-    Input::SetScreenSize(m_renderer.GetScreenWidth(), m_renderer.GetScreenHeight());
+    int inputW = 0, inputH = 0;
+    SDL_GetWindowSize(m_window.GetSDLWindow(), &inputW, &inputH);
+    Input::SetScreenSize(inputW, inputH);
+    const int vsync = Config::GetInstance().Get<bool>(ConfigKeys::kVSync, true) ? 1 : 0;
+    if (vsync != m_appliedVSync)
+    {
+        SDL_SetRenderVSync(m_renderer.GetSDLRenderer(), vsync);
+        m_appliedVSync = vsync;
+    }
+    auto& settings = Theme::GetInstance().Settings();
+    auto& config = Config::GetInstance();
+    settings.particlesEnabled = config.Get<bool>(ConfigKeys::kParticles, true);
+    settings.glowEnabled = config.Get<bool>("graphics.glow", true);
+    settings.shakeEnabled = config.Get<bool>("graphics.shake", true) && !config.Get<bool>("graphics.reduced_motion", false);
+    settings.vignetteEnabled = config.Get<bool>("graphics.vignette", true);
+    sakura::audio::AudioManager::GetInstance().Update(dt);
+
+    const int width = config.Get<int>(ConfigKeys::kWindowWidth, 1600);
+    const int height = config.Get<int>(ConfigKeys::kWindowHeight, 900);
+    if (width != m_appliedWidth || height != m_appliedHeight)
+    {
+        if (!m_window.IsFullscreen()) SDL_SetWindowSize(m_window.GetSDLWindow(), width, height);
+        m_appliedWidth = width; m_appliedHeight = height;
+    }
 
     // 全屏配置同步：检测 Config 中设置是否与当前窗口状态一致
     {
         bool cfgFullscreen = Config::GetInstance().Get<bool>(
             std::string(ConfigKeys::kFullscreen), false);
-        if (cfgFullscreen != m_window.IsFullscreen())
+        if (cfgFullscreen != m_window.IsFullscreen()) {
             m_window.SetFullscreen(cfgFullscreen);
+            if(!cfgFullscreen)SDL_SetWindowSize(m_window.GetSDLWindow(),width,height);
+        }
     }
 
     // 场景更新
     m_sceneManager.Update(dt);
+    sakura::ui::ToastManager::Instance().Update(dt);
 
     {
         auto& audio = sakura::audio::AudioManager::GetInstance();
@@ -321,6 +353,7 @@ void App::Update(float dt)
 
 void App::Render()
 {
+    const Uint64 renderStart=SDL_GetTicksNS();
     m_renderer.BeginFrame();
     m_renderer.Clear(Color::DarkBlue);
 
@@ -328,12 +361,20 @@ void App::Render()
     m_sceneManager.Render(m_renderer);
 
     // 后处理特效（暗角等覆盖层，在所有场景之上）
+    m_renderer.Flush();
     sakura::effects::ShaderManager::GetInstance().ApplyPostProcess();
 
     // 子类可覆盖附加渲染
     OnRender();
 
-    m_renderer.EndFrame();
+    sakura::ui::ToastManager::Instance().Render(m_renderer, ResourceManager::GetInstance().GetDefaultFontHandle());
+    if (Config::GetInstance().Get<bool>("graphics.show_fps", false))
+        m_renderer.DrawText(ResourceManager::GetInstance().GetDefaultFontHandle(),
+            std::to_string(static_cast<int>(m_timer.GetFPS())) + " FPS", 0.985f, 0.008f, 0.016f,
+            Color{180, 225, 210, 255}, TextAlign::Right);
+    m_renderer.Flush();
+    m_renderCpuMs=(SDL_GetTicksNS()-renderStart)/1000000.0;
+    m_renderer.EndFrame(); // Present / VSync wait is excluded from CPU submission time.
 }
 
 void App::OnUpdate(float /*dt*/)

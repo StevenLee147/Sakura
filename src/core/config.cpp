@@ -1,5 +1,8 @@
 #include "config.h"
 #include "utils/logger.h"
+#include "utils/file_io.h"
+#include <algorithm>
+#include <cmath>
 
 #include <fstream>
 #include <sstream>
@@ -18,11 +21,11 @@ void Config::ApplyDefaults()
     };
 
     // 显示
-    setDefault(ConfigKeys::kWindowWidth,  1920);
-    setDefault(ConfigKeys::kWindowHeight, 1080);
+    setDefault(ConfigKeys::kWindowWidth,  1600);
+    setDefault(ConfigKeys::kWindowHeight, 900);
     setDefault(ConfigKeys::kFullscreen,   false);
     setDefault(ConfigKeys::kVSync,        true);
-    setDefault(ConfigKeys::kFpsLimit,     0);
+    setDefault(ConfigKeys::kFpsLimit,     240);
 
     // 音频
     setDefault(ConfigKeys::kMasterVolume, 1.0f);
@@ -55,6 +58,59 @@ void Config::ApplyDefaults()
     setDefault(ConfigKeys::kTutorialCompleted,   false);
     setDefault(ConfigKeys::kTutorialPromptShown, false);
 
+    setDefault("input.key_lane_0", 4);
+    setDefault("input.key_lane_1", 22);
+    setDefault("input.key_lane_2", 7);
+    setDefault("input.key_lane_3", 9);
+    setDefault("audio.hitsound", std::string("default"));
+    setDefault("audio.hitsounds_enabled", true);
+    setDefault("audio.judgment_sounds", false);
+    setDefault("graphics.glow", true);
+    setDefault("graphics.background_blur", true);
+    setDefault("graphics.shake", true);
+    setDefault("graphics.vignette", true);
+    setDefault("graphics.reduced_motion", false);
+    setDefault("graphics.effect_intensity", 0.7f);
+    setDefault("graphics.show_fps", false);
+    setDefault("gameplay.mouse_approach_ms", 1000);
+    setDefault("gameplay.show_hit_error", true);
+    setDefault("gameplay.background_dim", 0.75f);
+    setDefault("gameplay.lane_opacity", 0.90f);
+    setDefault("gameplay.cursor_trail", true);
+    setDefault("gameplay.save_replays", true);
+    setDefault("gameplay.show_combo", true);
+    auto boundInt = [this](std::string_view key, int fallback, int low, int high)
+    { Set(key, std::clamp(Get<int>(key, fallback), low, high)); };
+    auto boundFloat = [this](std::string_view key, float fallback, float low, float high)
+    {
+        float value = Get<float>(key, fallback);
+        Set(key, std::isfinite(value) ? std::clamp(value, low, high) : fallback);
+    };
+    boundInt(ConfigKeys::kWindowWidth, 1600, 960, 7680);
+    boundInt(ConfigKeys::kWindowHeight, 900, 540, 4320);
+    boundInt(ConfigKeys::kFpsLimit, 240, 0, 1000);
+    boundInt(ConfigKeys::kAudioOffset, 0, -500, 500);
+    boundInt("gameplay.mouse_approach_ms", 1000, 400, 2000);
+    boundFloat(ConfigKeys::kNoteSpeed, 5.0f, 0.5f, 15.0f);
+    boundFloat(ConfigKeys::kMasterVolume, 0.8f, 0, 1);
+    boundFloat(ConfigKeys::kMusicVolume, 0.8f, 0, 1);
+    boundFloat(ConfigKeys::kSfxVolume, 0.7f, 0, 1);
+    boundFloat("gameplay.background_dim", 0.75f, 0, 1);
+    boundFloat("gameplay.lane_opacity", 0.9f, 0.2f, 1);
+    boundFloat("graphics.effect_intensity", 0.7f, 0, 1);
+    // Scancodes outside SDL's table or duplicate lane bindings make charts unplayable.
+    constexpr int defaults[] = {4, 22, 7, 9, 41, 21};
+    const std::string keys[] = {"input.key_lane_0", "input.key_lane_1", "input.key_lane_2",
+        "input.key_lane_3", "input.key_pause", "input.key_retry"};
+    bool invalid = false;
+    for (int i = 0; i < 6; ++i)
+    {
+        const int value = Get<int>(keys[i], defaults[i]);
+        invalid |= value <= 0 || value >= 512 || value == 68;
+        for (int j = 0; j < i; ++j) invalid |= value == Get<int>(keys[j], defaults[j]);
+    }
+    if (invalid) for (int i = 0; i < 6; ++i) Set(keys[i], defaults[i]);
+
     m_dirty = false;  // 默认值不算脏
 }
 
@@ -62,11 +118,13 @@ void Config::ApplyDefaults()
 
 bool Config::Load(std::string_view path)
 {
+    m_data = nlohmann::json::object();
     m_filePath = std::string(path);
     m_dirty    = false;
 
     std::filesystem::path fsPath(path);
-    if (!std::filesystem::exists(fsPath))
+    std::error_code existsError;
+    if (!std::filesystem::exists(fsPath,existsError) && !existsError)
     {
         LOG_INFO("Config: 配置文件不存在 ({}), 使用默认值", path);
         ApplyDefaults();
@@ -87,6 +145,7 @@ bool Config::Load(std::string_view path)
         }
         m_data = nlohmann::json::parse(ifs, nullptr, true, true);  // 允许注释
         ifs.close();
+        if (!m_data.is_object()) m_data = nlohmann::json::object();
 
         // 补充新版本添加的缺失键
         ApplyDefaults();
@@ -122,15 +181,12 @@ bool Config::SaveForce()
             std::filesystem::create_directories(fsPath.parent_path());
         }
 
-        std::ofstream ofs(fsPath);
-        if (!ofs.is_open())
+        if (!sakura::utils::AtomicWrite(fsPath, m_data.dump(4, ' ', false,
+                nlohmann::json::error_handler_t::replace)))
         {
-            LOG_ERROR("Config: 无法写入配置文件: {}", m_filePath);
+            LOG_ERROR("Config: 无法保存配置: {}", m_filePath);
             return false;
         }
-
-        ofs << m_data.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
-        ofs.close();
 
         m_dirty = false;
         LOG_INFO("Config: 已保存 ({})", m_filePath);

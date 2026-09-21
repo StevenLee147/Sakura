@@ -42,6 +42,7 @@ public:
 
     // 场景是否暂停更新（Push 时下方场景逻辑仍然运行）
     virtual bool IsPaused() const { return false; }
+    virtual bool CanClose() { return true; }
 };
 
 } // namespace sakura::scene

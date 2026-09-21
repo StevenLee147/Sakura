@@ -30,6 +30,9 @@ void Input::ProcessEvent(const SDL_Event& event)
 {
     switch (event.type)
     {
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            Reset();
+            break;
         // ── 键盘 ──────────────────────────────────────────────────────────────
         case SDL_EVENT_KEY_DOWN:
         {
@@ -141,6 +144,13 @@ void Input::ProcessEvent(const SDL_Event& event)
         default:
             break;
     }
+}
+
+void Input::Reset()
+{
+    std::memset(s_currKeys, 0, sizeof(s_currKeys));
+    std::memset(s_currMouse, 0, sizeof(s_currMouse));
+    Update();
 }
 
 // ── 帧末重置 ──────────────────────────────────────────────────────────────────

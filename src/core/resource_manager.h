@@ -77,6 +77,7 @@ public:
     TTF_Font*  GetDefaultFont()       const { return GetFont(m_defaultFontHandle); }
 
 private:
+    bool m_ttfInitialized = false;
     ResourceManager() = default;
     ~ResourceManager();
 
@@ -96,6 +97,7 @@ private:
     std::unordered_map<std::string, TextureHandle>  m_texturePaths;
     std::unordered_map<TextureHandle, SDL_Texture*> m_textures;
     std::unordered_map<TextureHandle, std::string>  m_texturePathsByHandle;
+    std::unordered_map<TextureHandle, size_t> m_textureReferences;
 
     std::unordered_map<std::string, FontHandle>     m_fontKeys;
     std::unordered_map<FontHandle, TTF_Font*>       m_fonts;

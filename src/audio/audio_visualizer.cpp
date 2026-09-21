@@ -3,10 +3,13 @@
 #include <miniaudio.h>
 
 #include "audio_visualizer.h"
+#include "fft.h"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <cctype>
 #include <numbers>
 
 namespace sakura::audio
@@ -82,6 +85,10 @@ void AudioVisualizer::Update(float dt, double playbackPositionSeconds, bool isPl
         return;
     }
 
+    m_analysisTimer += dt;
+    if (m_analysisTimer < 1.0f / 30.0f) return;
+    dt = m_analysisTimer;
+    m_analysisTimer = 0.0f;
     ma_result seekResult = ma_decoder_seek_to_pcm_frame(
         m_decoder,
         static_cast<ma_uint64>(std::max(0.0, playbackPositionSeconds) * kAnalysisSampleRate));
@@ -99,7 +106,7 @@ void AudioVisualizer::Update(float dt, double playbackPositionSeconds, bool isPl
         kAnalysisFrames,
         &framesRead);
 
-    if (readResult != MA_SUCCESS || framesRead == 0)
+    if ((readResult != MA_SUCCESS && readResult != MA_AT_END) || framesRead == 0)
     {
         ApplyDecay(dt);
         return;
@@ -193,12 +200,26 @@ bool AudioVisualizer::OpenDecoder(std::string_view path)
         kAnalysisChannels,
         kAnalysisSampleRate);
 
+    const std::string filePath(path);
+    auto extension = std::filesystem::path(filePath).extension().string();
+    std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+    const bool vorbis = extension==".ogg" || extension==".oga";
+    if(vorbis){
+        const auto size=std::filesystem::file_size(filePath);
+        if(size==0 || size>256*1024*1024)return false;
+        m_compressedSource.resize(static_cast<size_t>(size));
+        std::ifstream source(filePath,std::ios::binary);
+        if(!source.read(reinterpret_cast<char*>(m_compressedSource.data()),static_cast<std::streamsize>(size))){m_compressedSource.clear();return false;}
+    }
     m_decoder = new ma_decoder();
-    ma_result result = ma_decoder_init_file(path.data(), &config, m_decoder);
+    // Vorbis analysis needs random access at the music cursor, just like playback.
+    ma_result result = vorbis ? ma_decoder_init_memory(m_compressedSource.data(),m_compressedSource.size(),&config,m_decoder)
+                             : ma_decoder_init_file(filePath.c_str(), &config, m_decoder);
     if (result != MA_SUCCESS)
     {
         delete m_decoder;
         m_decoder = nullptr;
+        m_compressedSource.clear();
         return false;
     }
 
@@ -216,6 +237,8 @@ void AudioVisualizer::CloseDecoder()
     }
 
     m_sourcePath.clear();
+    std::vector<unsigned char>{}.swap(m_compressedSource);
+    m_bands.fill(0);m_peaks.fill(0);m_waveform.clear();m_analysisTimer=0;m_impulse=0;
 }
 
 void AudioVisualizer::ApplyDecay(float dt)
@@ -236,7 +259,9 @@ void AudioVisualizer::AnalyzeSamples(const float* samples, std::size_t frameCoun
         return;
     }
 
-    std::vector<float> mono(frameCount, 0.0f);
+    frameCount = std::min(frameCount, kAnalysisFrames);
+    std::array<float, kAnalysisFrames> mono{};
+    std::array<std::complex<float>, kAnalysisFrames> spectrum{};
     for (std::size_t frame = 0; frame < frameCount; ++frame)
     {
         float sum = 0.0f;
@@ -256,6 +281,9 @@ void AudioVisualizer::AnalyzeSamples(const float* samples, std::size_t frameCoun
         m_waveform.push_back(std::clamp(mono[sampleIndex] * 1.8f, -1.0f, 1.0f));
     }
 
+    for (std::size_t i = 0; i < frameCount; ++i) spectrum[i] = mono[i];
+    FFT(spectrum);
+
     std::array<float, kBandCount> targets = {};
     constexpr float minFreq = 40.0f;
     constexpr float maxFreq = 12000.0f;
@@ -268,22 +296,14 @@ void AudioVisualizer::AnalyzeSamples(const float* samples, std::size_t frameCoun
         float bandT1 = static_cast<float>(band + 1) / static_cast<float>(kBandCount);
         float lowFreq = std::exp(logMin + (logMax - logMin) * bandT0);
         float highFreq = std::exp(logMin + (logMax - logMin) * bandT1);
-        int lowBin = std::max(1, static_cast<int>(std::floor(lowFreq * static_cast<float>(frameCount) / static_cast<float>(sampleRate))));
-        int highBin = std::min(static_cast<int>(frameCount / 2 - 1), static_cast<int>(std::ceil(highFreq * static_cast<float>(frameCount) / static_cast<float>(sampleRate))));
+        int lowBin = std::max(1, static_cast<int>(std::floor(lowFreq * static_cast<float>(kAnalysisFrames) / static_cast<float>(sampleRate))));
+        int highBin = std::min(static_cast<int>(kAnalysisFrames / 2 - 1), static_cast<int>(std::ceil(highFreq * static_cast<float>(kAnalysisFrames) / static_cast<float>(sampleRate))));
 
         float energy = 0.0f;
         int binCount = 0;
         for (int bin = lowBin; bin <= highBin; ++bin)
         {
-            float real = 0.0f;
-            float imag = 0.0f;
-            for (std::size_t sample = 0; sample < frameCount; ++sample)
-            {
-                float phase = 2.0f * std::numbers::pi_v<float> * static_cast<float>(bin) * static_cast<float>(sample) / static_cast<float>(frameCount);
-                real += mono[sample] * std::cos(phase);
-                imag -= mono[sample] * std::sin(phase);
-            }
-            energy += std::sqrt(real * real + imag * imag);
+            energy += std::abs(spectrum[bin]);
             ++binCount;
         }
 

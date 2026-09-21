@@ -33,6 +33,7 @@ struct MousePixelPos
 class Input
 {
 public:
+    static void Reset();
     // ── 生命周期 ──────────────────────────────────────────────────────────────
 
     // 事件处理（每帧在 SDL_PollEvent 循环内调用，可多次）
