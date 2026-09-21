@@ -1,17 +1,35 @@
-# Build outputs
+# CMake build trees and release artifacts
 build/
 out/
+build-*/
+cmake-build-*/
+/dist/
+/artifacts/
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+compile_commands.json
 
 # vcpkg installed packages (managed by vcpkg, not committed)
 vcpkg_installed/
 
 # IDE / Editor
 .vs/
+.idea/
 .vscode/settings.json
 .vscode/launch.json
 *.suo
 *.user
 *.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+*.swp
+*.swo
+*~
 
 # Compiled Object files
 *.obj
@@ -19,6 +37,10 @@ vcpkg_installed/
 *.pdb
 *.ilk
 *.exp
+*.pch
+*.idb
+*.tlog/
+*.res
 
 # Executables
 *.exe
@@ -30,27 +52,42 @@ vcpkg_installed/
 *.a
 *.dll
 *.so
+*.so.*
 *.dylib
 
 # Logs
 logs/
 *.log
 
-# Runtime-generated config (default values are baked into code)
-config/settings.json
+# Runtime data (keep shipped config and resources tracked)
+/config/settings.json
+/portable.txt
+/userdata/
+/data/
+/replays/
+/backups/
+/cache/
 
 # OS files
 Thumbs.db
+Desktop.ini
 .DS_Store
 
 # Debug
 *.dmp
 
 # Downloads
-download/
-build-local/
+/download/
 
-# Generated Python caches and portable player data
+# Python tooling environments and caches
+.venv/
+venv/
 __pycache__/
-*.pyc
-userdata/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/

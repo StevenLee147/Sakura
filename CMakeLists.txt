@@ -7,7 +7,7 @@ project(Sakura
 )
 
 # 预发布标签（留空则为正式版）
-set(SAKURA_VERSION_PRERELEASE "beta")
+set(SAKURA_VERSION_PRERELEASE "alpha")
 if(SAKURA_VERSION_PRERELEASE STREQUAL "")
     set(SAKURA_VERSION_FULL "${PROJECT_VERSION}")
 else()
