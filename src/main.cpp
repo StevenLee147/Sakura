@@ -16,6 +16,7 @@
 #include "scene/scene_chart_wizard.h"
 #include "scene/scene_calibration.h"
 #include "scene/scene_pause.h"
+#include "scene/record_session.h"
 #include "data/database.h"
 #include "audio/audio_manager.h"
 #include "audio/audio_visualizer.h"
@@ -30,6 +31,14 @@
 
 namespace
 {
+// SDL_main passes UTF-8 arguments on Windows; keep non-ASCII script/output paths intact.
+std::filesystem::path Utf8ArgumentPath(const char* text)
+{
+    const std::string value(text);
+    return std::filesystem::absolute(std::filesystem::path(
+        std::u8string(reinterpret_cast<const char8_t*>(value.data()), value.size())));
+}
+
 // Reproducible screenshots exercise the real SDL renderer, scenes, assets and
 // shutdown sequence. A separate user directory keeps validation out of player data.
 class CaptureApp final : public sakura::core::App
@@ -282,6 +291,7 @@ int main(int argc, char* argv[])
         namespace fs = std::filesystem;
         fs::path capture;
         fs::path verifyAudio;
+        fs::path recordScript, recordOutput;
         int width = 1600, height = 900;bool verify=false,verifyImages=false;
         for (int i = 1; i < argc; ++i)
         {
@@ -291,12 +301,18 @@ int main(int argc, char* argv[])
             else if (arg == "--verify-audio" && i+1<argc)verifyAudio=fs::absolute(argv[++i]);
             else if (arg == "--verify-media" && i+1<argc){verifyAudio=fs::absolute(argv[++i]);verifyImages=true;}
             else if (arg == "--size" && i + 2 < argc) { width = std::stoi(argv[++i]); height = std::stoi(argv[++i]); }
+            else if (arg == "--record" && i + 1 < argc) recordScript = Utf8ArgumentPath(argv[++i]);
+            else if (arg == "--record-out" && i + 1 < argc) recordOutput = Utf8ArgumentPath(argv[++i]);
             else return 2;
         }
+        // Offline recording owns its own isolated user directory and cannot be combined with QA modes.
+        if (!recordOutput.empty() && recordScript.empty()) return 2;
+        if (!recordScript.empty() && (!capture.empty() || !verifyAudio.empty() || verify)) return 2;
         const fs::path original = fs::current_path();
         if(!verifyAudio.empty()&&capture.empty())capture=verifyAudio/"results";
         const fs::path base = SDL_GetBasePath();
         if (fs::exists(base / "resources/fonts")) fs::current_path(base);
+        if (!recordScript.empty()) return sakura::scene::RunRecordMode(recordScript, recordOutput);
         fs::path userRoot;
         if (!capture.empty()) userRoot = capture / "userdata";
         else if (const char* path = SDL_getenv("SAKURA_USER_DIR"); path && *path) userRoot = fs::absolute(path);

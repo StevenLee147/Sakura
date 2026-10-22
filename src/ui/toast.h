@@ -70,6 +70,9 @@ public:
     void SetMaxVisible(int max)  { m_maxVisible = max; }
     int  GetMaxVisible() const   { return m_maxVisible; }
 
+    // 立即移除全部通知（离线录制在镜头之间清场使用）
+    void Clear() { m_toasts.clear(); }
+
 private:
     ToastManager() = default;
 

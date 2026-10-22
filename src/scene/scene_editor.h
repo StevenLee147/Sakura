@@ -27,9 +27,11 @@ class SceneEditor final : public Scene
 {
 public:
     // 进入编辑器：可选指定谱面目录和难度文件（空=创建新谱面）
+    // difficultyIndex >= 0 时以该索引作为当前难度（属性面板 / 试玩），-1 保持默认
     explicit SceneEditor(SceneManager& mgr,
                          const std::string& folderPath    = "",
-                         const std::string& difficultyFile = "normal.json");
+                         const std::string& difficultyFile = "normal.json",
+                         int difficultyIndex = -1);
 
     void OnEnter() override;
     bool CanClose() override;
@@ -50,6 +52,7 @@ private:
 
     std::string m_initFolderPath;
     std::string m_initDiffFile;
+    int         m_initDiffIndex = -1;
 
     // ── 字体 ──────────────────────────────────────────────────────────────────
     sakura::core::FontHandle m_fontUI    = sakura::core::INVALID_HANDLE;

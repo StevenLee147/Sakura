@@ -117,6 +117,10 @@ void SceneSelect::SelectRelative(int delta) {
     const int row=it==m_visible.end()?0:static_cast<int>(it-m_visible.begin());
     Select(m_visible[std::clamp(row+delta,0,static_cast<int>(m_visible.size())-1)]);
 }
+bool SceneSelect::SelectChart(const std::string& id,int difficulty) {
+    for(int i:m_visible) if(m_charts[i].id==id) {Select(i,difficulty);return true;}
+    return false;
+}
 void SceneSelect::BuildDetail() {
     m_rebuild=false; m_detailButtons.clear(); if(m_selected<0) return;
     if(m_options.mode!=PlayMode::Practice){m_startInput->SetFocused(false);m_endInput->SetFocused(false);}

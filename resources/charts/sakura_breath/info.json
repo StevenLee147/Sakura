@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "id": "sakura_breath",
+  "title": "樱落呼吸",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura",
+  "source": "Sakura Originals · Vol. 02",
+  "tags": [
+    "original",
+    "electronic",
+    "ai-generated",
+    "suno"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 21554,
+  "bpm": 178.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 4.0,
+      "chart_file": "normal.json",
+      "note_count": 246,
+      "hold_count": 13,
+      "mouse_note_count": 74
+    },
+    {
+      "name": "Hard",
+      "level": 7.5,
+      "chart_file": "hard.json",
+      "note_count": 505,
+      "hold_count": 14,
+      "mouse_note_count": 173
+    },
+    {
+      "name": "Expert",
+      "level": 10.5,
+      "chart_file": "expert.json",
+      "note_count": 837,
+      "hold_count": 14,
+      "mouse_note_count": 286
+    }
+  ]
+}

@@ -16,6 +16,8 @@ class SceneSelect final : public Scene {
 public:
     explicit SceneSelect(SceneManager& manager) : m_manager(manager) {}
     sakura::game::PlayMode CurrentMode() const { return m_options.mode; }
+    // Selects a visible chart by id (offline recording preselection); false when it is not listed.
+    bool SelectChart(const std::string& id, int difficulty);
     void OnEnter() override;
     void OnExit() override;
     void OnUpdate(float dt) override;

@@ -63,6 +63,12 @@ public:
     // 关闭并释放所有音频资源
     void Shutdown();
 
+    // ── 离线时钟（录制模式）────────────────────────────────────────────────────
+    // 必须在 Initialize() 之前设置。启用后不打开任何音频设备，音乐播放头由
+    // Update(dt) 按虚拟时间推进，音效不发声但保留可视化冲击效果。
+    void SetOfflineClock(bool enabled);
+    bool IsOfflineClock() const { return m_offlineClock; }
+
     // ── 背景音乐 ──────────────────────────────────────────────────────────────
 
     // 播放音乐（path 相对于工作目录）
@@ -93,6 +99,9 @@ public:
 
     bool IsPlaying() const;
     bool IsPaused()  const;
+
+    // 当前音乐文件路径（未播放时为空）
+    const std::string& GetMusicPath() const { return m_musicPath; }
 
     // ── 音效 ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +175,14 @@ private:
 
     bool  m_initialized    = false;
     bool  m_musicPaused    = false;
+
+    // 离线时钟：虚拟播放头（秒）与播放状态，仅 m_offlineClock 时使用
+    bool   m_offlineClock   = false;
+    double m_virtualCursor  = 0.0;
+    double m_virtualDuration = -1.0;
+    bool   m_virtualPlaying = false;
+    bool   m_virtualAtEnd   = false;
+    bool   m_virtualLooping = false;
 
     // 淡出状态
     bool  m_fadingOut      = false;

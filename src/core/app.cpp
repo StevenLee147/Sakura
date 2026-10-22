@@ -166,7 +166,8 @@ void App::Run()
     {
         const Uint64 frameStart = SDL_GetTicksNS();
         m_timer.Tick();
-        const float dt = m_timer.GetDeltaTime();
+        // 固定步长（离线录制）时全部逻辑使用虚拟时间；计时器仍用于 FPS 统计
+        const float dt = m_fixedTimestep > 0.0f ? m_fixedTimestep : m_timer.GetDeltaTime();
 
         // ── 事件处理 ──────────────────────────────────────────────────────────
         ProcessEvents();
@@ -179,17 +180,20 @@ void App::Run()
 
         // ── 可变帧率渲染 ──────────────────────────────────────────────────────
         Render();
-        int limit = Config::GetInstance().Get<int>(ConfigKeys::kFpsLimit, 240);
-        if (SDL_GetWindowFlags(m_window.GetSDLWindow()) & SDL_WINDOW_MINIMIZED) limit = 30;
-        if (limit > 0)
+        if (m_fixedTimestep <= 0.0f)
         {
-            const Uint64 budget = 1000000000ULL / static_cast<Uint64>(limit);
-            const Uint64 elapsed = SDL_GetTicksNS() - frameStart;
-            if (elapsed < budget) SDL_DelayPrecise(budget - elapsed);
+            int limit = Config::GetInstance().Get<int>(ConfigKeys::kFpsLimit, 240);
+            if (SDL_GetWindowFlags(m_window.GetSDLWindow()) & SDL_WINDOW_MINIMIZED) limit = 30;
+            if (limit > 0)
+            {
+                const Uint64 budget = 1000000000ULL / static_cast<Uint64>(limit);
+                const Uint64 elapsed = SDL_GetTicksNS() - frameStart;
+                if (elapsed < budget) SDL_DelayPrecise(budget - elapsed);
+            }
         }
 
         // ── FPS 日志（每 3 秒输出一次）────────────────────────────────────────
-        m_fpsLogTimer += dt;
+        m_fpsLogTimer += m_timer.GetDeltaTime();
         if (m_fpsLogTimer >= FPS_LOG_INTERVAL)
         {
             m_fpsLogTimer = 0.0f;
@@ -354,6 +358,7 @@ void App::Update(float dt)
 void App::Render()
 {
     const Uint64 renderStart=SDL_GetTicksNS();
+    OnFrameBegin();
     m_renderer.BeginFrame();
     m_renderer.Clear(Color::DarkBlue);
 
@@ -374,6 +379,7 @@ void App::Render()
             Color{180, 225, 210, 255}, TextAlign::Right);
     m_renderer.Flush();
     m_renderCpuMs=(SDL_GetTicksNS()-renderStart)/1000000.0;
+    OnFrameEnd();
     m_renderer.EndFrame(); // Present / VSync wait is excluded from CPU submission time.
 }
 
@@ -388,6 +394,16 @@ void App::OnRender()
 }
 
 void App::OnEvent(const SDL_Event& /*event*/)
+{
+    // 默认空实现，子类可覆盖
+}
+
+void App::OnFrameBegin()
+{
+    // 默认空实现，子类可覆盖
+}
+
+void App::OnFrameEnd()
 {
     // 默认空实现，子类可覆盖
 }

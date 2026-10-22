@@ -14,6 +14,7 @@ add_executable(SakuraTests
     test_judge.cpp
     test_tutorial_data.cpp
     test_chart_loader_legacy.cpp
+    test_record_script.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

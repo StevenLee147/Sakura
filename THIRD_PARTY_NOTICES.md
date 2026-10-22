@@ -23,3 +23,8 @@ generated specifically for Sakura. `scripts/build_starter_album.py` documents
 and reproduces the synthesized music and covers; it uses no external recordings
 or sampled music. Third-party licenses apply to their respective components and
 do not assign a license to the rest of the project.
+
+The track 「樱落呼吸」 (`resources/charts/sakura_breath/music.ogg`) was generated
+with Suno by the project author on a paid Suno plan, under which the author owns
+the output. Its charts and cover were produced for Sakura by
+`scripts/build_sakura_breath.py` (audio analysis and the starter-album cover style).

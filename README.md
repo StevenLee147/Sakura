@@ -2,7 +2,7 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v0.6.0-alpha** · Windows x64 · C++20 / SDL3
+当前版本：**v0.6.1-alpha** · Windows x64 · C++20 / SDL3
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
@@ -29,13 +29,13 @@
 
 ## 已有功能
 
-- 6 首内置曲目、10 张谱面；主曲包包含 4 首原创程序合成乐曲。
+- 7 首内置曲目、13 张谱面：主曲包 4 首原创程序合成乐曲，以及新曲《樱落呼吸》（178 BPM，Normal / Hard / Expert，由 Suno 生成，按「左手节奏、右手旋律」从音频分析制谱）。
 - 六页设置：游玩、声音、操作、显示、视觉、数据；包括节拍校准、自定义键位、帧率限制和减少动态效果。
 - 曲库支持搜索、收藏、排序、导入、难度选择、分段变速循环练习和最近回放。
 - 谱面工房支持四种音符、撤销/重做、属性修改、自动恢复文件和完整双区试玩。
 - 成绩、设置、回放、自制谱面可一起备份与恢复。
 
-完整操作见 [中文玩家指南](doc/PLAYER_GUIDE.md)。此前 0.6.0 开发构建的修复与验证见 [交付检查记录](doc/RELEASE_REVIEW_0.6.0.md)；该记录保留当时的 beta 标识，本次发布标签为 `v0.6.0-alpha`。
+完整操作见 [中文玩家指南](doc/PLAYER_GUIDE.md)。此前 0.6.0 开发构建的修复与验证见 [交付检查记录](doc/RELEASE_REVIEW_0.6.0.md)；该记录保留当时的 beta 标识，对应发布标签为 `v0.6.0-alpha`。
 
 练习变速会同时改变音高；内置程序合成曲包仍需玩家听测与难度反馈。更多后续计划见 [路线图](doc/ROADMAP.md)。
 
@@ -71,9 +71,13 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.6.0-alpha`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.6.1-alpha`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
+
+### 离线录制（宣传片素材）
+
+`Sakura.exe --record <script.json> [--record-out <dir>]` 按 JSON 脚本以任意分辨率（默认 4K60）逐帧录制主菜单、曲库、自动演示与结算、谱面工房等镜头，并通过 ffmpeg 编码为视频。录制使用虚拟时间，画面与音乐时钟逐帧同步，期间可以正常使用电脑。脚本格式、输出文件与音画对齐方法见 [离线录制说明](doc/RECORDING.md)；用它制作的 4K60 宣传片工程（Remotion）见 [promo/](promo/README.md)。
 
 ### Linux 逻辑层测试
 
@@ -109,6 +113,7 @@ GitHub Actions 会运行 Windows Debug / Release 构建及 Linux 逻辑测试；
 | `resources/`、`config/` | 内置曲目、字体、图片与成就配置 |
 | `tests/`、`scripts/` | 逻辑测试、内容生成、打包与版本管理 |
 | `doc/` | 玩家指南、架构、格式规范与路线图 |
+| `promo/` | 宣传片 Remotion 工程：录制脚本、配乐剪辑与渲染流程 |
 
 主要依赖为 SDL3、SDL3_image、SDL3_ttf、miniaudio、stb_vorbis、nlohmann/json、SQLite3 和 spdlog，详情见 [依赖清单](doc/DEPENDENCIES.md)。开发前可参考 [架构说明](doc/ARCHITECTURE.md) 和 [代码规范](doc/CODING_STANDARDS.md)。
 

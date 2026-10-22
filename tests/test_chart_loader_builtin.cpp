@@ -28,15 +28,22 @@ struct ExpectedDifficulty
     int         minSliderNotes;
 };
 
-constexpr std::array<const char*, 5> kOfficialChartIds{
-    "tutorial_song",
-    "spring_breeze",
-    "cherry_blossom",
-    "digital_dream",
-    "sakura_storm",
+struct ExpectedChart
+{
+    const char* chartId;
+    const char* musicFile;
 };
 
-constexpr std::array<ExpectedDifficulty, 9> kOfficialDifficulties{{
+constexpr std::array<ExpectedChart, 6> kOfficialCharts{{
+    { "tutorial_song",  "music.wav" },
+    { "spring_breeze",  "music.wav" },
+    { "cherry_blossom", "music.wav" },
+    { "digital_dream",  "music.wav" },
+    { "sakura_storm",   "music.wav" },
+    { "sakura_breath",  "music.ogg" },
+}};
+
+constexpr std::array<ExpectedDifficulty, 12> kOfficialDifficulties{{
     { "tutorial_song",  "easy.json",   "Easy",   1.0,  20,  0,   0, 1, 0,  0 },
     { "spring_breeze",  "normal.json", "Normal", 3.0,  32,  4,   8, 1, 0,  0 },
     { "spring_breeze",  "hard.json",   "Hard",   5.5,  56, 11,  24, 1, 0,  1 },
@@ -46,6 +53,9 @@ constexpr std::array<ExpectedDifficulty, 9> kOfficialDifficulties{{
     { "digital_dream",  "hard.json",   "Hard",   8.5,  60, 60,  60, 1, 0, 60 },
     { "digital_dream",  "expert.json", "Expert",12.0, 160, 40,  90, 4, 3,  1 },
     { "sakura_storm",   "expert.json", "Expert",14.0, 200, 50, 120, 5, 7,  1 },
+    { "sakura_breath",  "normal.json", "Normal", 4.0, 246, 13,  74, 1, 1, 10 },
+    { "sakura_breath",  "hard.json",   "Hard",   7.5, 505, 14, 173, 1, 1, 20 },
+    { "sakura_breath",  "expert.json", "Expert",10.5, 837, 14, 286, 1,10, 44 },
 }};
 
 const ChartInfo* FindChart(const std::vector<ChartInfo>& charts, const char* chartId)
@@ -74,13 +84,13 @@ TEST_CASE("官方测试谱面可被扫描到", "[charts][scan]")
     ChartLoader loader;
     auto charts = loader.ScanCharts(std::string(SAKURA_SOURCE_DIR) + "/resources/charts");
 
-    for (const char* chartId : kOfficialChartIds)
+    for (const auto& expected : kOfficialCharts)
     {
-        const ChartInfo* chart = FindChart(charts, chartId);
+        const ChartInfo* chart = FindChart(charts, expected.chartId);
         REQUIRE(chart != nullptr);
-        REQUIRE(chart->folderPath == std::string(SAKURA_SOURCE_DIR) + "/resources/charts/" + chartId);
+        REQUIRE(chart->folderPath == std::string(SAKURA_SOURCE_DIR) + "/resources/charts/" + expected.chartId);
         REQUIRE(chart->version == 2);
-        REQUIRE(chart->musicFile == "music.wav");
+        REQUIRE(chart->musicFile == expected.musicFile);
         REQUIRE(chart->coverFile == "cover.png");
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->coverFile));
@@ -89,6 +99,19 @@ TEST_CASE("官方测试谱面可被扫描到", "[charts][scan]")
     const auto it = std::find_if(charts.begin(), charts.end(),
         [](const ChartInfo& info) { return info.id == "test-song"; });
     REQUIRE(it != charts.end());
+}
+
+TEST_CASE("樱落呼吸以正式曲名收录并在曲库中提供完整预览", "[charts][scan]")
+{
+    ChartLoader loader;
+    auto charts = loader.ScanCharts(std::string(SAKURA_SOURCE_DIR) + "/resources/charts");
+    const ChartInfo* chart = FindChart(charts, "sakura_breath");
+    REQUIRE(chart != nullptr);
+    REQUIRE(chart->title == "樱落呼吸");
+    REQUIRE_THAT(chart->bpm, sakura::tests::Matchers::WithinAbs(178.0, 0.001));
+    REQUIRE(chart->offset == 0);
+    REQUIRE(chart->previewTime > 0);
+    REQUIRE(chart->difficulties.size() == 3);
 }
 
 TEST_CASE("内置谱面难度与音符元数据保持一致", "[charts][load]")

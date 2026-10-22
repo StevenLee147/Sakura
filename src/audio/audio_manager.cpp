@@ -60,6 +60,13 @@ bool AudioManager::Initialize()
     m_engine = new ma_engine();
     ma_engine_config engineConfig = ma_engine_config_init();
     // 使用默认设备和格式
+    if (m_offlineClock)
+    {
+        // 录制模式不打开任何输出设备：引擎只负责解码与时长查询，播放头由 Update 推进
+        engineConfig.noDevice   = MA_TRUE;
+        engineConfig.channels   = 2;
+        engineConfig.sampleRate = 48000;
+    }
 
     ma_result result = ma_engine_init(&engineConfig, m_engine);
     if (result != MA_SUCCESS)
@@ -85,9 +92,19 @@ bool AudioManager::Initialize()
     }
     ma_sound_group_set_volume(m_sfxGroup, m_sfxVolume);
     m_initialized = true;
-    LOG_INFO("AudioManager 初始化成功，主音量={:.2f}，音乐音量={:.2f}，音效音量={:.2f}",
-             m_masterVolume, m_musicVolume, m_sfxVolume);
+    LOG_INFO("AudioManager 初始化成功，主音量={:.2f}，音乐音量={:.2f}，音效音量={:.2f}{}",
+             m_masterVolume, m_musicVolume, m_sfxVolume, m_offlineClock ? "（离线时钟，无输出设备）" : "");
     return true;
+}
+
+void AudioManager::SetOfflineClock(bool enabled)
+{
+    if (m_initialized)
+    {
+        LOG_WARN("AudioManager::SetOfflineClock 必须在 Initialize 之前调用，已忽略");
+        return;
+    }
+    m_offlineClock = enabled;
 }
 
 // ── 关闭 ──────────────────────────────────────────────────────────────────────
@@ -192,6 +209,7 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
 
     // 在 start 前 seek 到指定起始位置，避免异步启动后再 seek 的竞争问题
     // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
+    double appliedStartSeconds = 0.0;
     if (startPositionSeconds > 0.0)
     {
         ma_result seekResult = ma_sound_seek_to_second(m_music, static_cast<float>(startPositionSeconds));
@@ -202,12 +220,27 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
         }
         else
         {
+            appliedStartSeconds = startPositionSeconds;
             LOG_DEBUG("PlayMusic: seek 到 {:.3f}s 成功", startPositionSeconds);
         }
     }
 
     // 开始播放
-    result = startPaused ? MA_SUCCESS : ma_sound_start(m_music);
+    if (m_offlineClock)
+    {
+        // 离线时钟从不启动 ma_sound，只维护虚拟播放头
+        m_virtualDuration = GetMusicDuration();
+        m_virtualCursor   = m_virtualDuration > 0.0
+            ? std::min(appliedStartSeconds, m_virtualDuration) : appliedStartSeconds;
+        m_virtualPlaying  = !startPaused;
+        m_virtualAtEnd    = false;
+        m_virtualLooping  = shouldLoop;
+        result = MA_SUCCESS;
+    }
+    else
+    {
+        result = startPaused ? MA_SUCCESS : ma_sound_start(m_music);
+    }
     if (result != MA_SUCCESS)
     {
         LOG_ERROR("ma_sound_start 失败: error={}", static_cast<int>(result));
@@ -236,7 +269,7 @@ void AudioManager::PauseMusic()
 {
     if (!m_music || m_musicPaused) return;
 
-    ma_sound_stop(m_music);
+    if (!m_offlineClock) ma_sound_stop(m_music);
     m_musicPaused = true;
     LOG_DEBUG("音乐已暂停");
 }
@@ -245,7 +278,20 @@ void AudioManager::ResumeMusic()
 {
     if (!m_music || !m_musicPaused) return;
 
-    ma_sound_start(m_music);
+    if (m_offlineClock)
+    {
+        // 与 ma_sound_start 一致：已播放到结尾的声音从头开始
+        if (m_virtualAtEnd)
+        {
+            m_virtualCursor = 0.0;
+            m_virtualAtEnd  = false;
+        }
+        m_virtualPlaying = true;
+    }
+    else
+    {
+        ma_sound_start(m_music);
+    }
     m_musicPaused = false;
     LOG_DEBUG("音乐已恢复");
 }
@@ -263,6 +309,11 @@ void AudioManager::StopMusic()
     m_musicPath   = "";
     m_musicPaused = false;
     m_fadingOut   = false;
+    m_virtualCursor   = 0.0;
+    m_virtualDuration = -1.0;
+    m_virtualPlaying  = false;
+    m_virtualAtEnd    = false;
+    m_virtualLooping  = false;
     AudioVisualizer::GetInstance().ClearSource();
     LOG_DEBUG("音乐已停止");
 }
@@ -285,6 +336,25 @@ void AudioManager::FadeOutMusic(int ms)
 
 void AudioManager::Update(float dt)
 {
+    if (m_offlineClock && m_music && m_virtualPlaying && !m_musicPaused)
+    {
+        // 虚拟时间：每次 Update 精确推进 dt × 播放速度，与渲染/编码耗时无关
+        m_virtualCursor += static_cast<double>(dt) * static_cast<double>(m_playbackSpeed);
+        if (m_virtualDuration > 0.0 && m_virtualCursor >= m_virtualDuration)
+        {
+            if (m_virtualLooping)
+            {
+                m_virtualCursor = std::fmod(m_virtualCursor, m_virtualDuration);
+            }
+            else
+            {
+                m_virtualCursor  = m_virtualDuration;
+                m_virtualPlaying = false;
+                m_virtualAtEnd   = true;
+            }
+        }
+    }
+
     if (m_fadingOut)
     {
         m_fadeTimer += dt;
@@ -296,6 +366,13 @@ bool AudioManager::SetMusicPosition(double seconds)
 {
     if (!m_music || !std::isfinite(seconds)) return false;
     seconds = std::clamp(seconds, 0.0, std::max(0.0, GetMusicDuration()));
+
+    if (m_offlineClock)
+    {
+        m_virtualCursor = seconds;
+        m_virtualAtEnd  = false;
+        return true;
+    }
 
     // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
     ma_result result = ma_sound_seek_to_second(m_music, static_cast<float>(seconds));
@@ -310,6 +387,7 @@ bool AudioManager::SetMusicPosition(double seconds)
 double AudioManager::GetMusicPosition() const
 {
     if (!m_music) return 0.0;
+    if (m_offlineClock) return m_virtualCursor;
 
     float cursor = 0.0f;
     ma_result result = ma_sound_get_cursor_in_seconds(m_music, &cursor);
@@ -330,6 +408,7 @@ double AudioManager::GetMusicDuration() const
 bool AudioManager::IsPlaying() const
 {
     if (!m_music) return false;
+    if (m_offlineClock) return m_virtualPlaying && !m_musicPaused;
     return ma_sound_is_playing(m_music) == MA_TRUE && !m_musicPaused;
 }
 
@@ -368,9 +447,13 @@ void AudioManager::PlaySFX(const std::string& path)
         if (voice) { chosen = voice; if (!ma_sound_is_playing(voice)) break; }
     if (chosen)
     {
-        ma_sound_stop(chosen);
-        ma_sound_seek_to_pcm_frame(chosen, 0);
-        ma_sound_start(chosen);
+        // 离线时钟下不发声，但保留与实时播放一致的可视化冲击
+        if (!m_offlineClock)
+        {
+            ma_sound_stop(chosen);
+            ma_sound_seek_to_pcm_frame(chosen, 0);
+            ma_sound_start(chosen);
+        }
         AudioVisualizer::GetInstance().AddImpulse(0.20f);
     }
 }

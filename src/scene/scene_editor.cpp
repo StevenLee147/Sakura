@@ -46,13 +46,15 @@ constexpr float OVERVIEW_H = 0.94f;
 
 SceneEditor::SceneEditor(SceneManager& mgr,
                          const std::string& folderPath,
-                         const std::string& difficultyFile)
+                         const std::string& difficultyFile,
+                         int difficultyIndex)
     : m_manager(mgr)
     , m_timeline(m_core)
     , m_mouseArea(m_core)
     , m_preview(m_core)
     , m_initFolderPath(folderPath)
     , m_initDiffFile(difficultyFile)
+    , m_initDiffIndex(difficultyIndex)
 {
 }
 
@@ -93,6 +95,9 @@ void SceneEditor::OnEnter()
             sakura::ui::ToastManager::Instance().Show("谱面加载失败，请检查文件",sakura::ui::ToastType::Error);
             m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager));return;
         }
+        // 调用方显式给出难度索引时（离线录制），属性面板与试玩使用对应难度
+        if (m_initDiffIndex >= 0 && m_initDiffIndex < static_cast<int>(m_core.GetChartInfo().difficulties.size()))
+            m_currentDiffIndex = m_initDiffIndex;
     }
     else
     {

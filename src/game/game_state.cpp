@@ -284,7 +284,10 @@ void GameState::UpdateActiveWindows()
 void GameState::CheckFinished()
 {
     auto& audio = sakura::audio::AudioManager::GetInstance();
-    const bool segmentEnded = m_options.mode == PlayMode::Practice && m_options.endMs > m_options.startMs
+    // Practice and demonstration (AutoPlay) both honor an explicit [startMs, endMs] segment.
+    // Normal song selection always passes endMs = 0 for AutoPlay, so whole-song demos are unchanged.
+    const bool rangedMode = m_options.mode == PlayMode::Practice || m_options.mode == PlayMode::AutoPlay;
+    const bool segmentEnded = rangedMode && m_options.endMs > m_options.startMs
         && m_currentTimeMs >= m_options.endMs;
     if (segmentEnded || (!audio.IsPlaying() && !audio.IsPaused() && m_currentTimeMs > m_chartEndMs + 200))
     {
