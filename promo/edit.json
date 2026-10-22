@@ -1,0 +1,16 @@
+{
+  "$comment": "Single source of truth for the promo soundtrack edit. Frames at 60 fps; sourceFrom = music time x 60. Grid of 樱落呼吸: 178 BPM, beat j at -0.01858 + j*60/178 s, bars start at j = 0 mod 4 (same indexing as scripts/build_sakura_breath.py). Segment 1 = beats 16-180 (intro, build, drop A); segment 2 = beats 484-504 + tail (last bar of drop C into the outro). Both splice points are downbeats of bar 29 of drops that share their arrangement, so the cut is near-seamless.",
+  "fps": 60,
+  "sampleRate": 48000,
+  "bpm": 178,
+  "beatZero": -0.01858,
+  "segments": [
+    { "name": "intro-build-dropA", "editFrom": 0, "sourceFrom": 322, "duration": 3317 },
+    { "name": "dropC-end-outro", "editFrom": 3317, "sourceFrom": 9787, "duration": 453 }
+  ],
+  "durationInFrames": 3770,
+  "crossfadeMs": 30,
+  "fadeOutFrames": 168,
+  "targetLufs": -14.0,
+  "maxTruePeakDb": -1.0
+}

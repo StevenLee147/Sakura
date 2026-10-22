@@ -1,0 +1,45 @@
+{
+  "width": 3840,
+  "height": 2160,
+  "fps": 60,
+  "preview_width": 1280,
+  "preview_height": 720,
+  "ffmpeg": "ffmpeg",
+  "video_args": [
+    "-vf", "scale=out_color_matrix=bt709:out_range=tv,setparams=color_primaries=bt709:color_trc=bt709",
+    "-c:v", "h264_nvenc", "-preset", "p7", "-tune", "hq", "-rc", "vbr", "-cq", "14", "-b:v", "0",
+    "-maxrate", "400M", "-bufsize", "800M", "-g", "60", "-bf", "0", "-pix_fmt", "yuv420p",
+    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+    "-movflags", "+faststart"
+  ],
+  "config": {},
+  "shots": [
+    { "name": "menu", "scene": "menu", "seconds": 9 },
+    {
+      "name": "select", "scene": "select", "chart": "sakura_breath", "difficulty": 2, "seconds": 9,
+      "actions": [
+        { "at": 1.2, "key": "Up" }, { "at": 2.2, "key": "Up" }, { "at": 3.4, "key": "Down" }, { "at": 4.4, "key": "Down" },
+        { "at": 5.6, "key": "Left" }, { "at": 6.6, "key": "Right" }
+      ]
+    },
+    {
+      "name": "practice", "scene": "select", "chart": "sakura_breath", "difficulty": 2, "seconds": 7,
+      "actions": [ { "at": 0.8, "click": [0.73, 0.615] } ]
+    },
+    {
+      "name": "editor", "scene": "editor", "chart": "sakura_breath", "difficulty": 2, "seconds": 9,
+      "actions": [ { "at": 0.6, "click": [0.95, 0.868] }, { "at": 1.0, "key": "Space" } ]
+    },
+    { "name": "settings", "scene": "settings", "page": 4, "seconds": 6 },
+    { "name": "tutorial", "scene": "tutorial", "seconds": 9 },
+    { "name": "calibration", "scene": "calibration", "seconds": 8 },
+    {
+      "name": "play_expert", "scene": "game", "chart": "sakura_breath", "difficulty": 2, "mode": "auto",
+      "until": "result", "tail_seconds": 8, "max_seconds": 260
+    },
+    {
+      "name": "play_hard", "scene": "game", "chart": "sakura_breath", "difficulty": 1, "mode": "auto",
+      "until": "result", "tail_seconds": 1, "max_seconds": 260
+    }
+  ]
+}
