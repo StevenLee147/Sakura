@@ -157,39 +157,44 @@ void ToastManager::Render(sakura::core::Renderer& renderer,
 
         sakura::core::NormRect rect { toastX, toastY, TOAST_W, TOAST_H };
 
-        // 背景
+        // 磨砂玻璃悬浮投影与渐变底卡
+        renderer.DrawSoftShadow(rect, 0.011f, 0.014f, { 2, 4, 12, static_cast<uint8_t>(135 * slideX) }, 0.004f, 10);
         auto bgColor = GetTypeColor(t.data.type);
         bgColor.a    = static_cast<uint8_t>(bgColor.a * slideX);
-        renderer.DrawRoundedRect(rect, 0.008f, bgColor, true);
+        sakura::core::Color bgBot{ 12, 16, 30, static_cast<uint8_t>(238 * slideX) };
+        renderer.DrawRoundedGradientRect(rect, 0.011f, bgColor, bgBot, bgColor, bgBot, 10, true);
 
-        // 左侧颜色指示条
         auto iconColor = GetIconColor(t.data.type);
         iconColor.a    = static_cast<uint8_t>(iconColor.a * slideX);
-        renderer.DrawFilledRect(
-            { toastX, toastY, 0.005f, TOAST_H },
-            iconColor);
+        renderer.DrawRoundedRectOutlineGradient(
+            rect, 0.011f,
+            { iconColor.r, iconColor.g, iconColor.b, static_cast<uint8_t>(165 * slideX) },
+            { 160, 170, 210, static_cast<uint8_t>(52 * slideX) },
+            0.0013f, 10);
 
-        // 图标
+        // 左侧发光指示条与徽章底圆
+        renderer.DrawRoundedRect(
+            { toastX + 0.003f, toastY + 0.008f, 0.0035f, TOAST_H - 0.016f },
+            0.0017f, iconColor, true);
+        const float badgeCX = toastX + 0.024f;
+        const float badgeCY = toastY + TOAST_H * 0.5f;
+        renderer.DrawCircleFilled(badgeCX, badgeCY, 0.013f, { iconColor.r, iconColor.g, iconColor.b, static_cast<uint8_t>(38 * slideX) }, 24);
+
+        // 图标与消息文字垂直居中
         if (fontHandle != 0)
         {
             const char* icon = GetTypeIcon(t.data.type);
-            float iconX = toastX + 0.022f;
-            float iconY = toastY + TOAST_H * 0.5f;
+            const float iconH = renderer.MeasureText(fontHandle, icon, normFontSize * 1.05f).height;
             renderer.DrawText(fontHandle, icon,
-                              iconX, iconY, normFontSize * 1.1f,
+                              badgeCX, badgeCY - iconH * 0.5f, normFontSize * 1.05f,
                               iconColor,
                               sakura::core::TextAlign::Center);
-        }
 
-        // 消息文字
-        if (fontHandle != 0)
-        {
-            sakura::core::Color textColor = { 220, 220, 230,
-                static_cast<uint8_t>(230 * slideX) };
-            float msgX = toastX + 0.040f;
-            float msgY = toastY + TOAST_H * 0.5f;
+            sakura::core::Color textColor = { 246, 243, 252,
+                static_cast<uint8_t>(245 * slideX) };
+            const float msgH = renderer.MeasureText(fontHandle, t.data.message, normFontSize).height;
             renderer.DrawText(fontHandle, t.data.message,
-                              msgX, msgY, normFontSize,
+                              toastX + 0.044f, badgeCY - msgH * 0.5f, normFontSize,
                               textColor,
                               sakura::core::TextAlign::Left);
         }

@@ -61,11 +61,11 @@ private:
     sakura::core::FontHandle     m_fontHandle;
     float                        m_normFontSize;
 
-    sakura::core::Color m_bgColor        = { 45, 45, 65, 230 };
-    sakura::core::Color m_hoverColor     = { 80, 80, 115, 240 };
-    sakura::core::Color m_selectedColor  = { 110, 70, 160, 240 };
-    sakura::core::Color m_textColor      = { 220, 220, 220, 255 };
-    sakura::core::Color m_arrowColor     = { 180, 160, 210, 255 };
+    sakura::core::Color m_bgColor        = { 22, 28, 48, 228 };
+    sakura::core::Color m_hoverColor     = { 44, 54, 88, 236 };
+    sakura::core::Color m_selectedColor  = { 92, 58, 112, 242 };
+    sakura::core::Color m_textColor      = { 246, 243, 252, 255 };
+    sakura::core::Color m_arrowColor     = { 250, 216, 157, 240 };
 
     std::function<void(int, const std::string&)> m_onChange;
 

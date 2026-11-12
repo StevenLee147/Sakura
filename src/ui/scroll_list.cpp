@@ -173,14 +173,21 @@ void ScrollList::Render(sakura::core::Renderer& renderer)
 {
     if (!m_isVisible) return;
 
-    // 绘制背景
-    sakura::core::Color bgColor = m_bgColor;
-    bgColor.a = static_cast<uint8_t>(bgColor.a * m_opacity);
-    renderer.DrawFilledRect(m_bounds, bgColor);
-
-    // 边框
-    sakura::core::Color borderColor = { 80, 80, 120, static_cast<uint8_t>(120 * m_opacity) };
-    renderer.DrawRectOutline(m_bounds, borderColor, 0.001f);
+    // 磨砂玻璃列表底板与鎏金边框
+    sakura::core::Color bgTop = m_bgColor;
+    bgTop.a = static_cast<uint8_t>(bgTop.a * m_opacity);
+    sakura::core::Color bgBot{
+        static_cast<uint8_t>(std::max(0, static_cast<int>(bgTop.r) - 6)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(bgTop.g) - 6)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(bgTop.b) - 8)),
+        bgTop.a
+    };
+    renderer.DrawRoundedGradientRect(m_bounds, 0.012f, bgTop, bgTop, bgBot, bgBot, 12, true);
+    renderer.DrawRoundedRectOutlineGradient(
+        m_bounds, 0.012f,
+        { 250, 216, 157, static_cast<uint8_t>(98 * m_opacity) },
+        { 148, 158, 198, static_cast<uint8_t>(48 * m_opacity) },
+        0.0013f, 12);
 
     if (m_items.empty()) return;
 
@@ -223,17 +230,28 @@ void ScrollList::Render(sakura::core::Renderer& renderer)
             itemColor = m_normalColor;
 
         itemColor.a = static_cast<uint8_t>(itemColor.a * m_opacity);
-        renderer.DrawFilledRect(itemRect, itemColor);
+        if (i == m_selectedIndex)
+        {
+            sakura::core::Color selRight{ 52, 42, 86, itemColor.a };
+            renderer.DrawGradientRect(itemRect, itemColor, selRight, itemColor, selRight);
+            renderer.DrawFilledRect(
+                { itemRect.x + 0.002f, itemRect.y + 0.003f, 0.0032f, std::max(0.0f, itemRect.height - 0.006f) },
+                { 250, 216, 157, static_cast<uint8_t>(235 * m_opacity) });
+        }
+        else
+        {
+            renderer.DrawFilledRect(itemRect, itemColor);
+        }
 
         // 分隔线
         if (i > 0)
         {
-            sakura::core::Color divColor = { 60, 60, 90, static_cast<uint8_t>(100 * m_opacity) };
-            renderer.DrawLine(m_bounds.x,
+            sakura::core::Color divColor = { 188, 178, 216, static_cast<uint8_t>(38 * m_opacity) };
+            renderer.DrawLine(m_bounds.x + 0.008f,
                               clippedY,
-                              m_bounds.x + m_bounds.width,
+                              m_bounds.x + m_bounds.width - 0.008f,
                               clippedY,
-                              divColor, 0.0005f);
+                              divColor, 0.0006f);
         }
 
         // 文字（仅当条目未被裁剪至太小时才绘制）

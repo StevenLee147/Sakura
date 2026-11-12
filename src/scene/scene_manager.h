@@ -20,6 +20,8 @@ enum class TransitionType
     SlideDown,      // 当前场景向下滑出，新场景从上滑入
     Scale,          // 新场景从中心缩出
     CircleWipe,     // 圆形遮罩展开
+    SilkShutter,    // 斜向鎏金丝绸百叶过渡
+    SakuraSweep,    // 落樱霞光流光横扫过渡
 };
 
 // SceneManager — 管理场景栈与切换动画

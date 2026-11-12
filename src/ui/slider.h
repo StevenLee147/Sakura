@@ -75,10 +75,10 @@ private:
     sakura::core::FontHandle m_fontHandle;
     float                    m_normFontSize;
 
-    sakura::core::Color m_trackColor = { 60, 60, 80, 200 };
-    sakura::core::Color m_fillColor  = { 160, 100, 200, 220 };
-    sakura::core::Color m_thumbColor = { 220, 180, 255, 255 };
-    sakura::core::Color m_labelColor = { 220, 220, 220, 255 };
+    sakura::core::Color m_trackColor = { 18, 24, 42, 215 };
+    sakura::core::Color m_fillColor  = { 246, 172, 200, 240 };
+    sakura::core::Color m_thumbColor = { 252, 236, 212, 255 };
+    sakura::core::Color m_labelColor = { 244, 241, 250, 255 };
 
     std::function<void(float)>         m_onChange;
     std::function<std::string(float)>  m_formatter;

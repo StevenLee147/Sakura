@@ -37,45 +37,55 @@ public:
     void SetDimming(float dim) { m_dimming = dim; }
     float GetDimming() const   { return m_dimming; }
 
-    // 启用模糊（暂停时使用 ShaderManager 模糊）
+    // 启用模糊（暂停或高模糊度背景时使用 Dual-Kawase 模糊）
     void SetBlurEnabled(bool enabled) { m_blurEnabled = enabled; }
     bool IsBlurEnabled()  const       { return m_blurEnabled;    }
+
+    void SetBlurStrength(float strength) { m_blurStrength = strength; }
+    float GetBlurStrength() const        { return m_blurStrength; }
+
+    SDL_Texture* GetBlurredTexture() const { return m_blurred; }
 
     void Update(float dt);
     void Render(sakura::core::Renderer& renderer);
 
 private:
     sakura::core::TextureHandle m_textureHandle = sakura::core::INVALID_HANDLE;
-    float m_dimming     = 0.5f;   // 默认暗化 50%
-    bool  m_blurEnabled = false;
+    float m_dimming      = 0.5f;   // 默认暗化 50%
+    float m_blurStrength = -1.0f;  // <0 时自动读取配置 graphics.background_blur
+    float m_breathTime   = 0.0f;
+    bool  m_blurEnabled  = false;
     SDL_Texture* m_blurred = nullptr;
-    int m_blurW=0,m_blurH=0;
+    int   m_blurW = 0;
+    int   m_blurH = 0;
+    int   m_cachedBlurQuant = -1;
 };
 
 // ── DefaultBackground ─────────────────────────────────────────────────────────
-// 无自定义图片时渲染：缓慢渐变色背景 + BackgroundFloat 粒子
-
+// 无自定义图片时渲染：月夜墨樱插画背景 + 极光丝带 + 散景与樱花粒子
 class DefaultBackground
 {
 public:
     DefaultBackground();
 
     void Initialize(float dimming = 0.5f);
+
     void Update(float dt);
     void Render(sakura::core::Renderer& renderer);
 
 private:
-    // 缓慢颜色渐变状态
-    float m_colorPhase = 0.0f;   // 0~2π，按 COLOR_SPEED 推进
-    static constexpr float COLOR_SPEED = 0.08f;  // rad/s（约 80s 一圈）
+    float m_colorPhase = 0.0f;   // 缓慢呼吸相位
+    static constexpr float COLOR_SPEED = 0.08f;
 
-    // 粒子发射器
+    sakura::core::TextureHandle m_artworkHandle = sakura::core::INVALID_HANDLE;
+    bool m_artworkTried = false;
+
     ParticleSystem m_particles;
     int m_floatEmitter = -1;
+    int m_petalEmitter = -1;
 
     float m_dimming = 0.5f;
 
-    // 根据 phase 混合两种背景色
     sakura::core::Color CalcBgColor(float phase) const;
 };
 

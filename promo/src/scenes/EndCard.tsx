@@ -79,7 +79,7 @@ export const EndCard: React.FC = () => {
           opacity: appear(40) * 0.9,
         }}
       >
-        v0.6.1-alpha · 画面为开发中版本实机录制 · BGM《樱落呼吸》由 Suno AI 生成
+        v0.7.0-alpha · 画面为开发中版本实机录制 · BGM《樱落呼吸》由 Suno AI 生成
       </div>
       <Fade from={170} to={210} />
     </AbsoluteFill>

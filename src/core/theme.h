@@ -20,14 +20,18 @@ struct ThemeColors
     Color secondary;        // 次要色（非焦点元素）
     Color accent;           // 高亮/点缀色（连击数字、重要标签）
 
-    // 背景层
-    Color bg;               // 场景背景
-    Color surface;          // 面板/卡片背景
-    Color surfaceBorder;    // 面板边框
+    // 背景层与磨砂玻璃材质令牌
+    Color bg;               // 月夜墨靛场景底色 (#0A0E1A)
+    Color surface;          // 磨砂琉璃面板主色
+    Color surfaceElevated;  // 悬浮高阶磨砂玻璃顶面色
+    Color surfaceBorder;    // 磨砂玻璃底边柔光边框
+    Color gildedHairline;   // 鎏金香槟高光细边 (#FAD89D)
+    Color specularTop;      // 玻璃上沿镜面反射色
 
     // 文字
-    Color text;             // 主要文字
-    Color textDim;          // 次级/禁用文字
+    Color text;             // 珍珠雪白主文字
+    Color textDim;          // 月雾银灰次级文字
+    Color textMuted;        // 辅助弱文字
 
     // 游戏元素
     Color noteColor;        // 普通音符
@@ -113,12 +117,14 @@ struct ThemeButtonStyle
 
 struct ThemePanelStyle
 {
-    Color fill   = { 15, 12, 30, 220 };
-    Color border = { 100, 80, 150, 150 };
-    Color shadow = { 0, 0, 0, 90 };
-    Color accent = { 255, 150, 200, 180 };
-    float cornerRadius    = 0.012f;
-    float borderThickness = 0.0015f;
+    Color fill        = { 17, 22, 38, 208 };
+    Color fillBottom  = { 11, 15, 28, 226 };
+    Color border      = { 246, 198, 218, 92 };
+    Color borderSubtle= { 126, 138, 178, 42 };
+    Color shadow      = { 3, 5, 14, 118 };
+    Color accent      = { 250, 216, 157, 215 };
+    float cornerRadius    = 0.014f;
+    float borderThickness = 0.0014f;
 };
 
 struct ThemeProgressStyle

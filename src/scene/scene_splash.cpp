@@ -141,41 +141,74 @@ void SceneSplash::GoToNextScene()
 
     m_manager.SwitchScene(
         std::make_unique<SceneLoading>(m_manager, std::move(tasks), std::move(factory)),
-        TransitionType::Fade,
-        0.4f
+        TransitionType::SilkShutter,
+        0.45f
     );
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
-
 void SceneSplash::OnRender(sakura::core::Renderer& renderer)
 {
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    const float clampedOpacity = std::clamp(m_opacity, 0.0f, 1.0f);
+    sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_timer * 0.6f, clampedOpacity * 0.72f);
 
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
 
-    uint8_t alpha = static_cast<uint8_t>(std::max(0.0f, std::min(1.0f, m_opacity)) * 255.0f);
+    const uint8_t alpha = static_cast<uint8_t>(clampedOpacity * 255.0f);
+    const float aspect = static_cast<float>(renderer.GetScreenHeight()) / std::max(1, renderer.GetScreenWidth());
 
-    // ── Logo 主标题 ───────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontTitle, "Sakura-樱",
-        0.5f, 0.38f, 0.12f,
-        sakura::core::Color{ 255, 200, 220, alpha },
-        sakura::core::TextAlign::Center);
-
-    // ── 副标题 ────────────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontSub, "Mixed-Mode Rhythm Game",
-        0.5f, 0.525f, 0.025f,
-        sakura::core::Color{ 200, 180, 210, static_cast<uint8_t>(alpha * 0.7f) },
-        sakura::core::TextAlign::Center);
-
-    // ── 底部 "Loading..." 闪烁 ────────────────────────────────────────────────
-    if (m_blinkVisible)
+    // ── 水墨落樱涟漪与月华光晕 ───────────────────────────────────────────────
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(
+        0.5f, 0.36f, 0.24f, 0.24f,
+        { 246, 172, 200, static_cast<uint8_t>(alpha * 0.32f) }, { 246, 172, 200, 0 }, 48);
+    for (int r = 0; r < 3; ++r)
     {
-        renderer.DrawText(m_fontSub, "Loading...",
-            0.5f, 0.90f, 0.022f,
-            sakura::core::Color{ 200, 200, 220, static_cast<uint8_t>(alpha * 0.6f) },
-            sakura::core::TextAlign::Center);
+        const float wave = std::fmod(m_timer * 0.55f + r * 0.33f, 1.0f);
+        const float rad  = 0.075f + wave * 0.16f;
+        const uint8_t ra = static_cast<uint8_t>((1.0f - wave) * clampedOpacity * 115.0f);
+        renderer.DrawCircleOutline(0.5f, 0.31f, rad, { 250, 216, 157, ra }, 0.0014f, 64);
     }
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+
+    // ── 中心樱纹徽章 ──────────────────────────────────────────────────────────
+    const auto crestTex = sakura::ui::VisualStyle::GetSakuraCrestTexture();
+    if (crestTex != sakura::core::INVALID_HANDLE)
+    {
+        const float crestSize = 0.135f * (0.92f + 0.08f * clampedOpacity);
+        const float crestW = crestSize * aspect;
+        renderer.DrawSprite(
+            crestTex,
+            { 0.5f - crestW * 0.5f, 0.31f - crestSize * 0.5f, crestW, crestSize },
+            m_timer * 14.0f,
+            sakura::core::Color::White,
+            clampedOpacity * 0.95f);
+    }
+
+    // ── Logo 主标题与鎏金纹线 ─────────────────────────────────────────────────
+    renderer.DrawText(m_fontTitle, "Sakura · 樱",
+        0.5f, 0.425f, 0.098f,
+        sakura::core::Color{ 250, 242, 246, alpha },
+        sakura::core::TextAlign::Center);
+
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.34f, 0.66f, 0.548f, clampedOpacity * 0.85f);
+
+    renderer.DrawText(m_fontSub, "LUMINOUS GLASS  ·  MIXED-MODE RHYTHM",
+        0.5f, 0.568f, 0.022f,
+        sakura::core::Color{ 238, 198, 214, static_cast<uint8_t>(alpha * 0.85f) },
+        sakura::core::TextAlign::Center);
+
+    // ── 底部呼吸玻璃胶囊提示 ──────────────────────────────────────────────────
+    const float pulse = 0.55f + 0.45f * (m_blinkVisible ? 1.0f : 0.35f);
+    sakura::ui::VisualStyle::DrawBadgePill(
+        renderer,
+        { 0.39f, 0.865f, 0.22f, 0.042f },
+        "AWAKENING SAKURA...",
+        m_fontSub, 0.018f,
+        { 20, 26, 48, static_cast<uint8_t>(alpha * 0.72f) },
+        { 250, 216, 157, static_cast<uint8_t>(alpha * 0.55f * pulse) },
+        { 236, 228, 244, static_cast<uint8_t>(alpha * 0.80f * pulse) });
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────

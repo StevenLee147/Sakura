@@ -11,7 +11,7 @@ on:
       release_tag:
         description: 'Existing version tag to build, test, and publish'
         required: true
-        default: 'v0.6.0-alpha'
+        default: 'v0.7.0-alpha'
         type: string
 
 env:

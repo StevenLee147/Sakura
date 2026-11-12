@@ -125,6 +125,33 @@ def update_vcpkg(core_version: str) -> bool:
     )
 
 
+def update_readme(release_tag: str) -> bool:
+    readme_path = REPO_ROOT / "README.md"
+    changed_header = replace_once(
+        readme_path,
+        r'^当前版本：\*\*v\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?\*\*',
+        f'当前版本：**{release_tag}**',
+        'README 当前版本',
+    )
+    changed_checkout = replace_once(
+        readme_path,
+        r'`git checkout v\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?`',
+        f'`git checkout {release_tag}`',
+        'README checkout 标签',
+    )
+    return changed_header or changed_checkout
+
+
+def update_manifest(core_version: str) -> bool:
+    manifest_path = REPO_ROOT / "resources" / "windows" / "sakura.manifest"
+    return replace_once(
+        manifest_path,
+        r'(<assemblyIdentity version=")\d+\.\d+\.\d+\.0(" processorArchitecture="amd64" name="Sakura\.Rhythm" type="win32"/>)',
+        rf'\g<1>{core_version}.0\g<2>',
+        'Windows manifest assemblyIdentity version',
+    )
+
+
 def update_roadmap(release_tag: str) -> bool:
     roadmap_path = REPO_ROOT / "doc" / "ROADMAP.md"
     return replace_once(
@@ -150,12 +177,16 @@ def main() -> int:
         version_path,
         REPO_ROOT / "CMakeLists.txt",
         REPO_ROOT / "vcpkg.json",
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "resources" / "windows" / "sakura.manifest",
         REPO_ROOT / "doc" / "ROADMAP.md",
     ]
 
     sync_version_metadata(version_path, core_version, channel, version_data)
     update_cmake(core_version, channel)
     update_vcpkg(core_version)
+    update_readme(release_tag)
+    update_manifest(core_version)
     update_roadmap(release_tag)
     stage_files(managed_paths)
 

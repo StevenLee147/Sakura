@@ -8,6 +8,7 @@
 #include "utils/file_io.h"
 #include "core/input.h"
 #include "utils/logger.h"
+#include "core/theme.h"
 #include "utils/easing.h"
 #include "ui/visual_style.h"
 
@@ -231,91 +232,155 @@ void SceneCalibration::OnEvent(const SDL_Event& event)
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
-
 void SceneCalibration::OnRender(sakura::core::Renderer& renderer)
 {
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.11f, 0.64f, 0.76f }, false, true);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.17f, 0.115f, 0.66f, 0.760f }, false, true);
 
-    // 标题
-    renderer.DrawText(m_font, "延迟校准",
-        0.5f, 0.06f, 0.045f, { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
+    // 顶部标题与徽章
+    sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.43f, 0.024f, 0.14f, 0.026f }, "AUDIO OFFSET",
+        m_font, 0.013f, { 36, 28, 56, 195 }, palette.gildedHairline, palette.accent);
+    renderer.DrawText(m_font, "音频延迟校准",
+        0.5f, 0.056f, 0.042f, palette.text, sakura::core::TextAlign::Center);
 
-    // 说明
-    renderer.DrawText(m_font, "跟随听到的节拍按空格，动画仅作参考",
-        0.5f, 0.14f, 0.028f, { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_font, "先听 4 拍，再收集 20 次 · 请使用实际游玩的音频设备",
-        0.5f, 0.18f, 0.024f, { 150, 150, 170, 160 }, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_font, "闭眼或专注听节拍音按下空格 · 视觉脉冲仅供辅助",
+        0.5f, 0.138f, 0.024f, palette.text, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_font, "前 4 拍热身，随后采集 20 次击打 · 建议使用日常耳机/外放设备",
+        0.5f, 0.174f, 0.0185f, palette.textDim, sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.24f, 0.76f, 0.212f, 0.75f);
 
-    // 下落式校准动画（类似音游下落判定观察）
+    // 下落式琉璃节拍轨道 + 脉冲光环
     {
         constexpr float laneX      = 0.5f;
-        constexpr float laneTopY   = 0.26f;
-        constexpr float judgeY     = 0.48f;
-        constexpr float laneHalfW  = 0.08f;
-        constexpr float noteRadius = 0.026f;
+        constexpr float laneTopY   = 0.232f;
+        constexpr float judgeY     = 0.452f;
+        constexpr float laneHalfW  = 0.082f;
+        constexpr float noteRadius = 0.023f;
 
-        float beatPhase = std::clamp(m_beatTimer / BEAT_INTERVAL, 0.0f, 1.0f);
-        float fallT     = sakura::utils::EaseInSine(beatPhase);
-        float noteY     = laneTopY + (judgeY - laneTopY) * fallT;
-        float pulse     = sakura::utils::EaseOutExpo(m_pulseAnim);
+        const float beatPhase = std::clamp(m_beatTimer / BEAT_INTERVAL, 0.0f, 1.0f);
+        const float fallT     = sakura::utils::EaseInSine(beatPhase);
+        const float noteY     = laneTopY + (judgeY - laneTopY) * fallT;
+        const float pulse     = sakura::utils::EaseOutExpo(m_pulseAnim);
 
-        renderer.DrawFilledRect(
-            sakura::core::NormRect{ laneX - laneHalfW, laneTopY, laneHalfW * 2.0f, judgeY - laneTopY },
-            { 40, 40, 70, 90 });
-        renderer.DrawRectOutline(
-            sakura::core::NormRect{ laneX - laneHalfW, laneTopY, laneHalfW * 2.0f, judgeY - laneTopY },
-            { 110, 100, 150, 150 }, 0.0018f);
+        const sakura::core::NormRect trackRect{ laneX - laneHalfW, laneTopY, laneHalfW * 2.0f, judgeY - laneTopY + 0.036f };
+        renderer.DrawRoundedGradientRect(trackRect, 0.012f,
+            { 14, 18, 34, 210 }, { 14, 18, 34, 210 },
+            { 28, 22, 48, 228 }, { 28, 22, 48, 228 });
+        renderer.DrawRoundedRectOutlineGradient(trackRect, 0.012f,
+            palette.gildedHairline, palette.surfaceBorder, 0.0015f);
 
-        renderer.DrawLine(laneX - laneHalfW - 0.02f, judgeY, laneX + laneHalfW + 0.02f, judgeY,
-            { 220, 180, 255, static_cast<uint8_t>(180 + 60 * pulse) }, 0.005f + 0.001f * pulse);
+        for (int tick = 1; tick <= 3; ++tick)
+        {
+            const float ty = laneTopY + (judgeY - laneTopY) * (static_cast<float>(tick) * 0.25f);
+            renderer.DrawLine(laneX - laneHalfW + 0.012f, ty, laneX + laneHalfW - 0.012f, ty,
+                { 160, 155, 195, 42 }, 0.001f);
+        }
 
-        renderer.DrawCircleFilled(laneX, noteY, noteRadius, { 175, 120, 245, 225 });
-        renderer.DrawCircleOutline(laneX, noteY, noteRadius, { 235, 210, 255, 220 }, 0.0025f);
-        renderer.DrawCircleOutline(
-            laneX, judgeY, noteRadius + 0.006f + pulse * 0.005f,
-            { 190, 150, 255, static_cast<uint8_t>(80 * pulse) }, 0.002f);
+        // 判定环与节拍扩散波纹
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        renderer.DrawRadialGradient(laneX, judgeY, 0.075f + 0.025f * pulse, 0.035f + 0.012f * pulse,
+            { palette.primary.r, palette.primary.g, palette.primary.b, static_cast<uint8_t>(65 + 95 * pulse) },
+            { palette.primary.r, palette.primary.g, palette.primary.b, 0 });
+        if (pulse > 0.02f)
+        {
+            const float ringR = noteRadius + 0.006f + (1.0f - pulse) * 0.026f;
+            renderer.DrawRingGradient(laneX, judgeY, ringR - 0.003f, ringR + 0.004f,
+                { palette.accent.r, palette.accent.g, palette.accent.b, static_cast<uint8_t>(165 * pulse) },
+                { palette.primary.r, palette.primary.g, palette.primary.b, 0 });
+        }
+        renderer.DrawRadialGradient(laneX, noteY, noteRadius * 1.9f, noteRadius * 1.9f,
+            { 255, 182, 212, 120 }, { 255, 182, 212, 0 });
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+
+        renderer.DrawLine(laneX - laneHalfW - 0.022f, judgeY, laneX + laneHalfW + 0.022f, judgeY,
+            { palette.accent.r, palette.accent.g, palette.accent.b, static_cast<uint8_t>(190 + 60 * pulse) },
+            0.0032f + 0.0012f * pulse);
+        renderer.DrawCircleOutline(laneX, judgeY, noteRadius + 0.003f, palette.gildedHairline, 0.0018f);
+
+        // 樱珠音符
+        renderer.DrawCircleFilled(laneX, noteY, noteRadius, palette.primary);
+        renderer.DrawCircleFilled(laneX, noteY - noteRadius * 0.24f, noteRadius * 0.48f, { 255, 240, 248, 210 });
+        renderer.DrawCircleOutline(laneX, noteY, noteRadius, { 255, 245, 250, 235 }, 0.0022f);
     }
 
-    // 进度（已收集样本数）
-    int cnt = static_cast<int>(m_samples.size());
+    // 采集进度条与实时偏差散点标尺 (-150ms .. +150ms)
+    const int cnt = static_cast<int>(m_samples.size());
+    const float progRatio = std::clamp(static_cast<float>(cnt) / static_cast<float>(MAX_SAMPLES), 0.0f, 1.0f);
+    renderer.DrawRoundedRect({ 0.31f, 0.506f, 0.38f, 0.013f }, 0.006f, { 18, 22, 38, 210 }, true);
+    if (progRatio > 0.0f)
+    {
+        renderer.DrawRoundedGradientRect({ 0.31f, 0.506f, 0.38f * progRatio, 0.013f }, 0.006f,
+            palette.primary, palette.accent, palette.primary, palette.accent);
+    }
     renderer.DrawText(m_font,
-        std::to_string(cnt) + " / " + std::to_string(MAX_SAMPLES),
-        0.5f, 0.56f, 0.030f, { 200, 200, 220, 200 }, sakura::core::TextAlign::Center);
+        "采样进度  " + std::to_string(cnt) + " / " + std::to_string(MAX_SAMPLES),
+        0.5f, 0.526f, 0.019f, palette.textDim, sakura::core::TextAlign::Center);
+
+    {
+        const sakura::core::NormRect meterRect{ 0.26f, 0.556f, 0.48f, 0.032f };
+        renderer.DrawRoundedRect(meterRect, 0.008f, { 14, 18, 32, 215 }, true);
+        renderer.DrawRoundedRectOutlineGradient(meterRect, 0.008f,
+            { 160, 150, 195, 75 }, { 110, 120, 160, 40 }, 0.0012f);
+        renderer.DrawLine(0.50f, meterRect.y + 0.004f, 0.50f, meterRect.y + meterRect.height - 0.004f,
+            palette.accent, 0.0018f);
+        renderer.DrawText(m_font, "EARLY -150ms", meterRect.x - 0.008f, meterRect.y + 0.007f, 0.0135f,
+            palette.textMuted, sakura::core::TextAlign::Right);
+        renderer.DrawText(m_font, "+150ms LATE", meterRect.x + meterRect.width + 0.008f, meterRect.y + 0.007f, 0.0135f,
+            palette.textMuted, sakura::core::TextAlign::Left);
+
+        const float cy = meterRect.y + meterRect.height * 0.5f;
+        for (size_t idx = 0; idx < m_samples.size(); ++idx)
+        {
+            const int diffMs = m_samples[idx];
+            const float norm = std::clamp(static_cast<float>(diffMs) / 150.0f, -1.0f, 1.0f);
+            const float sx = 0.50f + norm * (meterRect.width * 0.46f);
+            const bool isLatest = (idx + 1 == m_samples.size());
+            const int absDiff = std::abs(diffMs);
+            sakura::core::Color dotCol = (absDiff <= 18)
+                ? palette.accent
+                : ((absDiff <= 40) ? palette.primary : sakura::core::Color{ 255, 105, 120, 230 });
+            dotCol.a = isLatest ? 250 : 155;
+            renderer.DrawCircleFilled(sx, cy, isLatest ? 0.0065f : 0.0045f, dotCol, 20);
+            if (isLatest)
+                renderer.DrawCircleOutline(sx, cy, 0.0095f, { 255, 255, 255, 210 }, 0.0014f, 24);
+        }
+    }
 
     // 结果展示
     if (m_hasResult)
     {
-        std::string avgStr   = std::string("平均偏差: ") +
-                               (m_resultAvg >= 0 ? "+" : "") +
-                               std::to_string(m_resultAvg) + " ms";
-        std::string stdStr   = std::string("标准差: ±") + std::to_string(m_resultStddev) + " ms";
+        const std::string avgStr = std::string("建议偏移: ") +
+                                   (m_resultAvg >= 0 ? "+" : "") +
+                                   std::to_string(m_resultAvg) + " ms";
+        const std::string stdStr = std::string("离散标准差: ±") + std::to_string(m_resultStddev) + " ms";
+
         std::string qualStr;
         sakura::core::Color qualColor;
-        if (m_resultStddev <= 15)  { qualStr = "稳定"; qualColor = { 100, 220, 130, 220 }; }
-        else if (m_resultStddev <= 30) { qualStr = "一般"; qualColor = { 255, 200, 80, 220 }; }
-        else                       { qualStr = "不稳定"; qualColor = { 255, 90, 90, 220 }; }
+        if (m_resultStddev <= 15)      { qualStr = "极佳 · 节奏稳定"; qualColor = { 110, 232, 165, 235 }; }
+        else if (m_resultStddev <= 30) { qualStr = "良好 · 可直接应用"; qualColor = palette.accent; }
+        else                           { qualStr = "波动较大 · 建议重测"; qualColor = { 255, 110, 120, 235 }; }
 
-        renderer.DrawText(m_font, avgStr, 0.5f, 0.62f, 0.030f,
-            { 220, 200, 255, 230 }, sakura::core::TextAlign::Center);
-        renderer.DrawText(m_font, stdStr, 0.5f, 0.66f, 0.026f,
-            { 180, 180, 200, 200 }, sakura::core::TextAlign::Center);
-        renderer.DrawText(m_font, qualStr, 0.5f, 0.805f, 0.024f,
-            qualColor, sakura::core::TextAlign::Center);
+        renderer.DrawText(m_font, avgStr, 0.5f, 0.608f, 0.029f,
+            palette.text, sakura::core::TextAlign::Center);
+        renderer.DrawText(m_font, stdStr, 0.5f, 0.648f, 0.021f,
+            palette.textDim, sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.39f, 0.798f, 0.22f, 0.036f },
+            qualStr, m_font, 0.017f, { 24, 28, 48, 210 }, qualColor, qualColor);
     }
     else
     {
-        renderer.DrawText(m_font, !m_audioReady?"音频未就绪":m_totalTimeMs<2800?"先聆听节拍…":"校准中…",
-            0.5f, 0.62f, 0.028f, { 160, 160, 180, 160 }, sakura::core::TextAlign::Center);
+        const char* statusMsg = !m_audioReady
+            ? "音频设备未就绪"
+            : (m_totalTimeMs < 2800.0f ? "请先聆听前 4 拍基准节拍…" : "请跟随听到的节拍按下 [Space]…");
+        renderer.DrawText(m_font, statusMsg,
+            0.5f, 0.625f, 0.024f, palette.accent, sakura::core::TextAlign::Center);
     }
 
     // 按钮
     if (m_btnApply) m_btnApply->Render(renderer);
     if (m_btnRetry) m_btnRetry->Render(renderer);
     if (m_btnBack)  m_btnBack->Render(renderer);
-
-    // Toast
-
 }
 
 } // namespace sakura::scene

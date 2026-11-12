@@ -102,24 +102,37 @@ void Toggle::Render(sakura::core::Renderer& renderer)
     // 动画使用 EaseOutQuad
     float easedT = sakura::utils::EaseOutQuad(m_animT);
 
-    // 轨道颜色（插值 off→on）
+    // 轨道磨砂琉璃渐变与鎏金细边
     sakura::core::Color trackColor = LerpColor(m_offColor, m_onColor, easedT);
-    renderer.DrawRoundedRect(
-        { trackX, trackY, trackW, trackH },
-        trackH * 0.5f,
-        trackColor,
-        true);
+    sakura::core::Color trackRight = LerpColor(m_offColor, { 250, 216, 157, 232 }, easedT * 0.65f);
+    const sakura::core::NormRect trackRect{ trackX, trackY, trackW, trackH };
+    renderer.DrawRoundedGradientRect(
+        trackRect, trackH * 0.5f,
+        trackColor, trackRight, trackColor, trackRight, 12, true);
+    sakura::core::Color borderTop = LerpColor({ 158, 168, 206, 86 }, { 255, 236, 204, 205 }, easedT);
+    renderer.DrawRoundedRectOutlineGradient(
+        trackRect, trackH * 0.5f,
+        borderTop, { borderTop.r, borderTop.g, borderTop.b, static_cast<uint8_t>(borderTop.a * 0.45f) },
+        0.0013f, 12);
 
-    // 拇指（圆形，沿轨道滑动）
-    float thumbRadius = trackH * 0.42f;
-    float padding     = trackH * 0.08f;
-    const float aspect=static_cast<float>(renderer.GetScreenHeight())/renderer.GetScreenWidth();
-    float thumbMinX   = trackX + (thumbRadius + padding)*aspect;
-    float thumbMaxX   = trackX + trackW - (thumbRadius + padding)*aspect;
+    // 拇指（珍珠圆钮 + 激活泛光）
+    float thumbRadius = trackH * 0.40f;
+    float padding     = trackH * 0.10f;
+    const float aspect = static_cast<float>(renderer.GetScreenHeight()) / std::max(1, renderer.GetScreenWidth());
+    float thumbMinX   = trackX + (thumbRadius + padding) * aspect;
+    float thumbMaxX   = trackX + trackW - (thumbRadius + padding) * aspect;
     float thumbX      = thumbMinX + easedT * (thumbMaxX - thumbMinX);
     float thumbY      = trackY + trackH * 0.5f;
-
-    renderer.DrawCircleFilled(thumbX, thumbY, thumbRadius, m_thumbColor);
+    if (easedT > 0.05f)
+    {
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        renderer.DrawRadialGradient(
+            thumbX, thumbY, thumbRadius * 1.9f, thumbRadius * 1.9f,
+            { 252, 196, 218, static_cast<uint8_t>(90.0f * easedT) }, { 252, 196, 218, 0 }, 28);
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    }
+    renderer.DrawCircleFilled(thumbX, thumbY, thumbRadius, m_thumbColor, 32);
+    renderer.DrawCircleOutline(thumbX, thumbY, thumbRadius, { 250, 216, 157, static_cast<uint8_t>(110 + 110 * easedT) }, 0.0012f, 32);
 
     // 标签
     if (!m_label.empty() && m_fontHandle != 0)

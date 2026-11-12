@@ -404,35 +404,88 @@ void SceneSettings::OnRender(Renderer& renderer)
 {
     const auto& palette = Theme::GetInstance().Colors();
     VisualStyle::DrawSceneBackground(renderer);
-    renderer.DrawText(m_font, "PREFERENCES / 设置", 0.04f, 0.05f, 0.037f, palette.text);
-    renderer.DrawText(m_font, "调整手感，让节奏成为本能。", 0.04f, 0.108f, 0.021f, palette.textDim);
-    VisualStyle::DrawPanel(renderer, {0.22f, 0.155f, 0.74f, 0.725f});
-    renderer.DrawText(m_font, titles[m_page], 0.25f, 0.176f, 0.029f, palette.text);
-    renderer.DrawText(m_font, subtitles[m_page], 0.925f, 0.184f, 0.018f, palette.textDim, TextAlign::Right);
-    for (auto& tab : m_tabs) tab->Render(renderer);
+
+    VisualStyle::DrawBadgePill(renderer, {0.04f, 0.036f, 0.12f, 0.028f}, "SYSTEM CONFIG",
+        m_font, 0.014f, {36, 28, 56, 195}, palette.gildedHairline, palette.accent);
+    renderer.DrawText(m_font, "设置 · PREFERENCES", 0.04f, 0.070f, 0.038f, palette.text);
+    renderer.DrawText(m_font, "调整手感，让节奏成为本能。", 0.04f, 0.116f, 0.020f, palette.textDim);
+
+    // 左侧分类导航底座与选中流光指示
+    VisualStyle::DrawGlassCard(renderer, {0.030f, 0.205f, 0.170f, 0.585f},
+        {20, 24, 42, 168}, {12, 15, 28, 192}, palette.surfaceBorder, {110, 120, 160, 36}, 0.014f, 0.32f);
+    for (int t = 0; t < 6; ++t)
+    {
+        if (!m_tabs[t]) continue;
+        if (t == m_page)
+        {
+            const NormRect tb = m_tabs[t]->GetBounds();
+            renderer.DrawSoftShadow(tb, 0.010f, 0.010f, {palette.primary.r, palette.primary.g, palette.primary.b, 58}, 0.0f);
+            m_tabs[t]->Render(renderer);
+            renderer.DrawRoundedGradientRect(
+                {tb.x - 0.006f, tb.y + 0.012f, 0.0045f, tb.height - 0.024f}, 0.002f,
+                palette.accent, palette.primary, palette.accent, palette.primary);
+        }
+        else
+        {
+            m_tabs[t]->Render(renderer);
+        }
+    }
+
+    // 右侧主琉璃面板
+    VisualStyle::DrawPanel(renderer, {0.22f, 0.155f, 0.74f, 0.725f}, false, true);
+    renderer.DrawText(m_font, titles[m_page], 0.253f, 0.174f, 0.030f, palette.text);
+    renderer.DrawText(m_font, subtitles[m_page], 0.927f, 0.183f, 0.018f, palette.accent, TextAlign::Right);
+    VisualStyle::DrawGildedDivider(renderer, 0.248f, 0.932f, 0.218f, 0.78f);
+
     size_t i = 0;
     for (auto& row : m_pages[m_page])
     {
-        const float y = 0.234f + static_cast<float>(i++) * 0.079f;
-        renderer.DrawText(m_font, row.title, 0.253f, y, 0.024f, palette.text);
-        renderer.DrawText(m_font, row.hint, 0.253f, y + 0.034f, 0.017f, palette.textDim);
-        if (i < m_pages[m_page].size()) renderer.DrawLine(0.253f, y + 0.070f, 0.927f, y + 0.070f, {125, 121, 156, 35}, 0.001f);
-        if (auto* dropdown = dynamic_cast<Dropdown*>(row.control.get()); !dropdown || !dropdown->IsOpen()) row.control->Render(renderer);
+        const size_t rowIdx = i++;
+        const float y = 0.234f + static_cast<float>(rowIdx) * 0.079f;
+        const bool isListeningRow = (m_page == 2 && m_listening >= 0 && static_cast<size_t>(m_listening) == rowIdx);
+        const Color rowTop = isListeningRow
+            ? Color{64, 38, 72, 135}
+            : ((rowIdx % 2 == 0) ? Color{28, 33, 56, 76} : Color{20, 24, 42, 42});
+        const Color rowBot = isListeningRow
+            ? Color{46, 28, 56, 115}
+            : ((rowIdx % 2 == 0) ? Color{22, 26, 46, 58} : Color{16, 20, 36, 28});
+        renderer.DrawRoundedGradientRect({0.242f, y - 0.006f, 0.696f, 0.068f}, 0.009f, rowTop, rowTop, rowBot, rowBot);
+        if (isListeningRow)
+        {
+            renderer.DrawRoundedRectOutlineGradient({0.242f, y - 0.006f, 0.696f, 0.068f}, 0.009f,
+                palette.accent, palette.primary, 0.0014f);
+        }
+
+        renderer.DrawText(m_font, row.title, 0.256f, y, 0.023f, palette.text);
+        renderer.DrawText(m_font, row.hint, 0.256f, y + 0.033f, 0.0165f, palette.textDim);
+        if (i < m_pages[m_page].size())
+            renderer.DrawLine(0.256f, y + 0.068f, 0.924f, y + 0.068f, {160, 152, 196, 28}, 0.001f);
+        if (auto* dropdown = dynamic_cast<Dropdown*>(row.control.get()); !dropdown || !dropdown->IsOpen())
+            row.control->Render(renderer);
     }
     for (auto& row : m_pages[m_page])
-        if (auto* dropdown = dynamic_cast<Dropdown*>(row.control.get()); dropdown && dropdown->IsOpen()) dropdown->Render(renderer);
+        if (auto* dropdown = dynamic_cast<Dropdown*>(row.control.get()); dropdown && dropdown->IsOpen())
+            dropdown->Render(renderer);
+
     for (auto& button : m_footer) button->Render(renderer);
-    renderer.DrawText(m_font, m_dirty ? "● 有未保存的修改" : "设置已保存 · Tab 切换分类 · Ctrl+S 保存",
-        0.24f, 0.929f, 0.019f, m_dirty ? palette.primary : palette.textDim);
+    VisualStyle::DrawBadgePill(renderer, {0.22f, 0.919f, 0.34f, 0.042f},
+        m_dirty ? "● 有未保存的修改 · Ctrl+S 立即保存" : "✓ 设置已同步 · Tab 切换分类 · Ctrl+S 保存",
+        m_font, 0.0175f,
+        m_dirty ? Color{58, 30, 52, 195} : Color{22, 28, 48, 175},
+        m_dirty ? palette.primary : palette.surfaceBorder,
+        m_dirty ? palette.accent : palette.textDim);
+
     if (m_modal)
     {
-        VisualStyle::DrawScrim(renderer);
-        VisualStyle::DrawPanel(renderer, {0.25f,0.32f,0.50f,0.37f}, true, true);
-        renderer.DrawText(m_font, m_modal == 1 ? "保存本次调整？" : (m_modal == 2 ? "恢复全部默认设置？" : "恢复选中的存档？"),
-            0.5f,0.38f,0.033f,palette.text,TextAlign::Center);
+        VisualStyle::DrawScrim(renderer, 0.64f);
+        VisualStyle::DrawPanel(renderer, {0.25f, 0.32f, 0.50f, 0.37f}, true, true);
+        renderer.DrawText(m_font,
+            m_modal == 1 ? "保存本次调整？" : (m_modal == 2 ? "恢复全部默认设置？" : "恢复选中的存档？"),
+            0.5f, 0.372f, 0.033f, palette.text, TextAlign::Center);
+        VisualStyle::DrawGildedDivider(renderer, 0.31f, 0.69f, 0.428f, 0.72f);
         renderer.DrawText(m_font, m_modal == 1 ? "放弃修改会恢复进入此页面时的设置。" :
             (m_modal == 2 ? "成绩和谱面会保留，设置恢复后仍可取消。" : "当前存档会先备份，再替换成绩与设置。"),
-            0.5f,0.46f,0.022f,palette.textDim,TextAlign::Center);
+            0.5f, 0.456f, 0.021f, palette.textDim, TextAlign::Center);
         for (auto& button : m_modalButtons) button->Render(renderer);
     }
 }

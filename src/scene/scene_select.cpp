@@ -31,7 +31,7 @@ namespace {
 std::string Number(float v, int precision = 1) { std::ostringstream s; s << std::fixed << std::setprecision(precision) << v; return s.str(); }
 std::string Lower(std::string s) { for(auto& c:s) if(static_cast<unsigned char>(c)<128) c=static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; }
 std::string Duration(int ms) { const int sec=ms/1000; return std::to_string(sec/60)+":"+(sec%60<10?"0":"")+std::to_string(sec%60); }
-constexpr Color pink{235,173,194,255}, dim{158,169,192,255}, white{238,233,239,255};
+constexpr Color pink{246,178,206,255}, gold{250,216,157,255}, dim{168,178,204,255}, white{248,242,248,255};
 }
 std::unique_ptr<Button> SceneSelect::Button(NormRect rect, const std::string& label, std::function<void()> action, bool primary) {
     auto b=std::make_unique<sakura::ui::Button>(rect,label,m_font,0.021f,0.008f);
@@ -52,12 +52,14 @@ void SceneSelect::OnEnter() {
     m_buttons.push_back(Button({0.33f,0.16f,0.062f,0.051f},"收藏",[this]{m_onlyFavorites=!m_onlyFavorites;Filter();}));
     m_buttons.push_back(Button({0.398f,0.16f,0.062f,0.051f},"排序",[this]{m_sort=(m_sort+1)%3;Filter();}));
     m_buttons.push_back(Button({0.55f,0.064f,0.09f,0.044f},"导入谱面",[this]{ImportFolder();}));
-    m_buttons.push_back(Button({0.65f,0.064f,0.09f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager));}));
+    m_buttons.push_back(Button({0.65f,0.064f,0.09f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);}));
     m_buttons.push_back(Button({0.75f,0.064f,0.09f,0.044f},"打开曲库",[]{const std::filesystem::path path=Paths::User("charts");std::error_code ec;std::filesystem::create_directories(path,ec);SDL_OpenURL(("file:///"+path.generic_string()).c_str());}));
-    m_buttons.push_back(Button({0.85f,0.064f,0.11f,0.044f},"偏好设置",[this]{m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager));}));
+    m_buttons.push_back(Button({0.85f,0.064f,0.11f,0.044f},"偏好设置",[this]{m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager),TransitionType::SilkShutter,0.38f);}));
     m_buttons.push_back(Button({0.04f,0.909f,0.12f,0.057f},"返回主页",[this]{Back();}));
     m_buttons.push_back(Button({0.17f,0.909f,0.09f,0.057f},"刷新 / F5",[this]{Scan();}));
     m_buttons.push_back(Button({0.77f,0.909f,0.19f,0.057f},"开始演奏   →",[this]{Start(m_options.mode);},true));
+    m_particles.Clear();
+    m_petalEmitter=m_particles.EmitContinuous(0.5f,-0.02f,2.6f,sakura::effects::ParticlePresets::SakuraPetal());
     Scan();
 }
 void SceneSelect::Scan() {
@@ -101,7 +103,14 @@ void SceneSelect::Select(int index,int difficulty) {
     if(changed) {
         sakura::audio::AudioManager::GetInstance().FadeOutMusic(150); m_previewTimer=0; m_previewPlaying=false;
         ResourceManager::GetInstance().UnloadTexture(m_cover);
-        m_cover=c.coverFile.empty()?INVALID_HANDLE:ResourceManager::GetInstance().LoadTexture(c.folderPath+"/"+c.coverFile).value_or(INVALID_HANDLE);
+        const std::string coverPath=c.coverFile.empty()?"":(c.folderPath+"/"+c.coverFile);
+        m_cover=coverPath.empty()?INVALID_HANDLE:ResourceManager::GetInstance().LoadTexture(coverPath).value_or(INVALID_HANDLE);
+        m_bgCover.UnloadImage();
+        if(!coverPath.empty() && m_bgCover.LoadImage(coverPath)){
+            m_bgCover.SetDimming(0.68f);
+            m_bgCover.SetBlurEnabled(Config::GetInstance().Get<bool>("graphics.background_blur",true));
+            m_bgCover.SetBlurStrength(0.84f);
+        }
     }
     Config::GetInstance().Set("library.last_chart",c.id); Config::GetInstance().Set("library.last_difficulty",m_difficulty);
     ChartLoader loader; auto chart=loader.LoadChartData(c.folderPath+"/"+c.difficulties[m_difficulty].chartFile);
@@ -146,7 +155,7 @@ void SceneSelect::BuildDetail() {
     }
     if(m_options.mode==PlayMode::Practice) m_detailButtons.push_back(Button({0.825f,0.762f,0.116f,0.040f},m_options.loop?"循环：开":"循环：关",[this]{m_options.loop=!m_options.loop;m_rebuild=true;}));
     m_detailButtons.push_back(Button({0.515f,0.827f,0.18f,0.040f},"播放最近回放",[this]{Start(PlayMode::Replay);}));
-    m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile));}));
+    m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile),TransitionType::SilkShutter,0.38f);}));
 }
 void SceneSelect::Favorite() {
     const auto id=m_charts[m_selected].id;
@@ -170,7 +179,7 @@ void SceneSelect::Start(PlayMode mode) {
         } catch(...) {ToastManager::Instance().Show("请输入有效练习区间：起点 < 终点，终点 0 表示曲终",ToastType::Warning);return;}
     } else {options.startMs=options.endMs=0;options.loop=false;}
     if(mode==PlayMode::Standard)options.rate=1;
-    m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[m_selected],m_difficulty,options),TransitionType::Fade,0.3f);
+    m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[m_selected],m_difficulty,options),TransitionType::SakuraSweep,0.42f);
 }
 void SceneSelect::ImportFolder() {
     auto* context=new std::shared_ptr<DialogState>(m_dialog);
@@ -200,12 +209,24 @@ void SceneSelect::AcceptImport(const std::string& path) {
         Scan();ToastManager::Instance().Show("谱面已导入曲库",ToastType::Success);
     }catch(const std::exception& e){std::error_code ec;std::filesystem::remove_all(target,ec);ToastManager::Instance().Show(e.what(),ToastType::Error,5);}
 }
-void SceneSelect::Back(){m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SlideRight,0.3f);}
-void SceneSelect::OnExit(){ResourceManager::GetInstance().UnloadTexture(m_cover);m_cover=INVALID_HANDLE;sakura::audio::AudioManager::GetInstance().StopMusic();m_search->SetFocused(false);m_startInput->SetFocused(false);m_endInput->SetFocused(false);Config::GetInstance().Save();}
+void SceneSelect::Back(){m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SilkShutter,0.36f);}
+void SceneSelect::OnExit(){
+    if(m_petalEmitter>=0)m_particles.StopEmitter(m_petalEmitter);
+    m_particles.Clear();
+    m_bgCover.UnloadImage();
+    ResourceManager::GetInstance().UnloadTexture(m_cover);
+    m_cover=INVALID_HANDLE;
+    sakura::audio::AudioManager::GetInstance().StopMusic();
+    m_search->SetFocused(false);m_startInput->SetFocused(false);m_endInput->SetFocused(false);
+    Config::GetInstance().Save();
+}
+
 void SceneSelect::OnUpdate(float dt) {
     m_time+=dt;if(m_rebuild)BuildDetail();
     std::string imported;{std::lock_guard lock(m_dialog->mutex);if(m_dialog->ready){imported=std::move(m_dialog->path);m_dialog->ready=false;}}if(!imported.empty())AcceptImport(imported);
     m_search->Update(dt);m_startInput->Update(dt);m_endInput->Update(dt);
+    m_bgCover.Update(dt);
+    m_particles.Update(dt);
     for(auto& b:m_buttons)b->Update(dt);for(auto& b:m_detailButtons)b->Update(dt);
     auto& audio=sakura::audio::AudioManager::GetInstance();
     if(m_selected>=0) {
@@ -217,40 +238,121 @@ void SceneSelect::OnUpdate(float dt) {
         if(m_previewPlaying&&m_previewTimer>16){audio.FadeOutMusic(400);m_previewPlaying=false;m_previewTimer=-0.5f;}
     }
 }
+
 void SceneSelect::OnRender(Renderer& r) {
     VisualStyle::DrawSceneBackground(r);
-    r.DrawText(m_font,"LIBRARY / 曲库",0.04f,0.044f,0.042f,white);
-    r.DrawText(m_font,"选一首喜欢的歌，让节奏开始。",0.04f,0.102f,0.020f,dim);
+    if(m_bgCover.HasImage()) {
+        m_bgCover.Render(r);
+        VisualStyle::DrawSakuraLandscape(r,m_time,0.28f);
+    } else {
+        VisualStyle::DrawSakuraLandscape(r,m_time,0.72f);
+    }
+    r.DrawGradientRect({0.0f,0.0f,1.0f,1.0f},{8,12,26,125},{12,16,34,95},{8,12,26,175},{10,14,30,155});
+
+    const float aspect=static_cast<float>(r.GetScreenHeight())/std::max(1,r.GetScreenWidth());
+    VisualStyle::DrawBadgePill(r,{0.04f,0.032f,0.135f,0.026f},"SONG ARCHIVE",m_font,0.013f,{48,36,70,200},{250,216,157,150},gold);
+    r.DrawText(m_font,"LIBRARY / 曲库",0.04f,0.062f,0.039f,white);
+    r.DrawText(m_font,"选一首喜欢的歌，让月光与节奏共鸣。",0.04f,0.114f,0.019f,dim);
     m_search->Render(r);
+
+    const auto [mx,my]=Input::GetMousePosition();
     for(int row=0;row<6&&row+m_scroll<static_cast<int>(m_visible.size());++row) {
         const int index=m_visible[row+m_scroll];const auto& c=m_charts[index];const float y=0.24f+row*0.102f;const bool selected=index==m_selected;
-        r.DrawRoundedRect({0.04f,y,0.42f,0.090f},0.009f,selected?Color{66,49,68,245}:Color{24,31,48,230});
-        if(selected)r.DrawFilledRect({0.04f,y+0.016f,0.0025f,0.058f},pink);
-        r.DrawText(m_font,selected?"▶":(m_favorites.contains(c.id)?"♥":"♪"),0.055f,y+0.026f,0.024f,selected?pink:dim);
-        VisualStyle::DrawTextFit(r,m_font,c.title,0.086f,y+0.010f,0.029f,0.30f,white);
-        VisualStyle::DrawTextFit(r,m_font,c.artist+"  ·  "+Number(c.bpm,0)+" BPM",0.086f,y+0.053f,0.018f,0.32f,dim);
-        r.DrawText(m_font,std::to_string(c.difficulties.size())+" 谱面",0.444f,y+0.061f,0.015f,dim,TextAlign::Right);
+        const bool hovered=(mx>=0.04f&&mx<=0.46f&&my>=y&&my<y+0.090f);
+        const float indent=selected?0.008f:(hovered?0.004f:0.0f);
+        const NormRect cardRect{0.04f+indent,y,0.42f-indent,0.090f};
+
+        if(selected) {
+            VisualStyle::DrawGlassCard(r,cardRect,
+                {82,52,88,238},{44,34,68,242},
+                {250,216,157,225},{246,178,206,135},0.012f,0.55f);
+            r.DrawRoundedGradientRect({cardRect.x+0.005f,y+0.015f,0.0035f,0.060f},0.0017f,gold,pink,gold,pink,6,true);
+        } else {
+            VisualStyle::DrawGlassCard(r,cardRect,
+                hovered?Color{36,44,74,224}:Color{22,28,52,208},
+                hovered?Color{24,30,54,232}:Color{14,18,36,220},
+                hovered?Color{246,178,206,135}:Color{166,176,214,68},
+                {112,122,168,36},0.011f,0.34f);
+        }
+
+        const bool fav=m_favorites.contains(c.id);
+        r.DrawText(m_font,selected?"▶":(fav?"♥":"♪"),cardRect.x+0.016f,y+0.026f,0.023f,selected?gold:(fav?pink:dim));
+        VisualStyle::DrawTextFit(r,m_font,c.title,cardRect.x+0.046f,y+0.011f,0.028f,0.275f,white);
+        VisualStyle::DrawTextFit(r,m_font,c.artist+"  ·  "+Number(c.bpm,0)+" BPM",cardRect.x+0.046f,y+0.052f,0.017f,0.275f,dim);
+
+        const auto& topDiff=c.difficulties.back();
+        VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.088f,y+0.014f,0.074f,0.026f},
+            "Lv."+Number(topDiff.level,0),m_font,0.014f,
+            selected?Color{104,64,98,220}:Color{36,44,74,195},
+            selected?gold:Color{174,184,218,95},selected?gold:pink);
+        r.DrawText(m_font,std::to_string(c.difficulties.size())+" 谱面",cardRect.x+cardRect.width-0.016f,y+0.056f,0.015f,dim,TextAlign::Right);
     }
-    if(m_visible.empty()) {r.DrawText(m_font,"没有匹配的曲目",0.25f,0.46f,0.030f,white,TextAlign::Center);r.DrawText(m_font,"清空搜索、关闭收藏筛选，或导入谱面",0.25f,0.52f,0.018f,dim,TextAlign::Center);}
+    if(m_visible.empty()) {
+        VisualStyle::DrawGlassCard(r,{0.06f,0.42f,0.38f,0.16f},{26,32,58,210},{16,20,40,224},{250,216,157,120},{140,150,192,48},0.014f,0.40f);
+        r.DrawText(m_font,"没有匹配的曲目",0.25f,0.455f,0.029f,white,TextAlign::Center);
+        r.DrawText(m_font,"清空搜索、关闭收藏筛选，或导入谱面",0.25f,0.515f,0.018f,dim,TextAlign::Center);
+    }
     r.DrawText(m_font,std::to_string(m_visible.size())+" 首曲目   ·   ↑ ↓ 选曲   /   ← → 难度   /   Enter 演奏",0.04f,0.866f,0.017f,dim);
-    VisualStyle::DrawPanel(r,{0.49f,0.16f,0.47f,0.72f});
+
+    VisualStyle::DrawGlassCard(r,{0.49f,0.16f,0.47f,0.72f},
+        {24,30,56,216},{14,18,36,232},{250,216,157,170},{168,158,214,68},0.018f,0.56f);
+
     if(m_selected>=0) {
         const auto& c=m_charts[m_selected];
-        if(m_cover!=INVALID_HANDLE)r.DrawSprite(m_cover,{0.515f,0.19f,0.125f,0.221f});
-        else {r.DrawGradientRect({0.515f,0.19f,0.125f,0.221f},{108,64,86,255},{42,55,81,255},{26,34,54,255},{64,48,77,255});r.DrawText(m_font,"樱",0.577f,0.23f,0.10f,pink,TextAlign::Center);}
-        VisualStyle::DrawTextFit(r,m_font,c.title,0.66f,0.239f,0.037f,0.28f,white);
-        VisualStyle::DrawTextFit(r,m_font,c.artist,0.66f,0.298f,0.021f,0.28f,dim);
-        VisualStyle::DrawTextFit(r,m_font,"谱师  "+c.charter,0.66f,0.338f,0.018f,0.28f,dim);
-        r.DrawText(m_font,Number(c.bpm,0)+" BPM   ·   "+Duration(m_chartEnd)+"   ·   "+std::to_string(m_noteCount)+" 判定",0.66f,0.382f,0.018f,pink);
-        r.DrawText(m_font,"DIFFICULTY / 难度",0.515f,0.432f,0.017f,dim);
-        r.DrawText(m_font,m_best?"个人最佳  "+std::to_string(m_best->score)+"   /   "+Number(m_best->accuracy,2)+"%":"个人最佳  —  等待第一次演奏",0.515f,0.537f,0.021f,pink);
-        r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.66f,0.020f,dim);
-        if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.701f,0.022f,white);
+        const float discCX=0.585f, discCY=0.298f, coverH=0.205f, coverW=coverH*aspect;
+        const float spinDeg=m_previewPlaying?(m_time*24.0f):(m_time*4.0f);
+
+        if(m_previewPlaying) {
+            sakura::audio::AudioVisualizer::GetInstance().RenderCircle(r,discCX,discCY,0.106f,{246,178,206,215},0.85f);
+        }
+        r.DrawRingGradient(discCX,discCY,0.094f,0.114f,{250,216,157,95},{246,178,206,0},56);
+        r.DrawCircleFilled(discCX+0.022f*aspect,discCY,0.096f,{16,18,30,240},56);
+        r.DrawCircleOutline(discCX+0.022f*aspect,discCY,0.096f,{250,216,157,130},0.0015f,56);
+        r.DrawArc(discCX+0.022f*aspect,discCY,0.076f,spinDeg,spinDeg+110.0f,{246,178,206,115},0.0015f,36);
+
+        const NormRect coverRect{0.515f,0.194f,coverW,coverH};
+        r.DrawSoftShadow(coverRect,0.012f,0.016f,{4,6,14,175},0.005f,10);
+        const auto activeCover=(m_cover!=INVALID_HANDLE)?m_cover:VisualStyle::GetDefaultCoverTexture();
+        if(activeCover!=INVALID_HANDLE) {
+            r.DrawSprite(activeCover,coverRect,0.0f,Color::White,1.0f);
+        } else {
+            r.DrawRoundedGradientRect(coverRect,0.012f,{108,64,86,255},{42,55,81,255},{26,34,54,255},{64,48,77,255},10,true);
+            r.DrawText(m_font,"樱",coverRect.x+coverRect.width*0.5f,coverRect.y+0.04f,0.095f,pink,TextAlign::Center);
+        }
+        r.DrawRoundedRectOutlineGradient(coverRect,0.008f,{250,216,157,210},{246,178,206,115},0.0020f,10);
+
+        const float metaX=std::max(0.66f,coverRect.x+coverRect.width+0.026f);
+        const float metaW=0.94f-metaX;
+        VisualStyle::DrawTextFit(r,m_font,c.title,metaX,0.228f,0.036f,metaW,white);
+        VisualStyle::DrawTextFit(r,m_font,c.artist,metaX,0.288f,0.021f,metaW,dim);
+        VisualStyle::DrawTextFit(r,m_font,"谱师  "+c.charter,metaX,0.328f,0.018f,metaW,dim);
+        r.DrawText(m_font,Number(c.bpm,0)+" BPM   ·   "+Duration(m_chartEnd)+"   ·   "+std::to_string(m_noteCount)+" 判定",metaX,0.372f,0.018f,gold);
+
+        VisualStyle::DrawGildedDivider(r,0.515f,0.938f,0.416f,0.68f);
+        r.DrawText(m_font,"DIFFICULTY / 难度选择",0.515f,0.430f,0.016f,dim);
+
+        r.DrawRoundedGradientRect({0.515f,0.525f,0.425f,0.052f},0.009f,{34,40,70,185},{24,30,54,185},{28,34,60,195},{20,24,46,195},8,true);
+        r.DrawRoundedRectOutlineGradient({0.515f,0.525f,0.425f,0.052f},0.009f,{250,216,157,110},{164,174,214,45},0.0012f,8);
+        if(m_best) {
+            r.DrawText(m_font,"个人最佳  "+std::to_string(m_best->score)+"   ·   "+Number(m_best->accuracy,2)+"%",0.530f,0.538f,0.021f,gold);
+            const char* gStr=(m_best->grade==Grade::SS?"SS":m_best->grade==Grade::S?"S":m_best->grade==Grade::A?"A":m_best->grade==Grade::B?"B":m_best->grade==Grade::C?"C":"D");
+            VisualStyle::DrawBadgePill(r,{0.872f,0.535f,0.056f,0.032f},gStr,m_font,0.017f,{72,48,84,225},gold,gold);
+        } else {
+            r.DrawText(m_font,"个人最佳  —  等待第一次演奏",0.530f,0.538f,0.020f,pink);
+        }
+
+        r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
+        if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
         if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}
-        else r.DrawText(m_font,"A / S / D / F  +  鼠标左键    ·    Esc 暂停",0.515f,0.762f,0.019f,dim);
+        else r.DrawText(m_font,"A / S / D / F  +  鼠标左键    ·    Esc 暂停",0.515f,0.760f,0.019f,dim);
+
+        if(m_previewPlaying) {
+            sakura::audio::AudioVisualizer::GetInstance().RenderWave(r,{0.515f,0.792f,0.425f,0.024f},{246,178,206,150},0.65f);
+        }
         for(auto& b:m_detailButtons)b->Render(r);
     }
     for(auto& b:m_buttons)b->Render(r);
+    m_particles.Render(r);
 }
 void SceneSelect::OnEvent(const SDL_Event& e) {
     bool consumed=m_search->HandleEvent(e);

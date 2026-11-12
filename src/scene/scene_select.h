@@ -5,6 +5,8 @@
 #include "game/play_session.h"
 #include "ui/button.h"
 #include "ui/text_input.h"
+#include "effects/background.h"
+#include "effects/particle_system.h"
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -34,6 +36,9 @@ private:
     bool m_previewPlaying = false;
     sakura::core::FontHandle m_font = 0;
     sakura::core::TextureHandle m_cover = 0;
+    sakura::effects::BackgroundRenderer m_bgCover;
+    sakura::effects::ParticleSystem m_particles;
+    int m_petalEmitter = -1;
     std::optional<sakura::game::GameResult> m_best;
     int m_noteCount = 0, m_chartEnd = 0;
     sakura::game::PlayOptions m_options;

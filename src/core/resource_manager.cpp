@@ -61,6 +61,13 @@ bool ResourceManager::Initialize(SDL_Renderer* renderer)
         LOG_INFO("默认字体加载成功 (handle={})", m_defaultFontHandle);
     }
 
+    constexpr const char* BOLD_FONT_PATH = "resources/fonts/NotoSansSC-Bold.ttf";
+    if (auto boldHandle = LoadFont(BOLD_FONT_PATH, DEFAULT_FONT_SIZE))
+    {
+        m_boldFontHandle = *boldHandle;
+        LOG_INFO("粗体字体加载成功 (handle={})", m_boldFontHandle);
+    }
+
     LOG_INFO("ResourceManager 初始化完成");
     return true;
 }
@@ -113,6 +120,7 @@ void ResourceManager::ReleaseAll()
     m_musicPathsByHandle.clear();
 
     m_defaultFontHandle = INVALID_HANDLE;
+    m_boldFontHandle    = INVALID_HANDLE;
     m_nextHandle        = INVALID_HANDLE;
 
     if (m_ttfInitialized) TTF_Quit();
@@ -145,6 +153,8 @@ std::optional<TextureHandle> ResourceManager::LoadTexture(const std::string& pat
         LOG_ERROR("IMG_LoadTexture 失败 [{}]: {}", path, SDL_GetError());
         return std::nullopt;
     }
+    SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
+    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 
     TextureHandle handle = NextHandle();
     m_texturePaths[path]    = handle;

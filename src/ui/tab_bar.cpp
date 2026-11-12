@@ -131,58 +131,93 @@ void TabBar::Render(sakura::core::Renderer& renderer)
 {
     if (!m_isVisible) return;
 
-    // 背景
-    renderer.DrawFilledRect(m_bounds, m_bgColor);
+    const float pillR = std::min(m_bounds.height * 0.28f, 0.012f);
+    renderer.DrawRoundedGradientRect(
+        m_bounds, pillR,
+        { 22, 28, 48, m_bgColor.a }, { 22, 28, 48, m_bgColor.a },
+        m_bgColor, m_bgColor, 12, true);
+    renderer.DrawRoundedRectOutlineGradient(
+        m_bounds, pillR,
+        { 250, 216, 157, 92 }, { 144, 154, 194, 46 }, 0.0013f, 12);
 
     int n = static_cast<int>(m_tabs.size());
     if (n == 0) return;
 
-    // 各 tab
+    // 滑动磨砂胶囊高亮底座
+    if (m_orientation == Orientation::Horizontal)
+    {
+        const float tabW = m_bounds.width / static_cast<float>(n);
+        const sakura::core::NormRect activePill{
+            m_bounds.x + m_indicatorPos * tabW + 0.002f,
+            m_bounds.y + 0.0025f,
+            std::max(0.0f, tabW - 0.004f),
+            std::max(0.0f, m_bounds.height - 0.005f)
+        };
+        renderer.DrawRoundedGradientRect(
+            activePill, pillR * 0.85f,
+            { 82, 58, 108, 226 }, { 64, 50, 96, 226 },
+            m_activeColor, m_activeColor, 10, true);
+        renderer.DrawRoundedRectOutlineGradient(
+            activePill, pillR * 0.85f,
+            { 250, 216, 157, 175 }, { 246, 172, 200, 85 }, 0.0012f, 10);
+    }
+    else
+    {
+        const float tabH = m_bounds.height / static_cast<float>(n);
+        const sakura::core::NormRect activePill{
+            m_bounds.x + 0.002f,
+            m_bounds.y + m_indicatorPos * tabH + 0.002f,
+            std::max(0.0f, m_bounds.width - 0.004f),
+            std::max(0.0f, tabH - 0.004f)
+        };
+        renderer.DrawRoundedGradientRect(
+            activePill, pillR * 0.85f,
+            { 82, 58, 108, 226 }, { 64, 50, 96, 226 },
+            m_activeColor, m_activeColor, 10, true);
+    }
+
+    // 各 tab 悬停与居中文字
     for (int i = 0; i < n; ++i)
     {
         auto r = GetTabRect(i);
-
-        if (i == m_selectedIndex)
+        if (i != m_selectedIndex && i == m_hoveredIndex)
         {
-            renderer.DrawFilledRect(r, m_activeColor);
-        }
-        else if (i == m_hoveredIndex)
-        {
-            renderer.DrawFilledRect(r, m_hoverColor);
+            renderer.DrawRoundedRect(
+                { r.x + 0.002f, r.y + 0.0025f, std::max(0.0f, r.width - 0.004f), std::max(0.0f, r.height - 0.005f) },
+                pillR * 0.8f, m_hoverColor, true);
         }
 
-        // 文字
         if (m_fontHandle != 0)
         {
             auto textColor = (i == m_selectedIndex) ? m_activeTextColor : m_textColor;
+            const float textH = renderer.MeasureText(m_fontHandle, m_tabs[i], m_normFontSize).height;
             renderer.DrawText(m_fontHandle, m_tabs[i],
                               r.x + r.width * 0.5f,
-                              r.y + r.height * 0.5f,
+                              r.y + (r.height - textH) * 0.5f,
                               m_normFontSize,
                               textColor,
                               sakura::core::TextAlign::Center);
         }
     }
 
-    // 滑动指示条（EaseOutQuad 平滑位置）
-    float indicatorNorm = sakura::utils::EaseOutQuad(
-        m_indicatorPos / static_cast<float>(n > 1 ? n - 1 : 1));
-    (void)indicatorNorm; // 下面直接用 m_indicatorPos
-
-    float THICK = 0.004f;
+    // 底部/侧边鎏金流光指示线
+    constexpr float THICK = 0.0032f;
     if (m_orientation == Orientation::Horizontal)
     {
-        float tabW = m_bounds.width / static_cast<float>(n);
-        float indX = m_bounds.x + m_indicatorPos * tabW;
-        float indY = m_bounds.y + m_bounds.height - THICK;
-        renderer.DrawFilledRect({ indX, indY, tabW, THICK }, m_indicatorColor);
+        const float tabW = m_bounds.width / static_cast<float>(n);
+        const float indX = m_bounds.x + m_indicatorPos * tabW + tabW * 0.16f;
+        const float indY = m_bounds.y + m_bounds.height - THICK - 0.001f;
+        renderer.DrawRoundedGradientRect(
+            { indX, indY, tabW * 0.68f, THICK }, THICK * 0.5f,
+            { 246, 172, 200, 245 }, m_indicatorColor,
+            { 246, 172, 200, 245 }, m_indicatorColor, 6, true);
     }
     else
     {
-        float tabH = m_bounds.height / static_cast<float>(n);
-        float indX = m_bounds.x + m_bounds.width - THICK;
-        float indY = m_bounds.y + m_indicatorPos * tabH;
-        renderer.DrawFilledRect({ indX, indY, THICK, tabH }, m_indicatorColor);
+        const float tabH = m_bounds.height / static_cast<float>(n);
+        const float indX = m_bounds.x + m_bounds.width - THICK - 0.001f;
+        const float indY = m_bounds.y + m_indicatorPos * tabH + tabH * 0.18f;
+        renderer.DrawRoundedRect({ indX, indY, THICK, tabH * 0.64f }, THICK * 0.5f, m_indicatorColor, true);
     }
 }
 

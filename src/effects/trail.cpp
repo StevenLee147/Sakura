@@ -1,6 +1,7 @@
 #include "trail.h"
-
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace sakura::effects
 {
@@ -16,7 +17,16 @@ TrailEffect::TrailEffect()
 
 void TrailEffect::AddPoint(float x, float y)
 {
-    // ring buffer：向前移动 head
+    if (m_count > 0)
+    {
+        const float dx = x - m_points[m_head].x;
+        const float dy = y - m_points[m_head].y;
+        if (dx * dx + dy * dy < 0.0000025f)
+        {
+            m_points[m_head] = { x, y };
+            return;
+        }
+    }
     m_head = (m_head + 1) % MAX_POINTS;
     m_points[m_head] = { x, y };
     if (m_count < MAX_POINTS)
@@ -33,31 +43,51 @@ void TrailEffect::Render(sakura::core::Renderer& renderer,
                           sakura::core::Color baseColor,
                           float thickness) const
 {
-    if (m_count < 2) return;
+    if (m_count < 2 || baseColor.a == 0) return;
+
+    static thread_local std::vector<sakura::core::NormPoint> ordered;
+    ordered.clear();
+    ordered.reserve(static_cast<size_t>(m_count));
+
+    // Ordered from tail (oldest, index 0) -> head (newest, index m_count - 1)
+    for (int i = m_count - 1; i >= 0; --i)
+    {
+        const int idx = (m_head - i + MAX_POINTS) % MAX_POINTS;
+        ordered.push_back({ m_points[idx].x, m_points[idx].y });
+    }
 
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
-    // 从最新点（head）向旧点方向遍历
-    for (int i = 0; i < m_count - 1; ++i)
-    {
-        // i=0 最新（最亮），i=m_count-2 最旧（最暗）
-        float t1 = 1.0f - static_cast<float>(i)     / static_cast<float>(m_count - 1);
-        float t2 = 1.0f - static_cast<float>(i + 1) / static_cast<float>(m_count - 1);
+    sakura::core::Color tailCore{ baseColor.r, baseColor.g, baseColor.b, 0 };
+    sakura::core::Color headCore{
+        static_cast<uint8_t>(std::min(255, baseColor.r + 55)),
+        static_cast<uint8_t>(std::min(255, baseColor.g + 55)),
+        static_cast<uint8_t>(std::min(255, baseColor.b + 55)),
+        baseColor.a
+    };
+    sakura::core::Color tailAura{ baseColor.r, baseColor.g, baseColor.b, 0 };
+    sakura::core::Color headAura{ baseColor.r, baseColor.g, baseColor.b, 0 };
 
-        int idx1 = (m_head - i     + MAX_POINTS) % MAX_POINTS;
-        int idx2 = (m_head - i - 1 + MAX_POINTS) % MAX_POINTS;
+    renderer.DrawCatmullRomRibbon(
+        ordered.data(),
+        static_cast<int>(ordered.size()),
+        thickness * 0.25f,
+        thickness * 2.85f,
+        tailCore,
+        headCore,
+        tailAura,
+        headAura,
+        5,
+        true);
 
-        // alpha 随位置线性衰减
-        uint8_t a1 = static_cast<uint8_t>(baseColor.a * t1 * t1);
-        uint8_t a2 = static_cast<uint8_t>(baseColor.a * t2 * t2);
-
-        sakura::core::Color c1 = { baseColor.r, baseColor.g, baseColor.b, a1 };
-        // 线段用前端颜色绘制（TODO: 若 DrawLine 支持渐变则更佳）
-        renderer.DrawLine(m_points[idx1].x, m_points[idx1].y,
-                          m_points[idx2].x, m_points[idx2].y,
-                          c1, thickness);
-        (void)c1; (void)a2; // 避免未使用警告
-    }
+    // Subtle luminous pearl tip at the cursor/note head
+    const auto& tip = ordered.back();
+    renderer.DrawRadialGradient(
+        tip.x, tip.y,
+        thickness * 2.2f, thickness * 2.2f,
+        headCore,
+        { baseColor.r, baseColor.g, baseColor.b, 0 },
+        24);
 
     renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 }

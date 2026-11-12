@@ -6,6 +6,7 @@
 #include "audio/audio_manager.h"
 #include "core/config.h"
 #include "core/input.h"
+#include "core/theme.h"
 #include "utils/logger.h"
 #include "ui/visual_style.h"
 
@@ -540,96 +541,108 @@ void SceneTutorial::OnEvent(const SDL_Event& event)
 
 void SceneTutorial::RenderHeader(sakura::core::Renderer& renderer) const
 {
-    renderer.DrawText(m_fontTitle, "新手教程",
-        0.08f, 0.06f, 0.050f,
-        { 245, 230, 255, 245 },
-        sakura::core::TextAlign::Left);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.08f, 0.024f, 0.13f, 0.026f }, "HOW TO PLAY",
+        m_fontSmall, 0.013f, { 36, 28, 56, 195 }, palette.gildedHairline, palette.accent);
+    renderer.DrawText(m_fontTitle, "双域演奏教程",
+        0.08f, 0.056f, 0.042f, palette.text, sakura::core::TextAlign::Left);
 
     if (m_phase != Phase::Prompt)
     {
         renderer.DrawText(m_fontText, CurrentLesson().title,
-            0.08f, 0.125f, 0.030f,
-            { 220, 205, 240, 230 },
-            sakura::core::TextAlign::Left);
-
-        renderer.DrawText(m_fontSmall,
-            std::to_string(m_currentLesson + 1) + "/" + std::to_string(m_lessons.size()),
-            0.92f, 0.07f, 0.024f,
-            { 210, 200, 230, 210 },
-            sakura::core::TextAlign::Right);
+            0.08f, 0.106f, 0.026f, palette.accent, sakura::core::TextAlign::Left);
+        sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.76f, 0.052f, 0.12f, 0.036f },
+            "第 " + std::to_string(m_currentLesson + 1) + " / " + std::to_string(m_lessons.size()) + " 课",
+            m_fontSmall, 0.017f, { 26, 30, 52, 210 }, palette.gildedHairline, palette.text);
     }
 
-    renderer.DrawText(m_fontSmall, "Esc 返回主菜单",
-        0.92f, 0.11f, 0.020f,
-        { 170, 165, 190, 180 },
-        sakura::core::TextAlign::Right);
+    renderer.DrawText(m_fontSmall, "ESC 返回主菜单",
+        0.88f, 0.106f, 0.0175f, palette.textDim, sakura::core::TextAlign::Right);
 }
 
 void SceneTutorial::RenderLessonOverlay(sakura::core::Renderer& renderer) const
 {
     if (m_phase == Phase::Prompt) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.08f, 0.15f, 0.80f, 0.07f });
-
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.08f, 0.148f, 0.80f, 0.068f }, false, true);
     renderer.DrawText(m_fontSmall, CurrentLesson().instruction,
-        0.10f, 0.176f, 0.021f,
-        { 225, 220, 235, 220 },
-        sakura::core::TextAlign::Left);
+        0.105f, 0.172f, 0.0205f, palette.text, sakura::core::TextAlign::Left);
 
     std::string footer;
+    sakura::core::Color pillBorder = palette.gildedHairline;
+    sakura::core::Color pillText   = palette.accent;
     switch (m_phase)
     {
     case Phase::Intro:
-        footer = "按空格开始这一课";
+        footer = "按 [Space] 开始本课演练";
         break;
     case Phase::Playing:
-        footer = "跟着提示完成所有目标";
+        footer = "跟随节拍与缩圈完成全部音符目标";
+        pillBorder = palette.primary;
+        pillText   = palette.text;
         break;
     case Phase::Failed:
-        footer = m_statusText + "  按空格重试";
+        footer = m_statusText + "  ·  按 [Space] 重新尝试";
+        pillBorder = { 255, 115, 130, 225 };
+        pillText   = { 255, 195, 205, 245 };
         break;
     case Phase::Success:
-        footer = m_statusText + "  按空格进入下一课";
+        footer = m_statusText + "  ·  按 [Space] 进入下一课";
+        pillBorder = { 120, 235, 180, 225 };
+        pillText   = { 205, 255, 230, 245 };
         break;
     case Phase::Finished:
-        footer = m_statusText + "  按空格回到主菜单";
+        footer = m_statusText + "  ·  按 [Space] 返回主菜单";
         break;
     default:
         break;
     }
 
-    renderer.DrawText(m_fontSmall, footer,
-        0.50f, 0.86f, 0.022f,
-        { 255, 235, 210, 220 },
-        sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.28f, 0.922f, 0.44f, 0.044f },
+        footer, m_fontSmall, 0.0185f, { 22, 26, 46, 215 }, pillBorder, pillText);
 }
 
 void SceneTutorial::RenderKeyboardArea(sakura::core::Renderer& renderer) const
 {
     const auto& lesson = CurrentLesson();
     if (!lesson.usesKeyboard) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    renderer.DrawRoundedRect({ TRACK_X, TRACK_Y, TRACK_W, TRACK_H },
-        0.012f, { 18, 16, 34, 200 }, true);
-    renderer.DrawRoundedRect({ TRACK_X, TRACK_Y, TRACK_W, TRACK_H },
-        0.012f, { 95, 82, 138, 120 }, false);
+    sakura::ui::VisualStyle::DrawGlassCard(renderer, { TRACK_X, TRACK_Y, TRACK_W, TRACK_H },
+        { 14, 18, 34, 216 }, { 10, 12, 24, 236 }, palette.gildedHairline, palette.surfaceBorder, 0.014f, 0.45f);
 
-    float laneWidth = TRACK_W / 4.0f;
-    float displayTimeMs = (m_phase == Phase::Playing) ? m_lessonTimerMs : 0.0f;
+    const float laneWidth = TRACK_W / 4.0f;
+    const float displayTimeMs = (m_phase == Phase::Playing) ? m_lessonTimerMs : 0.0f;
 
     for (int lane = 0; lane < 4; ++lane)
     {
-        float x = TRACK_X + lane * laneWidth;
-        renderer.DrawFilledRect({ x, TRACK_Y, laneWidth - 0.001f, TRACK_H },
-            { 28, 24, 46, 120 });
+        const float x = TRACK_X + static_cast<float>(lane) * laneWidth;
+        const sakura::core::Color laneTint = (lane % 2 == 0)
+            ? sakura::core::Color{ 26, 30, 52, 95 }
+            : sakura::core::Color{ 18, 22, 40, 70 };
+        renderer.DrawFilledRect({ x + 0.001f, TRACK_Y + 0.004f, laneWidth - 0.002f, TRACK_H - 0.008f }, laneTint);
+        if (lane > 0)
+            renderer.DrawLine(x, TRACK_Y + 0.006f, x, TRACK_Y + TRACK_H - 0.006f, { 155, 148, 195, 48 }, 0.001f);
+
+        // 键帽徽章
+        const sakura::core::NormRect capRect{ x + laneWidth * 0.16f, JUDGE_LINE_Y + 0.026f, laneWidth * 0.68f, 0.038f };
+        renderer.DrawRoundedGradientRect(capRect, 0.008f,
+            { 34, 38, 66, 220 }, { 34, 38, 66, 220 }, { 22, 24, 44, 235 }, { 22, 24, 44, 235 });
+        renderer.DrawRoundedRectOutlineGradient(capRect, 0.008f,
+            palette.laneColors[lane], palette.surfaceBorder, 0.0014f);
         renderer.DrawText(m_fontText, LaneLabel(lane),
-            x + laneWidth * 0.5f, JUDGE_LINE_Y + 0.03f, 0.028f,
-            { 230, 225, 245, 230 },
-            sakura::core::TextAlign::Center);
+            x + laneWidth * 0.5f, JUDGE_LINE_Y + 0.032f, 0.023f,
+            palette.text, sakura::core::TextAlign::Center);
     }
 
-    renderer.DrawLine(TRACK_X - 0.01f, JUDGE_LINE_Y, TRACK_X + TRACK_W + 0.01f, JUDGE_LINE_Y,
-        { 255, 205, 225, 240 }, 0.004f);
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(TRACK_X + TRACK_W * 0.5f, JUDGE_LINE_Y, TRACK_W * 0.55f, 0.018f,
+        { palette.primary.r, palette.primary.g, palette.primary.b, 85 },
+        { palette.primary.r, palette.primary.g, palette.primary.b, 0 });
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    renderer.DrawLine(TRACK_X - 0.006f, JUDGE_LINE_Y, TRACK_X + TRACK_W + 0.006f, JUDGE_LINE_Y,
+        palette.accent, 0.0036f);
 
     for (const auto& runtimeNote : m_runtimeNotes)
     {
@@ -639,122 +652,162 @@ void SceneTutorial::RenderKeyboardArea(sakura::core::Renderer& renderer) const
             && note.type != sakura::game::NoteType::Hold)
             continue;
 
-        float laneX = TRACK_X + laneWidth * note.lane + laneWidth * 0.12f;
-        float noteW = laneWidth * 0.76f;
-        float noteY = CalcKeyboardY(note.timeMs, displayTimeMs);
-        auto color = sakura::core::Color{ 255, 170, 205, 235 };
+        const float laneX = TRACK_X + laneWidth * static_cast<float>(note.lane) + laneWidth * 0.10f;
+        const float noteW = laneWidth * 0.80f;
+        const float noteY = CalcKeyboardY(note.timeMs, displayTimeMs);
+        const sakura::core::Color laneCol = palette.laneColors[std::clamp(note.lane, 0, 3)];
 
         if (note.type == sakura::game::NoteType::Hold)
         {
-            float endY = CalcKeyboardY(note.timeMs + note.durationMs, displayTimeMs);
-            float bodyY = std::min(noteY, endY);
-            float bodyH = std::max(0.022f, std::abs(endY - noteY));
-            renderer.DrawRoundedRect({ laneX + noteW * 0.30f, bodyY, noteW * 0.40f, bodyH },
-                0.008f, { 120, 205, 255, 190 }, true);
+            const float endY = CalcKeyboardY(note.timeMs + note.durationMs, displayTimeMs);
+            const float bodyY = std::min(noteY, endY);
+            const float bodyH = std::max(0.022f, std::abs(endY - noteY));
+            renderer.DrawRoundedGradientRect(
+                { laneX + noteW * 0.22f, bodyY, noteW * 0.56f, bodyH }, 0.008f,
+                { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 205 },
+                { 180, 235, 255, 220 },
+                { palette.primary.r, palette.primary.g, palette.primary.b, 175 },
+                { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 205 });
+            renderer.DrawLine(laneX + noteW * 0.50f, bodyY + 0.004f, laneX + noteW * 0.50f, bodyY + bodyH - 0.004f,
+                { 245, 252, 255, 185 }, 0.0022f);
 
             if (runtimeNote.started && !runtimeNote.completed)
             {
-                float progress = std::clamp(
+                const float progress = std::clamp(
                     (m_lessonTimerMs - static_cast<float>(note.timeMs))
                     / static_cast<float>(std::max(note.durationMs, 1)),
                     0.0f, 1.0f);
-                renderer.DrawRoundedRect({ 0.12f, 0.89f, 0.26f, 0.018f },
-                    0.006f, { 36, 32, 58, 220 }, true);
-                renderer.DrawRoundedRect({ 0.12f, 0.89f, 0.26f * progress, 0.018f },
-                    0.006f, { 120, 220, 255, 230 }, true);
-                renderer.DrawText(m_fontSmall, "按住进度",
-                    0.12f, 0.865f, 0.018f,
-                    { 170, 210, 230, 220 },
-                    sakura::core::TextAlign::Left);
+                renderer.DrawRoundedRect({ TRACK_X + 0.04f, 0.888f, 0.26f, 0.016f },
+                    0.006f, { 20, 24, 42, 225 }, true);
+                renderer.DrawRoundedGradientRect({ TRACK_X + 0.04f, 0.888f, 0.26f * progress, 0.016f },
+                    0.006f, palette.holdColor, palette.accent, palette.holdColor, palette.accent);
+                renderer.DrawText(m_fontSmall, "长按保持进度",
+                    TRACK_X + 0.04f, 0.862f, 0.0165f, palette.textDim, sakura::core::TextAlign::Left);
             }
         }
 
-        renderer.DrawRoundedRect({ laneX, noteY - 0.018f, noteW, 0.036f },
-            0.009f, color, true);
+        const sakura::core::NormRect gemRect{ laneX, noteY - 0.016f, noteW, 0.032f };
+        renderer.DrawSoftShadow(gemRect, 0.008f, 0.008f, { laneCol.r, laneCol.g, laneCol.b, 95 }, 0.0f);
+        renderer.DrawRoundedGradientRect(gemRect, 0.008f,
+            { 255, 235, 246, 248 }, laneCol, laneCol, palette.primary);
+        renderer.DrawRoundedRectOutlineGradient(gemRect, 0.008f,
+            { 255, 255, 255, 225 }, palette.accent, 0.0015f);
         renderer.DrawText(m_fontSmall, LaneLabel(note.lane),
-            laneX + noteW * 0.5f, noteY - 0.002f, 0.018f,
-            { 35, 20, 45, 255 },
-            sakura::core::TextAlign::Center);
-
+            laneX + noteW * 0.5f, noteY - 0.009f, 0.017f,
+            { 24, 16, 36, 255 }, sakura::core::TextAlign::Center);
     }
+
+    renderer.DrawText(m_fontSmall, "左侧 4K 键盘轨道 (A / S / D / F)",
+        TRACK_X, TRACK_Y + TRACK_H + 0.074f, 0.0165f, palette.textMuted, sakura::core::TextAlign::Left);
 }
 
 void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
 {
     const auto& lesson = CurrentLesson();
     if (!lesson.usesMouse) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    renderer.DrawRoundedRect({ MOUSE_X, MOUSE_Y, MOUSE_W, MOUSE_H },
-        0.012f, { 18, 16, 34, 200 }, true);
-    renderer.DrawRoundedRect({ MOUSE_X, MOUSE_Y, MOUSE_W, MOUSE_H },
-        0.012f, { 95, 82, 138, 120 }, false);
+    sakura::ui::VisualStyle::DrawGlassCard(renderer, { MOUSE_X, MOUSE_Y, MOUSE_W, MOUSE_H },
+        { 14, 18, 34, 216 }, { 10, 12, 24, 236 }, palette.gildedHairline, palette.surfaceBorder, 0.014f, 0.45f);
 
-    float displayTimeMs = (m_phase == Phase::Playing) ? m_lessonTimerMs : 0.0f;
+    // 柔和定位参考网格
+    for (int g = 1; g <= 3; ++g)
+    {
+        const float gx = MOUSE_X + MOUSE_W * (static_cast<float>(g) * 0.25f);
+        const float gy = MOUSE_Y + MOUSE_H * (static_cast<float>(g) * 0.25f);
+        renderer.DrawLine(gx, MOUSE_Y + 0.01f, gx, MOUSE_Y + MOUSE_H - 0.01f, { 145, 140, 185, 26 }, 0.001f);
+        renderer.DrawLine(MOUSE_X + 0.01f, gy, MOUSE_X + MOUSE_W - 0.01f, gy, { 145, 140, 185, 26 }, 0.001f);
+    }
+
+    const float displayTimeMs = (m_phase == Phase::Playing) ? m_lessonTimerMs : 0.0f;
     for (const auto& runtimeNote : m_runtimeNotes)
     {
         const auto& note = runtimeNote.note;
         if (runtimeNote.completed)
             continue;
 
-        float cx = MOUSE_X + note.x * MOUSE_W;
-        float cy = MOUSE_Y + note.y * MOUSE_H;
+        const float cx = MOUSE_X + note.x * MOUSE_W;
+        const float cy = MOUSE_Y + note.y * MOUSE_H;
+        const float approachR = 0.021f * CalcCircleScale(note.timeMs, displayTimeMs);
+
         if (note.type == sakura::game::NoteType::Circle)
         {
-            renderer.DrawCircleFilled(cx, cy, 0.020f, { 255, 175, 205, 235 }, 28);
-            renderer.DrawCircleOutline(cx, cy,
-                0.020f * CalcCircleScale(note.timeMs, displayTimeMs),
-                { 255, 230, 245, 160 }, 0.0025f, 48);
+            renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+            renderer.DrawRadialGradient(cx, cy, 0.038f, 0.038f,
+                { palette.circleColor.r, palette.circleColor.g, palette.circleColor.b, 95 },
+                { palette.circleColor.r, palette.circleColor.g, palette.circleColor.b, 0 });
+            renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+
+            renderer.DrawRingGradient(cx, cy, approachR - 0.0018f, approachR + 0.0022f,
+                palette.accent, { palette.primary.r, palette.primary.g, palette.primary.b, 35 }, 48);
+            renderer.DrawCircleFilled(cx, cy, 0.021f, palette.circleColor, 36);
+            renderer.DrawCircleFilled(cx, cy, 0.010f, { 255, 245, 250, 225 }, 24);
+            renderer.DrawCircleOutline(cx, cy, 0.021f, { 255, 250, 252, 240 }, 0.0022f, 40);
         }
         else if (note.type == sakura::game::NoteType::Slider)
         {
-            float prevX = cx;
-            float prevY = cy;
+            // 使用折线丝带 DrawRibbonStrip 保证拐角与线性判定点 1:1 对齐
+            std::vector<sakura::core::RibbonNode> ribbon;
+            ribbon.reserve(note.sliderPath.size() + 1);
+            ribbon.push_back({
+                cx, cy, 0.012f,
+                { 185, 240, 255, 225 },
+                { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 45 }
+            });
+            for (const auto& pt : note.sliderPath)
+            {
+                ribbon.push_back({
+                    MOUSE_X + pt.first * MOUSE_W,
+                    MOUSE_Y + pt.second * MOUSE_H,
+                    0.012f,
+                    { 185, 240, 255, 225 },
+                    { palette.primary.r, palette.primary.g, palette.primary.b, 45 }
+                });
+            }
+            if (ribbon.size() >= 2)
+                renderer.DrawRibbonStrip(ribbon.data(), static_cast<int>(ribbon.size()), true);
+
             for (int pointIndex = 0; pointIndex < static_cast<int>(note.sliderPath.size()); ++pointIndex)
             {
                 const auto& point = note.sliderPath[pointIndex];
-                float pointX = MOUSE_X + point.first * MOUSE_W;
-                float pointY = MOUSE_Y + point.second * MOUSE_H;
-                renderer.DrawLine(prevX, prevY, pointX, pointY,
-                    { 120, 220, 255, 210 }, 0.004f);
+                const float pointX = MOUSE_X + point.first * MOUSE_W;
+                const float pointY = MOUSE_Y + point.second * MOUSE_H;
 
-                bool reached = runtimeNote.started
+                const bool reached = runtimeNote.started
                     && pointIndex < runtimeNote.sliderNextWaypointIndex;
-                bool nextPoint = runtimeNote.started && !runtimeNote.completed
+                const bool nextPoint = runtimeNote.started && !runtimeNote.completed
                     && pointIndex == runtimeNote.sliderNextWaypointIndex;
-                sakura::core::Color pointColor = reached
-                    ? sakura::core::Color{ 255, 222, 140, 235 }
+                const sakura::core::Color pointColor = reached
+                    ? palette.accent
                     : (nextPoint
-                        ? sakura::core::Color{ 120, 245, 255, 240 }
-                        : sakura::core::Color{ 185, 235, 255, 190 });
-                renderer.DrawCircleFilled(pointX, pointY,
-                    nextPoint ? 0.014f : 0.011f,
-                    pointColor, 24);
-
-                prevX = pointX;
-                prevY = pointY;
+                        ? sakura::core::Color{ 130, 245, 255, 245 }
+                        : sakura::core::Color{ 195, 235, 255, 195 });
+                const float pr = nextPoint ? 0.014f : 0.0105f;
+                renderer.DrawCircleFilled(pointX, pointY, pr, pointColor, 28);
+                renderer.DrawCircleOutline(pointX, pointY, pr + 0.002f, { 255, 255, 255, 210 }, 0.0015f, 28);
             }
 
-            renderer.DrawCircleFilled(cx, cy, 0.020f, { 255, 175, 205, 235 }, 28);
-            renderer.DrawCircleOutline(cx, cy,
-                0.020f * CalcCircleScale(note.timeMs, displayTimeMs),
-                { 255, 230, 245, 160 }, 0.0025f, 48);
+            renderer.DrawRingGradient(cx, cy, approachR - 0.0018f, approachR + 0.0022f,
+                palette.accent, { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 35 }, 48);
+            renderer.DrawCircleFilled(cx, cy, 0.021f, palette.primary, 36);
+            renderer.DrawCircleFilled(cx, cy, 0.009f, { 255, 248, 252, 235 }, 24);
+            renderer.DrawCircleOutline(cx, cy, 0.021f, palette.accent, 0.0022f, 40);
 
             if (runtimeNote.started && !runtimeNote.completed)
             {
-                renderer.DrawRoundedRect({ 0.58f, 0.89f, 0.24f, 0.018f },
-                    0.006f, { 36, 32, 58, 220 }, true);
+                renderer.DrawRoundedRect({ MOUSE_X + 0.04f, 0.888f, 0.26f, 0.016f },
+                    0.006f, { 20, 24, 42, 225 }, true);
                 float progress = 0.0f;
                 if (!note.sliderPath.empty())
                 {
                     progress = static_cast<float>(runtimeNote.sliderNextWaypointIndex)
                         / static_cast<float>(note.sliderPath.size());
                 }
-                renderer.DrawRoundedRect({ 0.58f, 0.89f, 0.24f * std::clamp(progress, 0.0f, 1.0f), 0.018f },
-                    0.006f, { 120, 220, 255, 230 }, true);
-                renderer.DrawText(m_fontSmall, "Slide 路径进度",
-                    0.58f, 0.865f, 0.018f,
-                    { 170, 210, 230, 220 },
-                    sakura::core::TextAlign::Left);
+                renderer.DrawRoundedGradientRect(
+                    { MOUSE_X + 0.04f, 0.888f, 0.26f * std::clamp(progress, 0.0f, 1.0f), 0.016f },
+                    0.006f, palette.holdColor, palette.accent, palette.holdColor, palette.accent);
+                renderer.DrawText(m_fontSmall, "丝带滑条引导进度",
+                    MOUSE_X + 0.04f, 0.862f, 0.0165f, palette.textDim, sakura::core::TextAlign::Left);
             }
         }
     }
@@ -763,42 +816,38 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
     if (mouseX >= MOUSE_X && mouseX <= MOUSE_X + MOUSE_W
         && mouseY >= MOUSE_Y && mouseY <= MOUSE_Y + MOUSE_H)
     {
-        renderer.DrawCircleOutline(mouseX, mouseY, 0.012f,
-            { 230, 235, 255, 220 }, 0.002f, 24);
+        renderer.DrawRingGradient(mouseX, mouseY, 0.009f, 0.014f,
+            palette.accent, { palette.primary.r, palette.primary.g, palette.primary.b, 30 }, 32);
+        renderer.DrawCircleFilled(mouseX, mouseY, 0.0032f, { 255, 250, 245, 240 }, 16);
     }
 
-    bool hasSlider = std::any_of(m_runtimeNotes.begin(), m_runtimeNotes.end(),
+    const bool hasSlider = std::any_of(m_runtimeNotes.begin(), m_runtimeNotes.end(),
         [](const RuntimeNote& runtimeNote)
         {
             return runtimeNote.note.type == sakura::game::NoteType::Slider;
         });
     renderer.DrawText(m_fontSmall,
-        hasSlider ? "按住左键，跟随亮点滑动" : "接近圈与目标重合时点击",
-        MOUSE_X, MOUSE_Y + MOUSE_H + 0.03f, 0.018f,
-        { 175, 190, 215, 210 },
-        sakura::core::TextAlign::Left);
+        hasSlider ? "右侧鼠标域：按住左键沿丝带滑向发光节点" : "右侧鼠标域：缩圈与圆心重合时左键点击",
+        MOUSE_X, MOUSE_Y + MOUSE_H + 0.032f, 0.017f, palette.textDim, sakura::core::TextAlign::Left);
 }
 
 void SceneTutorial::RenderPrompt(sakura::core::Renderer& renderer)
 {
-    sakura::ui::VisualStyle::DrawScrim(renderer);
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.24f, 0.30f, 0.52f, 0.38f }, true, true);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    sakura::ui::VisualStyle::DrawScrim(renderer, 0.66f);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.24f, 0.29f, 0.52f, 0.40f }, true, true);
 
-    renderer.DrawText(m_fontTitle, "是否进入教程？",
-        0.50f, 0.38f, 0.040f,
-        { 245, 230, 255, 245 },
-        sakura::core::TextAlign::Center);
-
+    sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.43f, 0.320f, 0.14f, 0.028f }, "WELCOME",
+        m_fontSmall, 0.0135f, { 36, 28, 56, 200 }, palette.gildedHairline, palette.accent);
+    renderer.DrawText(m_fontTitle, "开启新手引导？",
+        0.50f, 0.365f, 0.038f, palette.text, sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.31f, 0.69f, 0.420f, 0.72f);
     renderer.DrawText(m_fontText,
-        "教程共 5 课，会依次说明 Tap、Hold、Circle、Slide 音符，以及综合配合。",
-        0.50f, 0.45f, 0.022f,
-        { 220, 215, 230, 220 },
-        sakura::core::TextAlign::Center);
+        "共 5 节互动课程，带你掌握 Tap、Hold、Circle、Slide 与双域协同。",
+        0.50f, 0.445f, 0.021f, palette.text, sakura::core::TextAlign::Center);
     renderer.DrawText(m_fontSmall,
-        "也可以按 Esc 跳过，之后仍可从主菜单进入教程。",
-        0.50f, 0.49f, 0.019f,
-        { 180, 175, 195, 190 },
-        sakura::core::TextAlign::Center);
+        "按 ESC 可暂时跳过，随时可从主菜单「新手教程」重新进入。",
+        0.50f, 0.490f, 0.018f, palette.textDim, sakura::core::TextAlign::Center);
 
     if (m_btnPromptYes) m_btnPromptYes->Render(renderer);
     if (m_btnPromptNo)  m_btnPromptNo->Render(renderer);

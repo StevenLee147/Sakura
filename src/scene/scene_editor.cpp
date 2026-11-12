@@ -2,6 +2,7 @@
 
 #include "scene_editor.h"
 #include "core/paths.h"
+#include "core/theme.h"
 #include "ui/visual_style.h"
 #include "scene_menu.h"
 #include "scene_chart_wizard.h"
@@ -320,61 +321,41 @@ void SceneEditor::UpdateToolButtons()
 }
 
 // ── UpdateUndoRedoButtons ─────────────────────────────────────────────────────
-
 void SceneEditor::UpdateUndoRedoButtons()
 {
-    // 撤销按钮：有历史时亮显，否则暗灰
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
     if (m_btnUndo)
     {
-        sakura::ui::ButtonColors c;
-        if (m_core.CanUndo())
+        sakura::ui::ButtonColors c = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Secondary);
+        if (!m_core.CanUndo())
         {
-            c.normal  = { 40, 60, 120, 210 };
-            c.hover   = { 60, 90, 180, 235 };
-            c.pressed = { 30, 45, 90,  245 };
+            c.normal  = { 16, 18, 32, 110 };
+            c.hover   = { 20, 22, 38, 120 };
+            c.pressed = { 14, 16, 28, 110 };
+            c.border  = { 90, 95, 130, 55 };
+            c.text    = palette.textMuted;
         }
-        else
-        {
-            c.normal  = { 20, 18, 40, 120 };
-            c.hover   = { 25, 22, 50, 130 };
-            c.pressed = { 15, 12, 30, 120 };
-        }
-        c.text = sakura::core::Color{ 200, 200, 255,
-            static_cast<Uint8>(m_core.CanUndo() ? 230 : 100) };
         m_btnUndo->SetColors(c);
 
-        int cnt = m_core.GetUndoCount();
-        std::string label = cnt > 0
-            ? "↩ 撤销(" + std::to_string(cnt) + ")"
-            : "↩ 撤销";
-        m_btnUndo->SetText(label);
+        const int cnt = m_core.GetUndoCount();
+        m_btnUndo->SetText(cnt > 0 ? ("↩ 撤销(" + std::to_string(cnt) + ")") : "↩ 撤销");
     }
 
-    // 重做按钮
     if (m_btnRedo)
     {
-        sakura::ui::ButtonColors c;
-        if (m_core.CanRedo())
+        sakura::ui::ButtonColors c = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Secondary);
+        if (!m_core.CanRedo())
         {
-            c.normal  = { 40, 60, 120, 210 };
-            c.hover   = { 60, 90, 180, 235 };
-            c.pressed = { 30, 45, 90,  245 };
+            c.normal  = { 16, 18, 32, 110 };
+            c.hover   = { 20, 22, 38, 120 };
+            c.pressed = { 14, 16, 28, 110 };
+            c.border  = { 90, 95, 130, 55 };
+            c.text    = palette.textMuted;
         }
-        else
-        {
-            c.normal  = { 20, 18, 40, 120 };
-            c.hover   = { 25, 22, 50, 130 };
-            c.pressed = { 15, 12, 30, 120 };
-        }
-        c.text = sakura::core::Color{ 200, 200, 255,
-            static_cast<Uint8>(m_core.CanRedo() ? 230 : 100) };
         m_btnRedo->SetColors(c);
 
-        int cnt = m_core.GetRedoCount();
-        std::string label = cnt > 0
-            ? "↪ 重做(" + std::to_string(cnt) + ")"
-            : "重做";
-        m_btnRedo->SetText(label);
+        const int cnt = m_core.GetRedoCount();
+        m_btnRedo->SetText(cnt > 0 ? ("↪ 重做(" + std::to_string(cnt) + ")") : "↪ 重做");
     }
 }
 
@@ -555,11 +536,28 @@ void SceneEditor::ApplyProperties(){
     }catch(const std::exception& e){sakura::ui::ToastManager::Instance().Show(e.what(),sakura::ui::ToastType::Warning);}
 }
 void SceneEditor::RenderProperties(sakura::core::Renderer& r){
-    sakura::ui::VisualStyle::DrawScrim(r);sakura::ui::VisualStyle::DrawPanel(r,{0.23f,0.20f,0.54f,0.64f},true,true);
-    r.DrawText(m_fontUI,m_propertyKeyboard>=0?"键盘音符属性":m_propertyMouse>=0?"鼠标音符属性":"谱面属性",0.27f,0.235f,0.035f,{239,223,234,255});
-    for(size_t i=0;i<m_propertyInputs.size();++i){r.DrawText(m_fontSmall,m_propertyLabels[i],0.27f,0.328f+i*0.088f,0.020f,{184,186,204,255});m_propertyInputs[i]->Render(r);}
-    r.DrawText(m_fontSmall,"Enter 应用 · Tab 切换输入框 · Esc 取消",0.27f,0.68f,0.018f,{152,160,184,255});
-    m_propertyApply->Render(r);m_propertyCancel->Render(r);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    sakura::ui::VisualStyle::DrawScrim(r, 0.66f);
+    sakura::ui::VisualStyle::DrawPanel(r, {0.23f, 0.20f, 0.54f, 0.64f}, true, true);
+    r.DrawText(m_fontUI,
+        m_propertyKeyboard >= 0 ? "键盘音符属性" : (m_propertyMouse >= 0 ? "鼠标音符属性" : "谱面元数据与节奏属性"),
+        0.27f, 0.232f, 0.033f, palette.text);
+    sakura::ui::VisualStyle::DrawGildedDivider(r, 0.27f, 0.73f, 0.285f, 0.72f);
+    for (size_t i = 0; i < m_propertyInputs.size(); ++i)
+    {
+        const float rowY = 0.320f + static_cast<float>(i) * 0.088f;
+        if (m_propertyInputs[i]->IsFocused())
+        {
+            r.DrawRoundedGradientRect({0.26f, rowY - 0.008f, 0.48f, 0.063f}, 0.009f,
+                {42, 32, 64, 95}, {26, 24, 48, 55}, {42, 32, 64, 95}, {26, 24, 48, 55});
+        }
+        r.DrawText(m_fontSmall, m_propertyLabels[i], 0.275f, rowY + 0.010f, 0.020f,
+            m_propertyInputs[i]->IsFocused() ? palette.accent : palette.textDim);
+        m_propertyInputs[i]->Render(r);
+    }
+    r.DrawText(m_fontSmall, "Enter 应用修改  ·  Tab 切换输入框  ·  ESC 取消", 0.27f, 0.682f, 0.0175f, palette.textMuted);
+    m_propertyApply->Render(r);
+    m_propertyCancel->Render(r);
 }
 
 bool SceneEditor::CanClose() {
@@ -644,49 +642,63 @@ void SceneEditor::OnRender(sakura::core::Renderer& renderer)
     // 5. 底部全曲缩略轴
     RenderOverviewAxis(renderer);
 
-    if(m_propertyEditing)RenderProperties(renderer);
-    if(m_exitDialog){
-        sakura::ui::VisualStyle::DrawScrim(renderer);
-        sakura::ui::VisualStyle::DrawPanel(renderer,{0.24f,0.34f,0.52f,0.34f},true,true);
-        renderer.DrawText(m_fontUI,"保存谱面的修改？",0.5f,0.39f,0.038f,{239,223,234,255},sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontSmall,"保存后可在曲库中立即演奏这张谱面。",0.5f,0.48f,0.022f,{170,175,196,255},sakura::core::TextAlign::Center);
-        for(auto& button:m_exitButtons)button->Render(renderer);
+    if (m_propertyEditing) RenderProperties(renderer);
+    if (m_exitDialog)
+    {
+        const auto& palette = sakura::core::Theme::GetInstance().Colors();
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.66f);
+        sakura::ui::VisualStyle::DrawPanel(renderer, {0.24f, 0.34f, 0.52f, 0.34f}, true, true);
+        renderer.DrawText(m_fontUI, "保存谱面的修改？", 0.5f, 0.382f, 0.036f, palette.text, sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.31f, 0.69f, 0.440f, 0.72f);
+        renderer.DrawText(m_fontSmall, "保存后可在选歌曲库中立即演奏这张谱面。", 0.5f, 0.472f, 0.021f, palette.textDim, sakura::core::TextAlign::Center);
+        for (auto& button : m_exitButtons) button->Render(renderer);
     }
 }
 
 // ── RenderToolbar ─────────────────────────────────────────────────────────────
-
 void SceneEditor::RenderToolbar(sakura::core::Renderer& renderer)
 {
-    // 工具栏背景
-    renderer.DrawFilledRect({ 0.0f, 0.0f, 1.0f, 0.06f },
-        sakura::core::Color{ 15, 12, 35, 240 });
-    renderer.DrawLine(0.0f, 0.06f, 1.0f, 0.06f,
-        sakura::core::Color{ 60, 50, 100, 150 }, 0.001f);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    // 工具按钮
-    for (auto& btn : m_toolBtns) if (btn) btn->Render(renderer);
+    // 琉璃顶栏 + 鎏金底边细线
+    renderer.DrawRoundedGradientRect({ 0.0f, 0.0f, 1.0f, 0.06f }, 0.0f,
+        { 22, 26, 48, 242 }, { 26, 22, 48, 242 },
+        { 14, 16, 30, 248 }, { 14, 16, 30, 248 });
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.0f, 1.0f, 0.059f, 0.85f);
 
-    // 播放/暂停
+    // 工具按钮（激活态叠加底部流光指示条）
+    const int activeTool = static_cast<int>(m_core.GetNoteTool());
+    for (int i = 0; i < TOOL_COUNT; ++i)
+    {
+        if (!m_toolBtns[i]) continue;
+        m_toolBtns[i]->Render(renderer);
+        if (i == activeTool)
+        {
+            const auto tb = m_toolBtns[i]->GetBounds();
+            renderer.DrawRoundedGradientRect(
+                { tb.x + 0.010f, tb.y + tb.height - 0.004f, tb.width - 0.020f, 0.003f }, 0.0015f,
+                palette.accent, palette.primary, palette.accent, palette.primary);
+        }
+    }
+
     if (m_btnPlay) m_btnPlay->Render(renderer);
-
-    // 撤销/重做
     if (m_btnUndo) m_btnUndo->Render(renderer);
     if (m_btnRedo) m_btnRedo->Render(renderer);
 
-    // BeatSnap 显示
+    // BeatSnap 胶囊徽章与曲目标题
     if (m_fontUI != sakura::core::INVALID_HANDLE)
     {
-        std::string snapStr = "1/" + std::to_string(m_core.GetBeatSnap());
-        renderer.DrawText(m_fontUI, snapStr,
-            0.563f, 0.028f, 0.022f,
-            sakura::core::Color{ 200, 190, 240, 220 },
-            sakura::core::TextAlign::Center);
+        const std::string snapStr = "拍分 1/" + std::to_string(m_core.GetBeatSnap());
+        sakura::ui::VisualStyle::DrawBadgePill(renderer,
+            { 0.484f, 0.009f, 0.052f, 0.040f },
+            snapStr, m_fontUI, 0.0145f,
+            { 28, 32, 56, 215 }, palette.gildedHairline, palette.accent);
 
-        // 谱面标题（中央，包含 dirty 标记）
         std::string titleStr = m_core.GetChartInfo().title;
-        if (m_core.IsDirty()) titleStr += " *";
-        sakura::ui::VisualStyle::DrawTextFit(renderer,m_fontUI,titleStr,0.307f,0.017f,0.019f,0.085f,{190,185,211,230});
+        if (m_core.IsDirty()) titleStr += " ●";
+        sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontUI, titleStr,
+            0.312f, 0.018f, 0.0185f, 0.082f,
+            m_core.IsDirty() ? palette.accent : palette.text);
     }
 
     if (m_btnSnapDec) m_btnSnapDec->Render(renderer);
@@ -724,35 +736,26 @@ void SceneEditor::RenderMouseArea(sakura::core::Renderer& renderer)
 }
 
 // ── RenderPropertyPanel ───────────────────────────────────────────────────────
-
 void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
 {
-    // 属性面板：(0.42, 0.68, 0.33, 0.32)
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.42f, 0.68f, 0.33f, 0.32f });
-    renderer.DrawLine(0.42f, 0.68f, 0.75f, 0.68f,
-        sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
-    renderer.DrawLine(0.42f, 0.68f, 0.42f, 1.00f,
-        sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
-    renderer.DrawLine(0.75f, 0.68f, 0.75f, 1.00f,
-        sakura::core::Color{ 60, 50, 100, 120 }, 0.001f);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    sakura::ui::VisualStyle::DrawGlassCard(renderer, { 0.42f, 0.68f, 0.33f, 0.312f },
+        { 18, 22, 40, 218 }, { 12, 15, 28, 238 },
+        palette.gildedHairline, palette.surfaceBorder, 0.010f, 0.36f);
 
     if (m_fontSmall == sakura::core::INVALID_HANDLE) return;
 
-    float px = 0.585f;
+    constexpr float px = 0.585f;
 
-    // 属性面板标题（靠顶部，小字）
-    renderer.DrawText(m_fontSmall, "属性面板",
-        px, 0.686f, 0.016f,
-        sakura::core::Color{ 140, 130, 180, 180 },
+    renderer.DrawText(m_fontSmall, "检视器 · INSPECTOR",
+        0.536f, 0.684f, 0.0145f,
+        palette.accent,
         sakura::core::TextAlign::Center);
 
-    // ── 难度管理行 ────────────────────────────────────────────────────────
-    // 渲染 ◀ ▶ + 难度 三个按钮（位置已在 SetupToolbar 设置）
     if (m_btnDiffPrev) m_btnDiffPrev->Render(renderer);
     if (m_btnDiffNext) m_btnDiffNext->Render(renderer);
     if (m_btnDiffAdd)  m_btnDiffAdd->Render(renderer);
 
-    // 当前难度名称（居中显示在 ◀ 和 ▶ 之间）
     {
         std::string diffName = "—";
         const auto& diffs = m_core.GetChartInfo().difficulties;
@@ -761,88 +764,81 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
         {
             diffName = diffs[m_currentDiffIndex].name;
         }
-        renderer.DrawText(m_fontSmall, diffName,
-            0.561f, 0.713f, 0.017f,
-            sakura::core::Color{ 220, 200, 255, 230 },
-            sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawBadgePill(renderer,
+            { 0.478f, 0.700f, 0.114f, 0.028f },
+            diffName, m_fontSmall, 0.015f,
+            { 28, 32, 56, 205 }, palette.primary, palette.text);
     }
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.734f, 0.65f);
 
-    // 选中音符信息
-    int selIdx = m_core.GetSelectedKbNote();
-    if (selIdx >= 0 && selIdx < static_cast<int>(
-            m_core.GetChartData().keyboardNotes.size()))
+    const int selIdx    = m_core.GetSelectedKbNote();
+    const int selMouse  = m_core.GetSelectedMouseNote();
+    if (selIdx >= 0 && selIdx < static_cast<int>(m_core.GetChartData().keyboardNotes.size()))
     {
         const auto& n = m_core.GetChartData().keyboardNotes[selIdx];
         renderer.DrawText(m_fontSmall,
-            "选中: KB音符 #" + std::to_string(selIdx),
-            px, 0.735f, 0.018f,
-            sakura::core::Color{ 200, 200, 100, 210 },
-            sakura::core::TextAlign::Center);
+            "已选键盘音符 #" + std::to_string(selIdx),
+            px, 0.742f, 0.0175f, palette.accent, sakura::core::TextAlign::Center);
         renderer.DrawText(m_fontSmall,
-            "时间: " + std::to_string(n.time) + " ms",
-            px, 0.762f, 0.018f,
-            sakura::core::Color{ 180, 170, 220, 200 },
-            sakura::core::TextAlign::Center);
+            "时间: " + std::to_string(n.time) + " ms   ·   轨道: " + std::to_string(n.lane + 1),
+            px, 0.768f, 0.017f, palette.text, sakura::core::TextAlign::Center);
         renderer.DrawText(m_fontSmall,
-            "轨道: " + std::to_string(n.lane) + "  时长: " + std::to_string(n.duration) + " ms",
-            px, 0.789f, 0.018f,
-            sakura::core::Color{ 180, 170, 220, 200 },
-            sakura::core::TextAlign::Center);
+            "持续时长: " + std::to_string(n.duration) + " ms",
+            px, 0.794f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
+    }
+    else if (selMouse >= 0 && selMouse < static_cast<int>(m_core.GetChartData().mouseNotes.size()))
+    {
+        const auto& mn = m_core.GetChartData().mouseNotes[selMouse];
+        renderer.DrawText(m_fontSmall,
+            "已选鼠标音符 #" + std::to_string(selMouse),
+            px, 0.742f, 0.0175f, palette.accent, sakura::core::TextAlign::Center);
+        std::ostringstream posSS;
+        posSS << "时间: " << mn.time << " ms   ·   坐标 ("
+              << std::fixed << std::setprecision(2) << mn.x << ", " << mn.y << ")";
+        renderer.DrawText(m_fontSmall, posSS.str(),
+            px, 0.768f, 0.017f, palette.text, sakura::core::TextAlign::Center);
+        renderer.DrawText(m_fontSmall,
+            mn.type == sakura::game::NoteType::Slider
+                ? ("Slider 时长: " + std::to_string(mn.sliderDuration) + " ms")
+                : "类型: Hit Circle",
+            px, 0.794f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
     }
     else
     {
-        // 总谱面信息
         const auto& info = m_core.GetChartInfo();
-        renderer.DrawText(m_fontSmall,
-            "曲名: " + info.title,
-            px, 0.735f, 0.018f,
-            sakura::core::Color{ 180, 170, 210, 180 },
-            sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontSmall,
-            "BPM: " + std::to_string(static_cast<int>(info.bpm)),
-            px, 0.762f, 0.018f,
-            sakura::core::Color{ 180, 170, 210, 180 },
-            sakura::core::TextAlign::Center);
-        int noteCount = static_cast<int>(m_core.GetChartData().keyboardNotes.size());
-        renderer.DrawText(m_fontSmall,
-            "KB音符总数: " + std::to_string(noteCount),
-            px, 0.789f, 0.018f,
-            sakura::core::Color{ 180, 170, 210, 180 },
-            sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontSmall,
+            "曲名: " + info.title, 0.440f, 0.742f, 0.017f, 0.290f, palette.text);
 
-        // 当前时间 & BPM
-        int curMs = m_core.GetCurrentTimeMs();
-        float bpm = m_core.GetBpmAt(curMs);
+        const int kbCount    = static_cast<int>(m_core.GetChartData().keyboardNotes.size());
+        const int mouseCount = static_cast<int>(m_core.GetChartData().mouseNotes.size());
+        renderer.DrawText(m_fontSmall,
+            "BPM " + std::to_string(static_cast<int>(info.bpm))
+            + "   ·   KB " + std::to_string(kbCount)
+            + " / Mouse " + std::to_string(mouseCount),
+            px, 0.768f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
+
+        const int curMs = m_core.GetCurrentTimeMs();
+        const float bpm = m_core.GetBpmAt(curMs);
         std::ostringstream timeSS;
-        float sec = static_cast<float>(curMs) / 1000.0f;
+        const float sec = static_cast<float>(curMs) / 1000.0f;
         timeSS << (curMs < 0 ? "-" : "")
                << static_cast<int>(std::abs(sec)) << "."
                << std::setw(3) << std::setfill('0') << (std::abs(curMs) % 1000)
-               << "s  BPM:" << static_cast<int>(bpm);
+               << "s   ·   当前 BPM " << static_cast<int>(bpm);
         renderer.DrawText(m_fontSmall, timeSS.str(),
-            px, 0.816f, 0.018f,
-            sakura::core::Color{ 160, 220, 160, 200 },
-            sakura::core::TextAlign::Center);
+            px, 0.795f, 0.017f, palette.accent, sakura::core::TextAlign::Center);
     }
+    if (m_btnProperties) m_btnProperties->Render(renderer);
 
-    if(m_btnProperties)m_btnProperties->Render(renderer);
-    // 快捷键提示
-    renderer.DrawText(m_fontSmall, "1-4: 工具  Space: 播放  Del: 删除",
-        px, 0.875f, 0.016f,
-        sakura::core::Color{ 120, 110, 160, 150 },
-        sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+Z/Y: 撤销/重做  Ctrl+S: 保存",
-        px, 0.898f, 0.016f,
-        sakura::core::Color{ 120, 110, 160, 150 },
-        sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "F5/F6: 完整试玩  F8: 键盘预览",
-        px, 0.921f, 0.016f,
-        sakura::core::Color{ 120, 110, 160, 150 },
-        sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "点时间尺/全曲轴定位播放  Ctrl+M: 镜像  ESC: 退出",
-        px, 0.944f, 0.016f,
-        sakura::core::Color{ 120, 110, 160, 150 },
-        sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.870f, 0.45f);
+    renderer.DrawText(m_fontSmall, "1-4 工具  ·  Space 播放  ·  Del 删除",
+        px, 0.878f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "Ctrl+Z/Y 撤销重做  ·  Ctrl+S 保存  ·  Ctrl+M 镜像",
+        px, 0.901f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "F5/F6 完整试玩  ·  F8 内嵌预览  ·  ESC 退出",
+        px, 0.924f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "点击左侧时间尺或右侧全曲轴可快速跳转",
+        px, 0.947f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
 }
 
 // ── HandleOverviewAxisEvent ─────────────────────────────────────────────────
@@ -903,78 +899,90 @@ bool SceneEditor::HandleOverviewAxisEvent(const SDL_Event& event)
 }
 
 // ── RenderOverviewAxis ────────────────────────────────────────────────────────
-
 void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
 {
-    // 底部全曲缩略轴：(0.77, 0.06, 0.21, 0.94)
-    renderer.DrawFilledRect({ OVERVIEW_X, OVERVIEW_Y, OVERVIEW_W, OVERVIEW_H },
-        sakura::core::Color{ 8, 6, 20, 200 });
-    // 边框
-    renderer.DrawLine(OVERVIEW_X, OVERVIEW_Y, OVERVIEW_X, OVERVIEW_Y + OVERVIEW_H,
-        sakura::core::Color{ 55, 45, 85, 120 }, 0.001f);
-    renderer.DrawLine(OVERVIEW_X + OVERVIEW_W, OVERVIEW_Y,
-        OVERVIEW_X + OVERVIEW_W, OVERVIEW_Y + OVERVIEW_H,
-        sakura::core::Color{ 55, 45, 85, 120 }, 0.001f);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    sakura::ui::VisualStyle::DrawGlassCard(renderer,
+        { OVERVIEW_X, OVERVIEW_Y, OVERVIEW_W, OVERVIEW_H - 0.008f },
+        { 14, 18, 34, 222 }, { 9, 12, 24, 240 },
+        palette.gildedHairline, palette.surfaceBorder, 0.010f, 0.36f);
+
+    const float kbRegionW = OVERVIEW_W * 0.62f;
+    const float msRegionX = OVERVIEW_X + kbRegionW;
+    const float msRegionW = OVERVIEW_W - kbRegionW;
+    renderer.DrawLine(msRegionX, OVERVIEW_Y + 0.042f, msRegionX, OVERVIEW_Y + OVERVIEW_H - 0.014f,
+        { 150, 145, 195, 36 }, 0.001f);
 
     int totalMs = m_core.GetTotalDurationMs();
     if (totalMs <= 0) totalMs = 10000;
 
-    // 背景中绘制所有音符缩略点
+    // 4K 键盘音符缩略点（左侧 62% 宽度）
     const auto& notes = m_core.GetChartData().keyboardNotes;
     for (const auto& n : notes)
     {
-        float progress = static_cast<float>(n.time) / static_cast<float>(totalMs);
-        float noteY    = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
-        if (noteY < OVERVIEW_Y || noteY > OVERVIEW_Y + OVERVIEW_H) continue;
+        const float progress = static_cast<float>(n.time) / static_cast<float>(totalMs);
+        const float noteY    = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        if (noteY < OVERVIEW_Y + 0.006f || noteY > OVERVIEW_Y + OVERVIEW_H - 0.010f) continue;
 
-        float noteX = OVERVIEW_X + (n.lane + 0.5f) / 4.0f * OVERVIEW_W;
+        const float noteX = OVERVIEW_X + 0.006f + (static_cast<float>(n.lane) + 0.5f) / 4.0f * (kbRegionW - 0.012f);
+        const sakura::core::Color tickCol = (n.type == sakura::game::NoteType::Hold)
+            ? palette.holdColor
+            : palette.laneColors[std::clamp(n.lane, 0, 3)];
         renderer.DrawFilledRect(
-            { noteX - 0.003f, noteY - 0.002f, 0.006f, 0.004f },
-            sakura::core::Color{ 80, 130, 255, 180 });
+            { noteX - 0.0045f, noteY - 0.0016f, 0.009f, 0.0032f },
+            { tickCol.r, tickCol.g, tickCol.b, 205 });
     }
 
-    // 播放头标记
-    int curMs = m_core.GetCurrentTimeMs();
-    if (curMs >= 0)
+    // 鼠标音符缩略点（右侧 38% 宽度）
+    const auto& mouseNotes = m_core.GetChartData().mouseNotes;
+    for (const auto& mn : mouseNotes)
     {
-        float progress = static_cast<float>(curMs) / static_cast<float>(totalMs);
-        if (progress > 1.0f) progress = 1.0f;
-        float headY = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
-        renderer.DrawLine(OVERVIEW_X, headY, OVERVIEW_X + OVERVIEW_W, headY,
-            sakura::core::Color{ 255, 60, 100, 200 }, 0.002f);
+        const float progress = static_cast<float>(mn.time) / static_cast<float>(totalMs);
+        const float noteY    = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        if (noteY < OVERVIEW_Y + 0.006f || noteY > OVERVIEW_Y + OVERVIEW_H - 0.010f) continue;
+
+        const float noteX = msRegionX + 0.008f + std::clamp(mn.x, 0.0f, 1.0f) * (msRegionW - 0.016f);
+        const sakura::core::Color dotCol = (mn.type == sakura::game::NoteType::Slider)
+            ? palette.accent
+            : palette.circleColor;
+        renderer.DrawCircleFilled(noteX, noteY, 0.0026f, { dotCol.r, dotCol.g, dotCol.b, 210 }, 12);
     }
 
-    // 可视区域指示器
+    // 琉璃视窗透镜框
     if (totalMs > 0)
     {
-        float scrollProgress = static_cast<float>(m_timeline.GetScrollTimeMs())
-                             / static_cast<float>(totalMs);
-        float viewProgress   = static_cast<float>(
-            m_timeline.GetScrollTimeMs()
-          + static_cast<int>(4000)) / static_cast<float>(totalMs);
+        const float scrollProgress = static_cast<float>(m_timeline.GetScrollTimeMs())
+                                   / static_cast<float>(totalMs);
+        const float viewProgress   = static_cast<float>(
+            m_timeline.GetScrollTimeMs() + 4000) / static_cast<float>(totalMs);
 
-        float viewTop    = OVERVIEW_Y + OVERVIEW_H - std::clamp(viewProgress,   0.0f, 1.0f) * OVERVIEW_H;
-        float viewBottom = OVERVIEW_Y + OVERVIEW_H - std::clamp(scrollProgress, 0.0f, 1.0f) * OVERVIEW_H;
-        float viewHeight = viewBottom - viewTop;
+        const float viewTop    = OVERVIEW_Y + OVERVIEW_H - std::clamp(viewProgress,   0.0f, 1.0f) * OVERVIEW_H;
+        const float viewBottom = OVERVIEW_Y + OVERVIEW_H - std::clamp(scrollProgress, 0.0f, 1.0f) * OVERVIEW_H;
+        const float viewHeight = std::max(0.012f, viewBottom - viewTop);
+        const sakura::core::NormRect lensRect{ OVERVIEW_X + 0.004f, viewTop, OVERVIEW_W - 0.008f, viewHeight };
+        renderer.DrawRoundedGradientRect(lensRect, 0.006f,
+            { 255, 195, 222, 42 }, { 195, 225, 255, 36 },
+            { 255, 195, 222, 26 }, { 195, 225, 255, 22 });
+        renderer.DrawRoundedRectOutlineGradient(lensRect, 0.006f,
+            palette.accent, palette.primary, 0.0014f);
+    }
 
-        if (viewHeight > 0.005f)
-        {
-            renderer.DrawFilledRect(
-                { OVERVIEW_X, viewTop, OVERVIEW_W, viewHeight },
-                sakura::core::Color{ 100, 90, 160, 50 });
-            renderer.DrawLine(OVERVIEW_X, viewTop, OVERVIEW_X + OVERVIEW_W, viewTop,
-                sakura::core::Color{ 130, 120, 200, 120 }, 0.001f);
-            renderer.DrawLine(OVERVIEW_X, viewBottom, OVERVIEW_X + OVERVIEW_W, viewBottom,
-                sakura::core::Color{ 130, 120, 200, 120 }, 0.001f);
-        }
+    // 播放头鎏金发光线
+    const int curMs = m_core.GetCurrentTimeMs();
+    if (curMs >= 0)
+    {
+        const float progress = std::clamp(static_cast<float>(curMs) / static_cast<float>(totalMs), 0.0f, 1.0f);
+        const float headY = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        renderer.DrawLine(OVERVIEW_X + 0.003f, headY, OVERVIEW_X + OVERVIEW_W - 0.003f, headY,
+            palette.accent, 0.0024f);
     }
 
     if (m_fontSmall != sakura::core::INVALID_HANDLE)
     {
-        renderer.DrawText(m_fontSmall, "全曲轴",
-            OVERVIEW_X + OVERVIEW_W * 0.5f, OVERVIEW_Y + 0.015f, 0.016f,
-            sakura::core::Color{ 140, 130, 180, 180 },
-            sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawBadgePill(renderer,
+            { OVERVIEW_X + 0.035f, OVERVIEW_Y + 0.010f, OVERVIEW_W - 0.070f, 0.026f },
+            "全曲缩略轴", m_fontSmall, 0.0135f,
+            { 22, 26, 46, 200 }, palette.surfaceBorder, palette.accent);
     }
 }
 

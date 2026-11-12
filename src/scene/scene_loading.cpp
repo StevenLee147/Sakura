@@ -149,7 +149,7 @@ void SceneLoading::OnUpdate(float dt)
                 if (nextScene)
                 {
                     m_manager.SwitchScene(std::move(nextScene),
-                                          TransitionType::Fade, 0.5f);
+                                          TransitionType::SakuraSweep, 0.52f);
                 }
                 else
                 {
@@ -160,78 +160,101 @@ void SceneLoading::OnUpdate(float dt)
     }
 }
 
-// ── RenderSpinner ─────────────────────────────────────────────────────────────
-
+// ── RenderSpinner (星盘落樱旋转仪) ────────────────────────────────────────────
 void SceneLoading::RenderSpinner(sakura::core::Renderer& renderer,
                                   float cx, float cy, float radius)
 {
-    // 绘制旋转弧线（270° 的弧，留 90° 缺口）
-    float startAngle = m_spinAngle;
-    float endAngle   = m_spinAngle + 270.0f;
+    const float aspect = static_cast<float>(renderer.GetScreenHeight()) / std::max(1, renderer.GetScreenWidth());
 
-    renderer.DrawArc(cx, cy, radius,
-                     startAngle, endAngle,
-                     sakura::core::Color{ 200, 150, 230, 220 },
-                     0.004f, 48);
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(
+        cx, cy, radius * 2.2f, radius * 2.2f,
+        { 246, 172, 200, 70 }, { 246, 172, 200, 0 }, 40);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 
-    // 弧头的亮点（位于弧末端，即 m_spinAngle + 270°）
-    float headRad = ((m_spinAngle + 270.0f) * std::numbers::pi_v<float> / 180.0f);
-    float dotX = cx + radius * std::cos(headRad);
-    float dotY = cy + radius * std::sin(headRad);
-    renderer.DrawCircleFilled(dotX, dotY, 0.008f,
-        sakura::core::Color{ 255, 200, 255, 240 });
+    // 外层鎏金细环 + 旋转主樱弧
+    renderer.DrawCircleOutline(cx, cy, radius * 1.22f, { 250, 216, 157, 72 }, 0.0012f, 56);
+    renderer.DrawArc(cx, cy, radius, m_spinAngle, m_spinAngle + 250.0f,
+                     { 246, 172, 200, 238 }, 0.0036f, 48);
+    // 内层逆向香槟金星轨弧
+    renderer.DrawArc(cx, cy, radius * 0.72f, -m_spinAngle * 1.35f, -m_spinAngle * 1.35f + 195.0f,
+                     { 250, 216, 157, 215 }, 0.0024f, 40);
+
+    // 中心樱纹徽章
+    const auto crestTex = sakura::ui::VisualStyle::GetSakuraCrestTexture();
+    if (crestTex != sakura::core::INVALID_HANDLE)
+    {
+        const float s = radius * 1.10f;
+        const float w = s * aspect;
+        renderer.DrawSprite(crestTex, { cx - w * 0.5f, cy - s * 0.5f, w, s },
+                            m_spinAngle * 0.25f, sakura::core::Color::White, 0.92f);
+    }
+
+    // 弧端流光珍珠
+    const float headRad = (m_spinAngle + 250.0f) * std::numbers::pi_v<float> / 180.0f;
+    const float dotX = cx + radius * aspect * std::cos(headRad);
+    const float dotY = cy + radius * std::sin(headRad);
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(dotX, dotY, 0.016f, 0.016f, { 255, 228, 196, 180 }, { 255, 228, 196, 0 }, 24);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    renderer.DrawCircleFilled(dotX, dotY, 0.0055f, { 255, 245, 232, 255 }, 24);
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
-
 void SceneLoading::OnRender(sakura::core::Renderer& renderer)
 {
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
+    sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_spinAngle * 0.008f, 0.58f);
 
-    // 旋转动画（居中，进度条上方，垂直居中偏上）
-    RenderSpinner(renderer, 0.5f, 0.42f, 0.04f);
+    // 中央磨砂琉璃加载面板
+    sakura::ui::VisualStyle::DrawGlassCard(
+        renderer,
+        { 0.24f, 0.25f, 0.52f, 0.48f },
+        { 22, 28, 52, 206 }, { 14, 18, 34, 224 },
+        { 250, 216, 157, 155 }, { 164, 154, 212, 68 },
+        0.020f, 0.52f);
 
-    // 进度条 (0.3, 0.55, 0.4, 0.03)
+    RenderSpinner(renderer, 0.5f, 0.39f, 0.048f);
+
+    // 琉璃流光进度槽
+    const sakura::core::NormRect barRect{ 0.31f, 0.535f, 0.38f, 0.022f };
+    renderer.DrawRoundedGradientRect(
+        barRect, 0.011f,
+        { 10, 14, 26, 225 }, { 10, 14, 26, 225 },
+        { 18, 24, 42, 225 }, { 18, 24, 42, 225 }, 10, true);
+
+    const float clamped = std::clamp(m_progress, 0.0f, 1.0f);
+    const float fillW = barRect.width * clamped;
+    if (fillW > 0.004f)
     {
-        const auto progressStyle = sakura::ui::VisualStyle::ButtonColorsFor(sakura::ui::ButtonVariant::Primary);
-        renderer.DrawRoundedRect(
-            { 0.3f, 0.55f, 0.4f, 0.03f }, 0.008f,
-            sakura::core::Color{ 24, 18, 44, 220 }, true);
-
-        // 填充
-        float fillW = 0.4f * std::max(0.0f, std::min(1.0f, m_progress));
-        if (fillW > 0.016f)
-        {
-            renderer.DrawRoundedRect(
-                { 0.3f, 0.55f, fillW, 0.03f }, 0.008f,
-                progressStyle.hover, true);
-        }
-
-        // 边框
-        renderer.DrawRoundedRect(
-            { 0.3f, 0.55f, 0.4f, 0.03f }, 0.008f,
-            sakura::core::Color{ 120, 80, 160, 160 }, false);
+        const float drawW = std::max(0.022f, fillW);
+        renderer.DrawRoundedGradientRect(
+            { barRect.x, barRect.y, std::min(barRect.width, drawW), barRect.height },
+            0.011f,
+            { 246, 166, 198, 245 }, { 250, 216, 157, 248 },
+            { 236, 146, 186, 245 }, { 242, 198, 138, 248 }, 10, true);
     }
+    renderer.DrawRoundedRectOutlineGradient(
+        barRect, 0.011f,
+        { 250, 216, 157, 140 }, { 168, 158, 214, 65 }, 0.0012f, 10);
 
     if (m_fontUI == sakura::core::INVALID_HANDLE) return;
 
-    // 百分比文字
-    {
-        int pct = static_cast<int>(m_progress * 100.0f);
-        std::string pctStr = std::to_string(pct) + "%";
-        renderer.DrawText(m_fontUI, pctStr,
-            0.5f, 0.594f, 0.024f,
-            sakura::core::Color{ 220, 200, 240, 200 },
-            sakura::core::TextAlign::Center);
-    }
+    const int pct = static_cast<int>(clamped * 100.0f);
+    const std::string taskLabel = (!m_loadingDone && m_taskIndex < static_cast<int>(m_tasks.size()))
+        ? m_tasks[m_taskIndex].name : "准备就绪";
+    renderer.DrawText(m_fontUI, taskLabel + "  ·  " + std::to_string(pct) + "%",
+        0.5f, 0.576f, 0.022f,
+        { 244, 236, 248, 230 },
+        sakura::core::TextAlign::Center);
 
-    // Tips 文字
-    if (!k_tips.empty() && m_tipIndex >= 0 &&
-        m_tipIndex < static_cast<int>(k_tips.size()))
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.32f, 0.68f, 0.625f, 0.55f);
+
+    if (!k_tips.empty() && m_tipIndex >= 0 && m_tipIndex < static_cast<int>(k_tips.size()))
     {
         renderer.DrawText(m_fontTip, k_tips[m_tipIndex],
-            0.5f, 0.66f, 0.020f,
-            sakura::core::Color{ 170, 160, 190, 160 },
+            0.5f, 0.648f, 0.019f,
+            { 194, 198, 222, 205 },
             sakura::core::TextAlign::Center);
     }
 }

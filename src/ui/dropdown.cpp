@@ -162,11 +162,20 @@ void Dropdown::Render(sakura::core::Renderer& renderer)
 {
     if (!m_isVisible) return;
 
-    float cornerR = m_bounds.height * 0.3f;
+    float cornerR = m_bounds.height * 0.28f;
 
-    // 主按钮背景
-    renderer.DrawRoundedRect(m_bounds, cornerR, m_bgColor, true);
-    renderer.DrawRoundedRect(m_bounds, cornerR, { 100, 80, 140, 180 }, false);
+    // 主按钮磨砂琉璃背景与鎏金上沿
+    sakura::core::Color bgTop{
+        static_cast<uint8_t>(std::min(255, static_cast<int>(m_bgColor.r) + 10)),
+        static_cast<uint8_t>(std::min(255, static_cast<int>(m_bgColor.g) + 10)),
+        static_cast<uint8_t>(std::min(255, static_cast<int>(m_bgColor.b) + 14)),
+        m_bgColor.a
+    };
+    renderer.DrawRoundedGradientRect(m_bounds, cornerR, bgTop, bgTop, m_bgColor, m_bgColor, 12, true);
+    renderer.DrawRoundedRectOutlineGradient(
+        m_bounds, cornerR,
+        m_isOpen ? sakura::core::Color{ 250, 216, 157, 215 } : sakura::core::Color{ 216, 196, 228, 125 },
+        { 132, 144, 186, 60 }, 0.0014f, 12);
 
     // 当前选项文字
     if (m_fontHandle != 0)
@@ -202,13 +211,16 @@ void Dropdown::Render(sakura::core::Renderer& renderer)
         float visibleH = dropRect.height * easedT;
         float itemH    = GetItemHeight();
 
-        // 背景
-        renderer.DrawRoundedRect(
-            { dropRect.x, dropRect.y, dropRect.width, visibleH },
-            cornerR, m_bgColor, true);
-        renderer.DrawRoundedRect(
-            { dropRect.x, dropRect.y, dropRect.width, visibleH },
-            cornerR, { 100, 80, 140, 180 }, false);
+        // 展开磨砂浮层阴影与玻璃底板
+        const sakura::core::NormRect popRect{ dropRect.x, dropRect.y, dropRect.width, visibleH };
+        renderer.DrawSoftShadow(popRect, cornerR, 0.016f, { 2, 4, 12, 148 }, 0.005f, 10);
+        renderer.DrawRoundedGradientRect(
+            popRect, cornerR,
+            { 26, 34, 58, 244 }, { 26, 34, 58, 244 },
+            { 14, 19, 36, 248 }, { 14, 19, 36, 248 }, 12, true);
+        renderer.DrawRoundedRectOutlineGradient(
+            popRect, cornerR,
+            { 250, 216, 157, 190 }, { 168, 158, 228, 85 }, 0.0014f, 12);
 
         // 渲染可见的每一项
         int visCount = static_cast<int>(std::ceil(

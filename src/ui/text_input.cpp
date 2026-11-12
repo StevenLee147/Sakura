@@ -230,12 +230,24 @@ void TextInput::Render(sakura::core::Renderer& renderer)
 
     float cornerR = m_bounds.height * 0.25f;
 
-    // 背景
-    renderer.DrawRoundedRect(m_bounds, cornerR, m_bgColor, true);
+    if (m_isFocused)
+    {
+        renderer.DrawSoftShadow(m_bounds, cornerR, 0.010f, { 246, 172, 200, 52 }, 0.0f, 10);
+    }
 
-    // 边框
+    // 磨砂凹槽输入框背景
+    renderer.DrawRoundedGradientRect(
+        m_bounds, cornerR,
+        { 12, 16, 30, m_bgColor.a }, { 12, 16, 30, m_bgColor.a },
+        m_bgColor, m_bgColor, 10, true);
+
+    // 聚焦鎏金渐变描边
     auto borderCol = m_isFocused ? m_focusBorderColor : m_borderColor;
-    renderer.DrawRoundedRect(m_bounds, cornerR, borderCol, false);
+    renderer.DrawRoundedRectOutlineGradient(
+        m_bounds, cornerR,
+        borderCol,
+        { borderCol.r, borderCol.g, borderCol.b, static_cast<uint8_t>(borderCol.a * 0.48f) },
+        m_isFocused ? 0.0016f : 0.0012f, 10);
 
     // 文字或占位符
     float padX = m_bounds.width * 0.03f;

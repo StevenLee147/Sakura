@@ -49,6 +49,24 @@ struct Color
 // ============================================================================
 // NormRect — 归一化矩形 (x,y,width,height 均为 0.0~1.0)
 // ============================================================================
+struct NormPoint
+{
+    float x = 0.0f;
+    float y = 0.0f;
+
+    constexpr NormPoint() = default;
+    constexpr NormPoint(float x, float y) : x(x), y(y) {}
+};
+
+struct RibbonNode
+{
+    float x         = 0.0f;
+    float y         = 0.0f;
+    float normWidth = 0.008f; // 全宽（相对屏幕短边）
+    Color coreColor = Color::White;
+    Color edgeColor = Color{ 255, 255, 255, 0 };
+};
+
 struct NormRect
 {
     float x      = 0.0f;
@@ -206,6 +224,59 @@ public:
                          Color color, bool filled = true,
                          int cornerSegments = 12,
                          float normThickness = 0.002f);
+
+    // 四角渐变抗锯齿填充圆角矩形
+    void DrawRoundedGradientRect(NormRect rect, float normCornerRadius,
+                                 Color topLeft, Color topRight,
+                                 Color bottomLeft, Color bottomRight,
+                                 int cornerSegments = 12,
+                                 bool antiAliased = true);
+
+    // 上下渐变无接缝圆角描边（用于磨砂玻璃鎏金高光边框）
+    void DrawRoundedRectOutlineGradient(NormRect rect, float normCornerRadius,
+                                        Color topColor, Color bottomColor,
+                                        float normThickness = 0.002f,
+                                        int cornerSegments = 12);
+
+    // 柔和圆角外阴影 / 外发光扩散环
+    void DrawSoftShadow(NormRect rect, float normCornerRadius,
+                        float normSpread, Color shadowColor,
+                        float normOffsetY = 0.004f,
+                        int cornerSegments = 10);
+
+    // 径向渐变椭圆/圆（cx/cy 归一化，半径相对屏幕短边）
+    void DrawRadialGradient(float cx, float cy,
+                            float normRadiusX, float normRadiusY,
+                            Color innerColor, Color outerColor,
+                            int segments = 48);
+
+    // 环形/扇环内外径向渐变（用于缩圈、水波纹、光环）
+    void DrawRingGradient(float cx, float cy,
+                          float normInnerRadius, float normOuterRadius,
+                          Color innerColor, Color outerColor,
+                          int segments = 64,
+                          float startAngleDeg = 0.0f,
+                          float endAngleDeg = 360.0f);
+
+    // 任意四点彩色四边形（透视光柱、斜切流光条、菱形装饰）
+    void DrawQuad(NormPoint p0, NormPoint p1, NormPoint p2, NormPoint p3,
+                  Color c0, Color c1, Color c2, Color c3);
+
+    // 任意四点变形精灵贴图（用于 3D 翻飞樱瓣透视缩进）
+    void DrawSpriteQuad(TextureHandle texture,
+                        NormPoint p0, NormPoint p1, NormPoint p2, NormPoint p3,
+                        Color tint = Color::White, float alpha = 1.0f);
+
+    // 变宽发光丝绸条带（中心高亮核 + 边缘柔化光晕）
+    void DrawRibbonStrip(const RibbonNode* nodes, int count, bool roundedCaps = true);
+
+    // Catmull-Rom 平滑样条丝绸条带（用于滑条轨道、光标拖尾、音频丝带）
+    void DrawCatmullRomRibbon(const NormPoint* controlPoints, int count,
+                              float startNormWidth, float endNormWidth,
+                              Color coreStart, Color coreEnd,
+                              Color auraStart, Color auraEnd,
+                              int subdivisionsPerSegment = 8,
+                              bool roundedCaps = true);
 
     // ── 混合模式 ──────────────────────────────────────────────────────────────
     void SetBlendMode(BlendMode mode);

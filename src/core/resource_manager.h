@@ -72,9 +72,11 @@ public:
 
     // ── 默认资源访问 ──────────────────────────────────────────────────────────
 
-    // 默认字体（NotoSansSC-Regular, 24pt）
+    // 默认字体（NotoSansSC-Regular, 24pt）与标题粗体（NotoSansSC-Bold, 24pt）
     FontHandle GetDefaultFontHandle() const { return m_defaultFontHandle; }
     TTF_Font*  GetDefaultFont()       const { return GetFont(m_defaultFontHandle); }
+    FontHandle GetBoldFontHandle()    const { return m_boldFontHandle != INVALID_HANDLE ? m_boldFontHandle : m_defaultFontHandle; }
+    TTF_Font*  GetBoldFont()          const { return GetFont(GetBoldFontHandle()); }
 
 private:
     bool m_ttfInitialized = false;
@@ -111,8 +113,9 @@ private:
     std::unordered_map<MusicHandle, ma_decoder*>    m_musics;
     std::unordered_map<MusicHandle, std::string>    m_musicPathsByHandle;
 
-    uint32_t   m_nextHandle      = INVALID_HANDLE;
+    uint32_t   m_nextHandle        = INVALID_HANDLE;
     FontHandle m_defaultFontHandle = INVALID_HANDLE;
+    FontHandle m_boldFontHandle    = INVALID_HANDLE;
 };
 
 } // namespace sakura::core

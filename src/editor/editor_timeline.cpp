@@ -1,6 +1,8 @@
 // editor_timeline.cpp — 键盘轨道编辑区渲染与交互
 
 #include "editor_timeline.h"
+#include "core/theme.h"
+#include "ui/visual_style.h"
 #include "utils/logger.h"
 
 #include <SDL3/SDL.h>
@@ -323,140 +325,136 @@ void EditorTimeline::Render(sakura::core::Renderer& renderer)
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawBackground
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawBackground(sakura::core::Renderer& renderer)
 {
-    // 时间轴整体背景
-    renderer.DrawFilledRect(
-        { AREA_X, AREA_Y, AREA_W, AREA_H },
-        sakura::core::Color{ 8, 6, 20, 255 });
+    // 轨道主背景：深墨夜琉璃渐变
+    renderer.DrawRoundedGradientRect(
+        { AREA_X, AREA_Y, AREA_W, AREA_H }, 0.0f,
+        { 12, 15, 28, 245 }, { 16, 18, 34, 245 },
+        { 8, 10, 20, 252 },  { 11, 13, 26, 252 });
 
-    // 标尺背景（稍浅）
-    renderer.DrawFilledRect(
-        { AREA_X, AREA_Y, RULER_W, AREA_H },
-        sakura::core::Color{ 12, 10, 28, 255 });
+    // 左侧波形与时间标尺列
+    renderer.DrawRoundedGradientRect(
+        { AREA_X, AREA_Y, RULER_W, AREA_H }, 0.0f,
+        { 18, 22, 42, 248 }, { 14, 17, 32, 248 },
+        { 12, 15, 30, 252 }, { 10, 12, 24, 252 });
+
+    // 交替轨道柔光底带
+    for (int lane = 0; lane < 4; ++lane)
+    {
+        const float lx = TRACK_X + static_cast<float>(lane) * TRACK_LANE_W;
+        const sakura::core::Color tint = (lane % 2 == 0)
+            ? sakura::core::Color{ 24, 28, 50, 62 }
+            : sakura::core::Color{ 16, 20, 38, 34 };
+        renderer.DrawFilledRect({ lx, AREA_Y, TRACK_LANE_W, AREA_H }, tint);
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawGrid — 拍子线与细分线
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawGrid(sakura::core::Renderer& renderer)
 {
-    float beatMs   = m_core.GetBeatIntervalMs(m_core.GetCurrentTimeMs());
-    float snapMs   = beatMs / static_cast<float>(m_core.GetBeatSnap());
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    const float beatMs  = m_core.GetBeatIntervalMs(m_core.GetCurrentTimeMs());
+    const float snapMs  = beatMs / static_cast<float>(std::max(1, m_core.GetBeatSnap()));
 
-    // 从第一个可见时间开始（向下取整到 snapMs 边界）
     int startMs = m_scrollTimeMs;
-    // align to nearest subdiv
     if (snapMs > 0.0f)
         startMs = static_cast<int>(std::floor(startMs / snapMs) * snapMs);
-    int endMs = m_scrollTimeMs + m_viewDurationMs + static_cast<int>(snapMs) + 1;
 
-    // 只在轨道区域画线（从 TRACK_X 到 TRACK_X+TRACK_W）
-    float x1 = TRACK_X;
-    float x2 = TRACK_X + TRACK_W;
+    const int endMs   = m_scrollTimeMs + m_viewDurationMs + static_cast<int>(snapMs) + 1;
+    const int stepMs  = std::max(1, static_cast<int>(snapMs + 0.5f));
+    const float x1    = TRACK_X;
+    const float x2    = TRACK_X + TRACK_W;
 
-    for (int t = startMs; t <= endMs; t += static_cast<int>(snapMs + 0.5f))
+    for (int t = startMs; t <= endMs; t += stepMs)
     {
-        float y = TimeToY(t);
+        const float y = TimeToY(t);
         if (y < AREA_Y || y > 1.0f) continue;
 
-        // 判断是否是整拍（t mod beatMs ≈ 0）
-        bool isBeat      = (std::fmod(std::abs(static_cast<float>(t)), beatMs) < snapMs * 0.5f);
-        bool isMeasure   = false;
+        const bool isBeat = (std::fmod(std::abs(static_cast<float>(t)), beatMs) < snapMs * 0.5f);
+        bool isMeasure = false;
         if (isBeat)
         {
-            // 判断是否是小节线（beatSnap subdivisions * timeSigNumerator beats）
-            float measureMs = beatMs * 4.0f;  // 假设 4/4
+            const float measureMs = beatMs * 4.0f;
             isMeasure = (std::fmod(std::abs(static_cast<float>(t)), measureMs) < snapMs * 0.5f);
         }
 
         if (isMeasure)
         {
-            // 小节线：亮白
             renderer.DrawLine(x1, y, x2, y,
-                sakura::core::Color{ 180, 160, 220, 180 }, 0.002f);
+                { palette.accent.r, palette.accent.g, palette.accent.b, 170 }, 0.0020f);
         }
         else if (isBeat)
         {
-            // 拍线：中等
             renderer.DrawLine(x1, y, x2, y,
-                sakura::core::Color{ 100, 90, 140, 120 }, 0.001f);
+                { 165, 158, 212, 110 }, 0.0012f);
         }
         else
         {
-            // 细分线：暗
             renderer.DrawLine(x1, y, x2, y,
-                sakura::core::Color{ 55, 45, 80, 80 }, 0.001f);
+                { 95, 90, 140, 58 }, 0.0010f);
         }
     }
 
-    // t=0 处特殊标记（谱面起始线）
-    float y0 = TimeToY(0);
+    // t=0 谱面起始鎏金线
+    const float y0 = TimeToY(0);
     if (y0 >= AREA_Y && y0 <= 1.0f)
     {
-        renderer.DrawLine(x1, y0, x2, y0,
-            sakura::core::Color{ 255, 200, 50, 200 }, 0.002f);
+        renderer.DrawLine(x1, y0, x2, y0, palette.accent, 0.0026f);
     }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawLaneDividers
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawLaneDividers(sakura::core::Renderer& renderer)
 {
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
     for (int i = 0; i <= 4; ++i)
     {
-        float x = TRACK_X + i * TRACK_LANE_W;
+        const float x = TRACK_X + static_cast<float>(i) * TRACK_LANE_W;
         renderer.DrawLine(x, AREA_Y, x, 1.0f,
-            sakura::core::Color{ 70, 55, 110, 160 }, 0.001f);
+            { 140, 135, 185, static_cast<uint8_t>((i == 0 || i == 4) ? 140 : 75) }, 0.0011f);
     }
 
-    // 标尺右边框
-    renderer.DrawLine(RULER_W, AREA_Y, RULER_W, 1.0f,
-        sakura::core::Color{ 70, 55, 110, 100 }, 0.001f);
-
-    // 时间轴整体右边框
-    renderer.DrawLine(AREA_X + AREA_W, AREA_Y, AREA_X + AREA_W, 1.0f,
-        sakura::core::Color{ 60, 50, 90, 120 }, 0.001f);
-    renderer.DrawLine(AREA_X, AREA_Y, AREA_X + AREA_W, AREA_Y,
-        sakura::core::Color{ 60, 50, 90, 100 }, 0.001f);
+    renderer.DrawLine(RULER_W, AREA_Y, RULER_W, 1.0f, palette.surfaceBorder, 0.0012f);
+    renderer.DrawLine(AREA_X + AREA_W, AREA_Y, AREA_X + AREA_W, 1.0f, palette.gildedHairline, 0.0014f);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawRuler — 左侧时间标尺
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawRuler(sakura::core::Renderer& renderer)
 {
     if (m_font == sakura::core::INVALID_HANDLE) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    float beatMs = m_core.GetBeatIntervalMs(m_core.GetCurrentTimeMs());
-    // 每隔整拍绘制一个时间标签
-    float snapMs = beatMs;
+    float snapMs = m_core.GetBeatIntervalMs(m_core.GetCurrentTimeMs());
     if (snapMs < 1.0f) snapMs = 1.0f;
 
-    int startMs = static_cast<int>(std::floor(m_scrollTimeMs / snapMs) * snapMs);
-    int endMs   = m_scrollTimeMs + m_viewDurationMs + static_cast<int>(snapMs);
+    const int startMs = static_cast<int>(std::floor(m_scrollTimeMs / snapMs) * snapMs);
+    const int endMs   = m_scrollTimeMs + m_viewDurationMs + static_cast<int>(snapMs);
+    const int stepMs  = std::max(1, static_cast<int>(snapMs + 0.5f));
 
-    for (int t = startMs; t <= endMs; t += static_cast<int>(snapMs + 0.5f))
+    for (int t = startMs; t <= endMs; t += stepMs)
     {
-        float y = TimeToY(t);
-        if (y < AREA_Y + 0.01f || y > 0.99f) continue;
+        const float y = TimeToY(t);
+        if (y < AREA_Y + 0.012f || y > 0.99f) continue;
 
-        // 时间标签（秒:毫秒）
-        float sec      = static_cast<float>(t) / 1000.0f;
-        int   secInt   = static_cast<int>(sec);
-        int   msRema   = std::abs(t - secInt * 1000);
+        const float sec    = static_cast<float>(t) / 1000.0f;
+        const int   secInt = static_cast<int>(sec);
+        const int   msRema = std::abs(t - secInt * 1000);
+
         std::ostringstream oss;
         if (t < 0) oss << "-";
         oss << std::abs(secInt) << "." << std::setw(3) << std::setfill('0') << msRema;
 
+        renderer.DrawLine(RULER_W - 0.006f, y, RULER_W, y, { 175, 168, 215, 130 }, 0.001f);
         renderer.DrawText(m_font, oss.str(),
-            RULER_W * 0.5f, y - 0.003f, 0.012f,
-            sakura::core::Color{ 150, 140, 180, 180 },
+            RULER_W * 0.48f, y - 0.006f, 0.0125f,
+            palette.textDim,
             sakura::core::TextAlign::Center);
     }
 }
@@ -464,70 +462,70 @@ void EditorTimeline::DrawRuler(sakura::core::Renderer& renderer)
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawNotes
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
 {
-    const auto& notes = m_core.GetChartData().keyboardNotes;
-    int selectedIdx   = m_core.GetSelectedKbNote();
+    const auto& palette   = sakura::core::Theme::GetInstance().Colors();
+    const auto& notes     = m_core.GetChartData().keyboardNotes;
+    const int selectedIdx = m_core.GetSelectedKbNote();
 
     for (int i = 0; i < static_cast<int>(notes.size()); ++i)
     {
         const auto& n = notes[i];
-
-        // 只绘制在可见范围内的音符
         if (n.time > m_scrollTimeMs + m_viewDurationMs + 500) continue;
         if (n.time + std::max(n.duration, 0) < m_scrollTimeMs - 500) continue;
 
-        float y = TimeToY(n.time);
-        if (y < AREA_Y - NOTE_H || y > 1.0f + NOTE_H) continue;
+        const float y = TimeToY(n.time);
+        if (y < AREA_Y - NOTE_H * 2.0f && (n.type != sakura::game::NoteType::Hold))
+            continue;
 
-        float x = LaneToX(n.lane);
+        const float x = LaneToX(n.lane);
+        const bool isSelected = (i == selectedIdx);
+        const sakura::core::Color laneCol = palette.laneColors[std::clamp(n.lane, 0, 3)];
 
-        // 音符颜色（按类型）
-        sakura::core::Color noteColor = { 80, 130, 255, 230 };    // Tap: 蓝
-        if (n.type == sakura::game::NoteType::Hold)
-            noteColor = { 80, 220, 120, 230 };                     // Hold: 绿
-
-        // Hold：画一个从 time 到 time+duration 的竖条
         if (n.type == sakura::game::NoteType::Hold && n.duration > 0)
         {
-            float yBottom = TimeToY(n.time);
-            float yTop    = TimeToY(n.time + n.duration);
-            float holdH   = yBottom - yTop;  // 高度（屏幕向上）
-            if (holdH > 0.0f)
+            const float yBottom = TimeToY(n.time);
+            const float yTop    = TimeToY(n.time + n.duration);
+            const float holdH   = yBottom - yTop;
+            if (holdH > 0.002f)
             {
-                sakura::core::Color holdBody = { 60, 180, 90, 130 };
-                renderer.DrawFilledRect(
-                    { x + TRACK_LANE_W * 0.1f,
-                      yTop,
-                      TRACK_LANE_W * 0.8f,
-                      holdH },
-                    holdBody);
+                const sakura::core::NormRect bodyRect{
+                    x + TRACK_LANE_W * 0.18f, yTop,
+                    TRACK_LANE_W * 0.64f, holdH
+                };
+                renderer.DrawRoundedGradientRect(bodyRect, 0.005f,
+                    { 170, 235, 255, 195 }, { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 195 },
+                    { palette.primary.r, palette.primary.g, palette.primary.b, 165 },
+                    { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 165 });
+                renderer.DrawLine(x + TRACK_LANE_W * 0.50f, yTop + 0.003f,
+                                  x + TRACK_LANE_W * 0.50f, yBottom - 0.003f,
+                                  { 245, 252, 255, 175 }, 0.0016f);
             }
         }
 
-        // 选中高亮
-        bool isSelected = (i == selectedIdx);
-        if (isSelected)
-            noteColor = { 255, 255, 100, 255 };  // 金黄高亮
+        if (y < AREA_Y - NOTE_H || y > 1.0f + NOTE_H) continue;
 
-        // 音符主体矩形
-        renderer.DrawFilledRect(
-            { x + TRACK_LANE_W * 0.05f,
-              y - NOTE_H,
-              TRACK_LANE_W * 0.9f,
-              NOTE_H * 2.0f },
-            noteColor);
-
-        // 选中时加边框
+        const sakura::core::NormRect gemRect{
+            x + TRACK_LANE_W * 0.07f, y - NOTE_H,
+            TRACK_LANE_W * 0.86f, NOTE_H * 2.0f
+        };
         if (isSelected)
         {
-            renderer.DrawLine(x + TRACK_LANE_W * 0.05f, y - NOTE_H,
-                             x + TRACK_LANE_W * 0.95f, y - NOTE_H,
-                             sakura::core::Color{ 255, 255, 255, 200 }, 0.001f);
-            renderer.DrawLine(x + TRACK_LANE_W * 0.05f, y + NOTE_H,
-                             x + TRACK_LANE_W * 0.95f, y + NOTE_H,
-                             sakura::core::Color{ 255, 255, 255, 200 }, 0.001f);
+            renderer.DrawSoftShadow(gemRect, 0.006f, 0.007f, { palette.accent.r, palette.accent.g, palette.accent.b, 150 }, 0.0f);
+            renderer.DrawRoundedGradientRect(gemRect, 0.006f,
+                { 255, 250, 220, 255 }, palette.accent, palette.accent, palette.primary);
+            renderer.DrawRoundedRectOutlineGradient(gemRect, 0.006f,
+                { 255, 255, 255, 255 }, palette.accent, 0.0020f);
+        }
+        else
+        {
+            const sakura::core::Color baseCol = (n.type == sakura::game::NoteType::Hold)
+                ? palette.holdColor
+                : laneCol;
+            renderer.DrawRoundedGradientRect(gemRect, 0.006f,
+                { 255, 240, 248, 242 }, baseCol, baseCol, palette.primary);
+            renderer.DrawRoundedRectOutlineGradient(gemRect, 0.006f,
+                { 255, 255, 255, 210 }, palette.gildedHairline, 0.0013f);
         }
     }
 }
@@ -535,108 +533,109 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawPlayhead — 播放头（当前时间线）
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawPlayhead(sakura::core::Renderer& renderer)
 {
-    int   curMs = m_core.GetCurrentTimeMs();
-    float y     = TimeToY(curMs);
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
+    const int   curMs = m_core.GetCurrentTimeMs();
+    const float y     = TimeToY(curMs);
     if (y < AREA_Y || y > 1.0f) return;
 
-    renderer.DrawLine(TRACK_X, y, TRACK_X + TRACK_W, y,
-        sakura::core::Color{ 255, 60, 100, 220 }, 0.003f);
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(TRACK_X + TRACK_W * 0.5f, y, TRACK_W * 0.52f, 0.012f,
+        { palette.primary.r, palette.primary.g, palette.primary.b, 85 },
+        { palette.primary.r, palette.primary.g, palette.primary.b, 0 });
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 
-    // 小三角标记（用一个小矩形代替）
-    renderer.DrawFilledRect(
-        { RULER_W - 0.012f, y - 0.006f, 0.012f, 0.012f },
-        sakura::core::Color{ 255, 60, 100, 220 });
+    renderer.DrawLine(TRACK_X, y, TRACK_X + TRACK_W, y, palette.accent, 0.0028f);
+    renderer.DrawRoundedGradientRect(
+        { RULER_W - 0.014f, y - 0.006f, 0.014f, 0.012f }, 0.004f,
+        palette.accent, palette.primary, palette.accent, palette.primary);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawHoverPreview — 鼠标悬停时的音符预览
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawHoverPreview(sakura::core::Renderer& renderer)
 {
     if (m_hoverLane < 0 || m_hoverTimeMs < 0) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    float y = TimeToY(m_hoverTimeMs);
+    const float y = TimeToY(m_hoverTimeMs);
     if (y < AREA_Y || y > 1.0f) return;
 
-    float x = LaneToX(m_hoverLane);
+    const float x = LaneToX(m_hoverLane);
+    sakura::core::Color previewColor = palette.laneColors[std::clamp(m_hoverLane, 0, 3)];
+    const NoteToolType tool = m_core.GetNoteTool();
+    if      (tool == NoteToolType::Hold)   previewColor = palette.holdColor;
+    else if (tool == NoteToolType::Circle) previewColor = palette.circleColor;
+    previewColor.a = 115;
 
-    // 半透明预览
-    sakura::core::Color previewColor = { 80, 130, 255, 100 };
-
-    NoteToolType tool = m_core.GetNoteTool();
-    if      (tool == NoteToolType::Hold)   previewColor = { 80, 220, 120, 100 };
-    else if (tool == NoteToolType::Circle) previewColor = { 255, 80, 200, 100 };
-
-    renderer.DrawFilledRect(
-        { x + TRACK_LANE_W * 0.05f,
-          y - NOTE_H,
-          TRACK_LANE_W * 0.9f,
-          NOTE_H * 2.0f },
-        previewColor);
+    const sakura::core::NormRect previewRect{
+        x + TRACK_LANE_W * 0.07f, y - NOTE_H,
+        TRACK_LANE_W * 0.86f, NOTE_H * 2.0f
+    };
+    renderer.DrawRoundedRect(previewRect, 0.006f, previewColor, true);
+    renderer.DrawRoundedRectOutlineGradient(previewRect, 0.006f,
+        { 255, 255, 255, 165 }, previewColor, 0.0012f);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawHoldDragPreview — Hold 工具拖拽时的实时预览
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawHoldDragPreview(sakura::core::Renderer& renderer)
 {
     if (!m_holdDragging || m_holdDragLane < 0) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
-    float startY = TimeToY(m_holdDragStartMs);
-    float endY   = m_holdDragCurrentY;
-
-    // 确保顶部 < 底部（时间轴向上增大）
-    float topY    = std::min(startY, endY);
-    float bottomY = std::max(startY, endY);
-    float holdH   = bottomY - topY;
-
+    const float startY  = TimeToY(m_holdDragStartMs);
+    const float endY    = m_holdDragCurrentY;
+    const float topY    = std::min(startY, endY);
+    const float bottomY = std::max(startY, endY);
+    const float holdH   = bottomY - topY;
     if (holdH < 0.002f) return;
 
-    float x = LaneToX(m_holdDragLane);
-
-    // 拖拽预览：半透明绿条
-    renderer.DrawFilledRect(
-        { x + TRACK_LANE_W * 0.15f, topY,
-          TRACK_LANE_W * 0.7f,      holdH },
-        sakura::core::Color{ 80, 220, 120, 100 });
-
-    // 顶端标记线
-    renderer.DrawLine(x + TRACK_LANE_W * 0.1f, topY,
-                      x + TRACK_LANE_W * 0.9f, topY,
-                      sakura::core::Color{ 80, 220, 120, 200 }, 0.002f);
-
-    // 底端（按下位置）标记线
-    renderer.DrawLine(x + TRACK_LANE_W * 0.1f, bottomY,
-                      x + TRACK_LANE_W * 0.9f, bottomY,
-                      sakura::core::Color{ 80, 220, 120, 160 }, 0.001f);
+    const float x = LaneToX(m_holdDragLane);
+    renderer.DrawRoundedGradientRect(
+        { x + TRACK_LANE_W * 0.16f, topY, TRACK_LANE_W * 0.68f, holdH }, 0.005f,
+        { 170, 240, 255, 145 }, { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 145 },
+        { palette.primary.r, palette.primary.g, palette.primary.b, 115 },
+        { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b, 115 });
+    renderer.DrawLine(x + TRACK_LANE_W * 0.10f, topY, x + TRACK_LANE_W * 0.90f, topY,
+                      palette.accent, 0.0022f);
+    renderer.DrawLine(x + TRACK_LANE_W * 0.10f, bottomY, x + TRACK_LANE_W * 0.90f, bottomY,
+                      palette.holdColor, 0.0016f);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DrawWaveform — 标尺区域的音频波形可视化
 // ═════════════════════════════════════════════════════════════════════════════
-
 void EditorTimeline::DrawWaveform(sakura::core::Renderer& renderer)
 {
     if (m_waveform.empty()) return;
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
+    const float centerX = RULER_W * 0.50f;
     for (int i = 0; i < static_cast<int>(m_waveform.size()); ++i)
     {
-        int   timeMs = i * m_waveformWindowMs;
-        float y      = TimeToY(timeMs);
+        const int   timeMs = i * m_waveformWindowMs;
+        const float y      = TimeToY(timeMs);
         if (y < AREA_Y || y > 1.0f) continue;
 
-        float amplitude = m_waveform[i];  // 0.0 ~ 1.0
-        float barW      = RULER_W * 0.9f * amplitude;
-        if (barW < 0.0005f) continue;
+        const float amplitude = std::clamp(m_waveform[i], 0.0f, 1.0f);
+        const float halfW     = RULER_W * 0.44f * amplitude;
+        if (halfW < 0.0004f) continue;
 
-        renderer.DrawFilledRect(
-            { 0.002f, y - 0.003f, barW, 0.006f },
-            sakura::core::Color{ 60, 200, 100, 110 });
+        const sakura::core::Color edgeCol{
+            palette.holdColor.r, palette.holdColor.g, palette.holdColor.b,
+            static_cast<uint8_t>(55 + 95 * amplitude)
+        };
+        const sakura::core::Color peakCol{
+            palette.primary.r, palette.primary.g, palette.primary.b,
+            static_cast<uint8_t>(90 + 120 * amplitude)
+        };
+        renderer.DrawRoundedGradientRect(
+            { centerX - halfW, y - 0.0022f, halfW * 2.0f, 0.0044f }, 0.002f,
+            edgeCol, peakCol, edgeCol, peakCol);
     }
 }
 

@@ -70,74 +70,90 @@ void Theme::SetPreset(ThemePreset preset)
     LOG_INFO("[Theme] 已切换为: {}", PresetName());
 }
 
-// ── Sakura 预设 ───────────────────────────────────────────────────────────────
-// 深蓝背景 + 粉色主调 — 樱花夜晚风
-
+// ── Sakura 预设：琉璃月影 · 墨樱浮金 (Luminous Glass & Moonlit Ink-Sakura) ──
 void Theme::ApplySakura()
 {
-    m_colors.primary       = { 255, 150, 180, 255 };  // 樱花粉
-    m_colors.secondary     = { 180, 130, 210, 255 };  // 淡紫
-    m_colors.accent        = { 255, 210, 100, 255 };  // 暖金
-    m_colors.bg            = {  12,  16,  29, 255 };  // 深夜蓝
-    m_colors.surface       = {  23,  29,  45, 230 };  // 深蓝灰面板
-    m_colors.surfaceBorder = { 100,  80, 160, 200 };  // 紫边框
-    m_colors.text          = { 240, 230, 255, 255 };  // 淡白紫
-    m_colors.textDim       = { 162, 166, 188, 255 };  // 暗紫灰
-    m_colors.noteColor     = { 255, 160, 200, 255 };  // 粉红
-    m_colors.holdColor     = { 200, 130, 255, 255 };  // 紫
-    m_colors.circleColor   = { 255, 200, 230, 220 };  // 淡粉
-    m_colors.glowColor     = { 255, 150, 200, 180 };  // 粉光
-    m_colors.judgeLine     = { 255, 255, 255, 220 };  // 白
+    m_colors.primary         = { 246, 172, 200, 255 };  // #F6ACC8 琉璃樱粉
+    m_colors.secondary       = { 168, 158, 228, 255 };  // 月雾鸢尾紫
+    m_colors.accent          = { 250, 216, 157, 255 };  // #FAD89D 鎏金香槟
 
-    // 判定颜色
-    m_colors.judgeColors[0] = { 255, 220,  80, 255 };  // Perfect  金
-    m_colors.judgeColors[1] = { 100, 220, 255, 255 };  // Great    青
-    m_colors.judgeColors[2] = {  80, 200,  80, 255 };  // Good     绿
-    m_colors.judgeColors[3] = { 220, 120,  40, 255 };  // Bad      橙
-    m_colors.judgeColors[4] = { 220,  60,  60, 255 };  // Miss     红
+    m_colors.bg              = {  10,  14,  26, 255 };  // #0A0E1A 月夜墨靛
+    m_colors.surface         = {  18,  24,  42, 212 };  // 磨砂琉璃面板主色
+    m_colors.surfaceElevated = {  28,  36,  62, 228 };  // 悬浮高阶磨砂玻璃
+    m_colors.surfaceBorder   = { 196, 178, 214, 110 };  // 柔光月影细边
+    m_colors.gildedHairline  = { 250, 216, 157, 165 };  // 鎏金边缘高光
+    m_colors.specularTop     = { 255, 244, 248,  46 };  // 顶部镜面光泽
 
-    // 轨道
-    m_colors.laneColors[0] = {  60,  50,  90, 180 };
-    m_colors.laneColors[1] = {  50,  40,  80, 180 };
-    m_colors.laneColors[2] = {  60,  50,  90, 180 };
-    m_colors.laneColors[3] = {  50,  40,  80, 180 };
+    m_colors.text            = { 247, 244, 252, 255 };  // 珍珠雪白主文字
+    m_colors.textDim         = { 174, 180, 204, 255 };  // 月雾银灰次级文字
+    m_colors.textMuted       = { 118, 126, 154, 220 };  // 弱化说明文字
 
-    // 评级
-    m_colors.gradeColors[0] = { 218, 165,  32, 255 };  // SS 金
-    m_colors.gradeColors[1] = { 255, 200,   0, 255 };  // S  亮金
-    m_colors.gradeColors[2] = {  60, 200,  60, 255 };  // A  绿
-    m_colors.gradeColors[3] = {  80, 160, 220, 255 };  // B  蓝
-    m_colors.gradeColors[4] = { 160, 160, 160, 255 };  // C  灰
-    m_colors.gradeColors[5] = { 220,  60,  60, 255 };  // D  红
+    m_colors.noteColor       = { 252, 176, 208, 255 };  // 晶莹樱瓣 Tap
+    m_colors.holdColor       = { 188, 162, 246, 255 };  // 虹彩紫晶 Hold
+    m_colors.circleColor     = { 255, 206, 226, 238 };  // 珍珠樱环 Circle
+    m_colors.glowColor       = { 248, 168, 206, 195 };  // 樱色泛光
+    m_colors.judgeLine       = { 252, 234, 206, 238 };  // 鎏金棱镜判定线
 
-    m_settings.particlesEnabled = true;
-    m_settings.glowEnabled      = true;
-    m_settings.shakeEnabled     = true;
-    m_settings.vignetteEnabled  = true;
+    // 判定颜色：香槟金 / 冰晶青 / 翡翠青 / 琥珀橙 / 绯红
+    m_colors.judgeColors[0] = { 255, 226, 138, 255 };  // Perfect  鎏金
+    m_colors.judgeColors[1] = { 130, 224, 250, 255 };  // Great    冰青
+    m_colors.judgeColors[2] = { 126, 222, 168, 255 };  // Good     翠玉
+    m_colors.judgeColors[3] = { 242, 158,  92, 255 };  // Bad      琥珀
+    m_colors.judgeColors[4] = { 236,  96, 116, 255 };  // Miss     落绯
+
+    // 轨道（D / F / J / K 交替月影与樱紫底色）
+    m_colors.laneColors[0] = {  34,  42,  74, 178 };
+    m_colors.laneColors[1] = {  46,  38,  76, 178 };
+    m_colors.laneColors[2] = {  46,  38,  76, 178 };
+    m_colors.laneColors[3] = {  34,  42,  74, 178 };
+
+    // 评级颜色（与 rank_*.png 徽章视觉对齐）
+    m_colors.gradeColors[0] = { 255, 226, 156, 255 };  // SS 虹彩鎏金
+    m_colors.gradeColors[1] = { 252, 204, 126, 255 };  // S  香槟暖金
+    m_colors.gradeColors[2] = { 246, 164, 204, 255 };  // A  琉璃樱粉
+    m_colors.gradeColors[3] = { 132, 208, 242, 255 };  // B  月泉冰蓝
+    m_colors.gradeColors[4] = { 152, 214, 186, 255 };  // C  竹青玉色
+    m_colors.gradeColors[5] = { 174, 166, 192, 255 };  // D  雾灰银紫
+
+    m_settings.transitionDuration = 0.42f;
+    m_settings.particlesEnabled   = true;
+    m_settings.glowEnabled        = true;
+    m_settings.shakeEnabled       = true;
+    m_settings.vignetteEnabled    = true;
 
     m_components.primaryButton = MakeButtonStyle(
-        { 225, 163, 181, 255 }, { 248, 190, 204, 255 }, { 185, 126, 149, 255 },
-        { 30, 24, 38, 255 }, { 255, 220, 226, 150 });
+        { 236, 164, 192, 242 }, { 252, 192, 214, 255 }, { 198, 128, 158, 248 },
+        {  22,  18,  34, 255 }, { 255, 234, 212, 195 }, 0.012f);
+
     m_components.secondaryButton = MakeButtonStyle(
-        { 30, 36, 54, 220 }, { 53, 58, 78, 240 }, { 20, 24, 40, 240 },
-        { 227, 226, 237, 255 }, { 170, 172, 195, 55 });
+        {  24,  32,  54, 208 }, {  42,  52,  84, 236 }, {  16,  22,  38, 242 },
+        { 242, 240, 250, 255 }, { 216, 198, 228,  88 }, 0.012f);
+
     m_components.accentButton = MakeButtonStyle(
-        { 95, 70, 30, 220 }, { 135, 100, 45, 235 }, { 70, 50, 20, 240 },
-        Color::White, { 255, 230, 150, 160 });
+        {  88,  66,  44, 222 }, { 126,  94,  58, 242 }, {  62,  46,  30, 246 },
+        { 255, 246, 232, 255 }, { 250, 216, 157, 195 }, 0.012f);
+
     m_components.dangerButton = MakeButtonStyle(
-        { 48, 32, 47, 180 }, { 89, 45, 63, 235 }, { 35, 25, 40, 240 },
-        { 231, 169, 185, 255 }, { 200, 134, 155, 65 });
+        {  58,  28,  44, 204 }, {  98,  44,  68, 238 }, {  42,  20,  32, 244 },
+        { 252, 196, 210, 255 }, { 238, 132, 158, 125 }, 0.012f);
+
     m_components.panel = {
-        { 19, 24, 39, 235 }, { 147, 154, 184, 45 }, { 0, 0, 0, 40 },
-        { 255, 150, 200, 170 }, 0.012f, 0.0015f
+        {  20,  26,  46, 208 }, {  12,  16,  30, 228 },
+        { 250, 216, 157, 112 }, { 132, 144, 186,  46 },
+        {   3,   5,  14, 116 }, { 246, 172, 200, 215 },
+        0.014f, 0.0014f
     };
+
     m_components.modal = {
-        { 14, 12, 28, 245 }, { 180, 130, 210, 210 }, { 0, 0, 0, 140 },
-        { 255, 210, 100, 190 }, 0.014f, 0.0018f
+        {  24,  30,  54, 236 }, {  13,  17,  32, 246 },
+        { 250, 216, 157, 185 }, { 188, 168, 224,  88 },
+        {   2,   4,  12, 168 }, { 250, 216, 157, 235 },
+        0.016f, 0.0016f
     };
+
     m_components.progress = {
-        { 20, 15, 35, 190 }, { 180, 110, 230, 220 }, { 100, 80, 150, 170 },
-        { 240, 230, 255, 230 }, 0.008f
+        {  16,  22,  38, 205 }, { 246, 172, 200, 238 }, { 250, 216, 157, 115 },
+        { 247, 244, 252, 240 }, 0.009f
     };
 }
 

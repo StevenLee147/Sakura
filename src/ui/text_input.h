@@ -62,11 +62,11 @@ private:
     sakura::core::FontHandle m_fontHandle;
     float                    m_normFontSize;
 
-    sakura::core::Color m_bgColor          = { 30, 30, 50, 220 };
-    sakura::core::Color m_borderColor      = { 80, 80, 110, 200 };
-    sakura::core::Color m_focusBorderColor = { 160, 100, 220, 255 };
-    sakura::core::Color m_textColor        = { 220, 220, 230, 255 };
-    sakura::core::Color m_placeholderColor = { 100, 100, 120, 160 };
+    sakura::core::Color m_bgColor          = { 16, 22, 38, 224 };
+    sakura::core::Color m_borderColor      = { 176, 168, 208, 105 };
+    sakura::core::Color m_focusBorderColor = { 250, 216, 157, 238 };
+    sakura::core::Color m_textColor        = { 247, 244, 252, 255 };
+    sakura::core::Color m_placeholderColor = { 128, 136, 166, 168 };
 
     std::function<void(const std::string&)> m_onChange;
     std::function<void(const std::string&)> m_onSubmit;

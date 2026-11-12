@@ -39,6 +39,7 @@ private:
     sakura::game::GameState&   m_gameState;
 
     sakura::core::FontHandle   m_fontUI = sakura::core::INVALID_HANDLE;
+    float                      m_animTimer = 0.0f;
 
     std::unique_ptr<sakura::ui::Button> m_btnResume;
     std::unique_ptr<sakura::ui::Button> m_btnRestart;

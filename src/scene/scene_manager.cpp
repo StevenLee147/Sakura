@@ -152,7 +152,7 @@ void SceneManager::RenderTransition(sakura::core::Renderer& renderer)
     const float progress=m_switched?std::clamp((t-0.5f)*2,0.0f,1.0f):std::clamp(t*2,0.0f,1.0f);
     const float eased=progress*progress*(3-2*progress);
     const float amount=m_switched?1-eased:eased;
-    SDL_SetRenderDrawColor(native,12,15,26,255);SDL_RenderClear(native);
+    SDL_SetRenderDrawColor(native,8,11,22,255);SDL_RenderClear(native);
     SDL_FRect destination{0,0,width,height};
     switch(m_transitionType){
     case TransitionType::SlideLeft:destination.x=(m_switched?1:-1)*amount*width;break;
@@ -174,6 +174,58 @@ void SceneManager::RenderTransition(sakura::core::Renderer& renderer)
             if(i<segments){indices[i*3]=0;indices[i*3+1]=i+1;indices[i*3+2]=i+2;}
         }
         SDL_RenderGeometry(native,texture,vertices,segments+2,indices,segments*3);return;
+    }
+    case TransitionType::SilkShutter:{
+        destination.w=width*(1.0f-0.025f*amount);destination.h=height*(1.0f-0.025f*amount);
+        destination.x=(width-destination.w)*0.5f;destination.y=(height-destination.h)*0.5f;
+        SDL_SetTextureAlphaMod(texture,static_cast<Uint8>((1.0f-amount*0.35f)*255));
+        SDL_RenderTexture(native,texture,nullptr,&destination);
+        SDL_SetTextureAlphaMod(texture,255);
+        constexpr int kBlades=7;
+        const float skew=0.14f;
+        const float span=1.0f+skew;
+        for(int i=0;i<kBlades;++i){
+            const float stagger=static_cast<float>(i)/static_cast<float>(kBlades-1)*0.22f;
+            const float local=std::clamp((amount*(1.0f+0.22f)-stagger),0.0f,1.0f);
+            if(local<=0.002f)continue;
+            const float slotW=span/static_cast<float>(kBlades);
+            const float center=(static_cast<float>(i)+0.5f)*slotW-skew*0.5f;
+            const float halfW=slotW*0.54f*local;
+            const sakura::core::Color cTop{18,24,46,static_cast<uint8_t>(248*local)};
+            const sakura::core::Color cBot{28,22,48,static_cast<uint8_t>(252*local)};
+            renderer.DrawQuad(
+                {center-halfW+skew*0.5f,0.0f},{center+halfW+skew*0.5f,0.0f},
+                {center+halfW-skew*0.5f,1.0f},{center-halfW-skew*0.5f,1.0f},
+                cTop,cTop,cBot,cBot);
+            renderer.DrawLine(center+halfW+skew*0.5f,0.0f,center+halfW-skew*0.5f,1.0f,
+                {250,216,157,static_cast<uint8_t>(185*local)},0.0018f);
+        }
+        renderer.Flush();
+        return;
+    }
+    case TransitionType::SakuraSweep:{
+        destination.x=(m_switched?0.045f:-0.045f)*amount*width;
+        SDL_SetTextureAlphaMod(texture,static_cast<Uint8>((1.0f-amount*0.45f)*255));
+        SDL_RenderTexture(native,texture,nullptr,&destination);
+        SDL_SetTextureAlphaMod(texture,255);
+        const float sweepCenter=1.25f-2.50f*(t*t*(3.0f-2.0f*t));
+        const float bandHalf=0.38f+0.28f*amount;
+        const float skew=0.18f;
+        renderer.DrawQuad(
+            {sweepCenter-bandHalf+skew,0.0f},{sweepCenter+bandHalf+skew,0.0f},
+            {sweepCenter+bandHalf-skew,1.0f},{sweepCenter-bandHalf-skew,1.0f},
+            {14,18,36,static_cast<uint8_t>(252*amount)},{26,20,44,static_cast<uint8_t>(252*amount)},
+            {22,18,40,static_cast<uint8_t>(252*amount)},{12,16,32,static_cast<uint8_t>(252*amount)});
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        renderer.DrawLine(sweepCenter-bandHalf+skew,0.0f,sweepCenter-bandHalf-skew,1.0f,
+            {246,172,200,static_cast<uint8_t>(210*amount)},0.006f);
+        renderer.DrawLine(sweepCenter+bandHalf+skew,0.0f,sweepCenter+bandHalf-skew,1.0f,
+            {250,216,157,static_cast<uint8_t>(190*amount)},0.004f);
+        renderer.DrawRadialGradient(0.5f,0.5f,0.28f*amount,0.28f*amount,
+            {246,178,206,static_cast<uint8_t>(95*amount)},{246,178,206,0},40);
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+        renderer.Flush();
+        return;
     }
     default:SDL_SetTextureAlphaMod(texture,static_cast<Uint8>((1-amount)*255));break;
     }

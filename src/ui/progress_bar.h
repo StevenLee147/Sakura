@@ -58,9 +58,9 @@ private:
 
     float  m_normCornerRadius;
 
-    sakura::core::Color m_bgColor     = { 25, 25, 45, 200 };
-    sakura::core::Color m_fillColor   = { 140, 100, 200, 230 };
-    sakura::core::Color m_borderColor = { 100, 80, 150, 180 };
+    sakura::core::Color m_bgColor     = { 16, 22, 38, 210 };
+    sakura::core::Color m_fillColor   = { 246, 172, 200, 240 };
+    sakura::core::Color m_borderColor = { 250, 216, 157, 130 };
     bool  m_showBorder  = true;
 
     // 文字

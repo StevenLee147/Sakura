@@ -15,7 +15,12 @@ namespace sakura::effects
 enum class ParticleShape : uint8_t
 {
     Circle,
-    SakuraMix
+    SakuraMix,
+    RadialGlow,
+    Starburst,
+    Bokeh,
+    Streak,
+    ShockwaveRing
 };
 
 // ============================================================================
@@ -23,23 +28,25 @@ enum class ParticleShape : uint8_t
 // ============================================================================
 struct Particle
 {
-    float x         = 0.0f;   // 位置 x（归一化）
-    float y         = 0.0f;   // 位置 y（归一化）
-    float vx        = 0.0f;   // 速度 x（归一化/s）
-    float vy        = 0.0f;   // 速度 y（归一化/s）
-    float ax        = 0.0f;   // 加速度 x（归一化/s²）
-    float ay        = 0.0f;   // 加速度 y（归一化/s²）
-    float size      = 0.01f;  // 半径（归一化，相对短边）
-    float sizeEnd   = 0.005f; // 结束时半径
-    float rotation  = 0.0f;   // 当前旋转角度（度）
-    float rotSpeed  = 0.0f;   // 旋转速度（度/s）
-    float life      = 1.0f;   // 剩余生命（秒）
-    float maxLife   = 1.0f;   // 最大生命（秒）
-    float shapeSeed = 0.0f;   // 形状随机种子（0~1）
+    float x            = 0.0f;   // 位置 x（归一化）
+    float y            = 0.0f;   // 位置 y（归一化）
+    float vx           = 0.0f;   // 速度 x（归一化/s）
+    float vy           = 0.0f;   // 速度 y（归一化/s）
+    float ax           = 0.0f;   // 加速度 x（归一化/s²）
+    float ay           = 0.0f;   // 加速度 y（归一化/s²）
+    float size         = 0.01f;  // 半径（归一化，相对短边）
+    float sizeEnd      = 0.005f; // 结束时半径
+    float rotation     = 0.0f;   // 当前旋转角度（度）
+    float rotSpeed     = 0.0f;   // 旋转速度（度/s）
+    float flutterPhase = 0.0f;   // 3D 翻飞/摇曳相位（rad）
+    float flutterSpeed = 0.0f;   // 3D 翻飞角速度（rad/s）
+    float life         = 1.0f;   // 剩余生命（秒）
+    float maxLife      = 1.0f;   // 最大生命（秒）
+    float shapeSeed    = 0.0f;   // 形状随机种子（0~1）
     ParticleShape shape = ParticleShape::Circle;
     sakura::core::Color colorStart   = sakura::core::Color::White;
     sakura::core::Color colorEnd     = sakura::core::Color{255, 255, 255, 0};
-    bool  active    = false;
+    bool  active       = false;
 };
 
 // ============================================================================
@@ -69,6 +76,8 @@ struct ParticleConfig
     // 旋转
     float rotSpeedMin = -180.0f;
     float rotSpeedMax =  180.0f;
+    float flutterMin  =  1.6f;
+    float flutterMax  =  4.2f;
 
     // 生存时间（秒）
     float lifeMin     = 0.3f;
@@ -83,14 +92,12 @@ struct ParticleConfig
 };
 
 // ── 预设配置构建函数 ──────────────────────────────────────────────────────────
-
 namespace ParticlePresets
 {
     // 樱花飘落（背景装饰，分层：前景/中景/远景）
     ParticleConfig SakuraPetalForeground();
     ParticleConfig SakuraPetalMidground();
     ParticleConfig SakuraPetalBackground();
-
     // 遗留兼容，底层调用 Midground
     ParticleConfig SakuraPetal();
 
@@ -100,10 +107,13 @@ namespace ParticlePresets
     // 命中爆发（判定时短暂火花）
     ParticleConfig HitBurst(sakura::core::Color color);
 
-    // 连击里程碑（向上喷射金色粒子）
+    // 命中扩散光环涟漪
+    ParticleConfig ShockwaveRipple(sakura::core::Color color, float startRadius = 0.028f, float endMult = 3.2f);
+
+    // 连击里程碑（向上喷射金色星芒）
     ParticleConfig ComboMilestone();
 
-    // 背景微粒（极慢极小，低透明度）
+    // 背景散景微粒（极慢柔焦光斑）
     ParticleConfig BackgroundFloat();
 
     // 判定方向火花（根据判定颜色）

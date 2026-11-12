@@ -12,6 +12,7 @@
 
 #include "core/renderer.h"
 #include <SDL3/SDL.h>
+#include <array>
 #include <cstdint>
 
 namespace sakura::effects
@@ -64,12 +65,20 @@ public:
 
     // ── 效果绘制 ──────────────────────────────────────────────────────────────
 
-    // 将纹理（全屏）以模糊效果绘制到当前渲染目标
-    // intensity: 0.0~1.0，控制偏移像素数(0=无模糊, 1=最大约12像素)
+    // Dual-Kawase 多级金字塔高斯近似模糊（全屏或指定裁剪区域）
     void DrawBlurred(SDL_Texture* tex, float intensity = 0.5f);
+    bool RenderKawaseBlur(SDL_Texture* src, const SDL_FRect* srcCrop,
+                          SDL_Texture* dstTarget, float intensity = 0.65f);
+    SDL_Texture* GetBlurredMipTexture() const { return m_kawaseMips[0]; }
 
-    // 绘制暗角叠加层（纯 SDL 绘制，无需纹理）
-    // intensity: 0.0~1.0，控制暗角深度
+    // 柔和辉光泛光叠加（基于 Kawase 金字塔的 Additive Bloom）
+    void DrawBloom(SDL_Texture* tex, float intensity = 0.35f);
+
+    // 磨砂玻璃局部折射采样（从模糊缓冲裁切对应归一化矩形）
+    void DrawFrostedRegion(SDL_Texture* blurredTex, sakura::core::NormRect normRect,
+                           sakura::core::Color tint = { 255, 255, 255, 220 });
+
+    // 绘制月夜墨樱暗角叠加层
     void DrawVignette(float intensity = 0.5f);
 
     // 绘制色差效果（将纹理 R/G/B 三通道分别以小偏移绘制）
@@ -77,6 +86,8 @@ public:
 
     // 绘制色彩校正叠加（色相偏移 tint）
     void DrawColorCorrection(sakura::core::Color tint, float alpha = 0.08f);
+
+    bool HasHardwareGPUBackend() const { return m_hasGpuDevice; }
 
     // ── 效果开关 ──────────────────────────────────────────────────────────────
 
@@ -95,12 +106,21 @@ public:
 private:
     ShaderManager() = default;
 
+    static constexpr int kKawaseLevels = 3;
+
     SDL_Renderer* m_renderer  = nullptr;
     SDL_Texture*  m_previousTarget = nullptr;
     SDL_Texture*  m_offscreen = nullptr;   // 全屏 offscreen 缓冲
+    std::array<SDL_Texture*, kKawaseLevels> m_kawaseMips{ nullptr, nullptr, nullptr };
+    std::array<int, kKawaseLevels>          m_mipW{ 0, 0, 0 };
+    std::array<int, kKawaseLevels>          m_mipH{ 0, 0, 0 };
     int           m_width     = 0;
     int           m_height    = 0;
+    bool          m_hasGpuDevice = false;
+
     bool          m_effects[static_cast<size_t>(EffectType::COUNT)] = {};
+
+    void DestroyTargets();
 
     // 辅助：在屏幕上绘制全屏纹理（含平移偏移）
     void BlitFull(SDL_Texture* tex, int offsetX = 0, int offsetY = 0,

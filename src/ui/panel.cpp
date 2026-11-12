@@ -37,41 +37,60 @@ void Panel::Render(sakura::core::Renderer& renderer)
 
     if (m_shadowEnabled && m_colors.shadow.a > 0)
     {
-        sakura::core::NormRect shadowRect = {
-            m_bounds.x + m_shadowOffsetX,
-            m_bounds.y + m_shadowOffsetY,
-            m_bounds.width,
-            m_bounds.height
-        };
-        renderer.DrawRoundedRect(
-            shadowRect,
+        renderer.DrawSoftShadow(
+            m_bounds,
             m_cornerRadius,
+            0.016f,
             WithOpacity(m_colors.shadow, m_opacity),
-            true);
+            m_shadowOffsetY,
+            12);
     }
 
-    renderer.DrawRoundedRect(
-        m_bounds,
-        m_cornerRadius,
-        WithOpacity(m_colors.fill, m_opacity),
-        true);
+    sakura::core::Color topFill = WithOpacity(m_colors.fill, m_opacity);
+    sakura::core::Color botFill{
+        static_cast<uint8_t>(std::max(0, static_cast<int>(topFill.r) - 8)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(topFill.g) - 8)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(topFill.b) - 12)),
+        static_cast<uint8_t>(std::min(255, static_cast<int>(topFill.a) + 14))
+    };
+    renderer.DrawRoundedGradientRect(
+        m_bounds, m_cornerRadius,
+        topFill, topFill, botFill, botFill, 14, true);
+
+    // 顶部玻璃光泽
+    const float specH = std::min(m_bounds.height * 0.25f, 0.032f);
+    if (specH > m_cornerRadius * 0.6f)
+    {
+        renderer.DrawRoundedGradientRect(
+            { m_bounds.x + 0.0015f, m_bounds.y + 0.0015f, std::max(0.0f, m_bounds.width - 0.003f), specH },
+            m_cornerRadius * 0.88f,
+            { 255, 246, 250, static_cast<uint8_t>(24 * m_opacity) },
+            { 250, 226, 198, static_cast<uint8_t>(16 * m_opacity) },
+            { 255, 246, 250, 0 }, { 250, 226, 198, 0 },
+            10, false);
+    }
 
     if (m_accentEnabled && m_accentHeight > 0.0f)
     {
-        renderer.DrawFilledRect(
-            { m_bounds.x, m_bounds.y, m_bounds.width, m_accentHeight },
-            WithOpacity(m_colors.accent, m_opacity));
+        const float inset = m_cornerRadius * 0.85f;
+        const float w = std::max(0.0f, m_bounds.width - inset * 2.0f);
+        if (w > 0.004f)
+        {
+            const auto cMid = WithOpacity(m_colors.accent, m_opacity);
+            const sakura::core::Color cEdge{ cMid.r, cMid.g, cMid.b, 0 };
+            const float mx = m_bounds.x + m_bounds.width * 0.5f;
+            renderer.DrawGradientRect({ m_bounds.x + inset, m_bounds.y + 0.002f, w * 0.5f, m_accentHeight * 0.7f }, cEdge, cMid, cEdge, cMid);
+            renderer.DrawGradientRect({ mx, m_bounds.y + 0.002f, w * 0.5f, m_accentHeight * 0.7f }, cMid, cEdge, cMid, cEdge);
+        }
     }
 
     if (m_colors.border.a > 0 && m_borderThickness > 0.0f)
     {
-        renderer.DrawRoundedRect(
-            m_bounds,
-            m_cornerRadius,
-            WithOpacity(m_colors.border, m_opacity),
-            false,
-            12,
-            m_borderThickness);
+        const auto topB = WithOpacity(m_colors.border, m_opacity);
+        const sakura::core::Color botB{ topB.r, topB.g, topB.b, static_cast<uint8_t>(topB.a * 0.42f) };
+        renderer.DrawRoundedRectOutlineGradient(
+            m_bounds, m_cornerRadius,
+            topB, botB, m_borderThickness, 14);
     }
 }
 

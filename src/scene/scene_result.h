@@ -13,6 +13,7 @@
 #include "game/pp_calculator.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
+#include "effects/background.h"
 
 #include <memory>
 
@@ -71,6 +72,7 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnRetry;
     std::unique_ptr<sakura::ui::Button> m_btnBack;
 
+    sakura::effects::BackgroundRenderer m_bgCover;
     // 粒子系统（FC/AP 庆祝 + 樱花飘落）
     sakura::effects::ParticleSystem m_particles;
     int   m_sakuraPetalEmitter = -1;

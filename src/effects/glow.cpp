@@ -1,5 +1,6 @@
 #include "glow.h"
 #include "core/config.h"
+#include "core/resource_manager.h"
 #include "core/theme.h"
 
 #include <algorithm>
@@ -30,6 +31,30 @@ static sakura::core::Color GlowLayerColor(const sakura::core::Color& base,
 // GlowEffect 实现
 // ============================================================================
 
+static sakura::core::TextureHandle GetRadialGlowSprite()
+{
+    auto& rm = sakura::core::ResourceManager::GetInstance();
+    static sakura::core::TextureHandle s_handle = sakura::core::INVALID_HANDLE;
+    if (s_handle == sakura::core::INVALID_HANDLE || rm.GetTexture(s_handle) == nullptr)
+    {
+        auto loaded = rm.LoadTexture("resources/images/particles/glow_radial.png");
+        s_handle = loaded.value_or(sakura::core::INVALID_HANDLE);
+    }
+    return s_handle;
+}
+
+static sakura::core::TextureHandle GetStreakGlowSprite()
+{
+    auto& rm = sakura::core::ResourceManager::GetInstance();
+    static sakura::core::TextureHandle s_handle = sakura::core::INVALID_HANDLE;
+    if (s_handle == sakura::core::INVALID_HANDLE || rm.GetTexture(s_handle) == nullptr)
+    {
+        auto loaded = rm.LoadTexture("resources/images/particles/glow_streak.png");
+        s_handle = loaded.value_or(sakura::core::INVALID_HANDLE);
+    }
+    return s_handle;
+}
+
 void GlowEffect::DrawGlow(sakura::core::Renderer& renderer,
                            float cx, float cy,
                            float radius,
@@ -39,19 +64,42 @@ void GlowEffect::DrawGlow(sakura::core::Renderer& renderer,
 {
     if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
     const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
-    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
-    layers = std::max(1, layers);
+    if (intensity <= 0.001f || baseColor.a == 0) return;
+    (void)layers;
+
+    const float totalR = std::max(0.001f, radius + glowRange);
+    const int sw = std::max(1, renderer.GetScreenWidth());
+    const int sh = std::max(1, renderer.GetScreenHeight());
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float normW = (totalR * 2.15f * minDim) / static_cast<float>(sw);
+    const float normH = (totalR * 2.15f * minDim) / static_cast<float>(sh);
+
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
-    for (int i = layers; i >= 0; --i)
+    const auto sprite = GetRadialGlowSprite();
+    const float alpha01 = std::clamp((baseColor.a / 255.0f) * intensity * 0.92f, 0.0f, 1.0f);
+    if (sprite != sakura::core::INVALID_HANDLE)
     {
-        float t      = static_cast<float>(i) / static_cast<float>(layers); // 1=外层, 0=核心
-        float r      = radius + t * glowRange;
-        float alpha  = (1.0f - t) * 0.85f + 0.15f;   // 核心最亮，外层渐暗
-        // 外层使用更低 alpha
-        float layerAlpha = alpha * (1.0f - t * 0.6f);
-        renderer.DrawCircleFilled(cx, cy, r,
-                                  GlowLayerColor(baseColor, layerAlpha), 32);
+        sakura::core::Color tint{ baseColor.r, baseColor.g, baseColor.b, 255 };
+        renderer.DrawSprite(sprite, { cx - normW * 0.5f, cy - normH * 0.5f, normW, normH }, 0.0f, tint, alpha01);
+        if (radius > 0.002f)
+        {
+            const float coreW = (radius * 2.1f * minDim) / static_cast<float>(sw);
+            const float coreH = (radius * 2.1f * minDim) / static_cast<float>(sh);
+            sakura::core::Color hotCore{
+                static_cast<uint8_t>(std::min(255, baseColor.r + 55)),
+                static_cast<uint8_t>(std::min(255, baseColor.g + 55)),
+                static_cast<uint8_t>(std::min(255, baseColor.b + 55)),
+                255
+            };
+            renderer.DrawSprite(sprite, { cx - coreW * 0.5f, cy - coreH * 0.5f, coreW, coreH }, 0.0f, hotCore, alpha01 * 0.65f);
+        }
+    }
+    else
+    {
+        sakura::core::Color inner = GlowLayerColor(baseColor, intensity * 0.80f);
+        sakura::core::Color outer{ baseColor.r, baseColor.g, baseColor.b, 0 };
+        renderer.DrawRadialGradient(cx, cy, totalR, totalR, inner, outer, 40);
     }
 
     renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
@@ -83,20 +131,24 @@ void GlowEffect::DrawGlowLine(sakura::core::Renderer& renderer,
 {
     if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
     const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
-    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
-    layers = std::max(1, layers);
+    if (intensity <= 0.001f || baseColor.a == 0) return;
+    (void)layers;
+
+    const float fullWidth = std::max(0.001f, coreThickness * glowMultiplier);
+    sakura::core::Color hotCore{
+        static_cast<uint8_t>(std::min(255, baseColor.r + 48)),
+        static_cast<uint8_t>(std::min(255, baseColor.g + 48)),
+        static_cast<uint8_t>(std::min(255, baseColor.b + 48)),
+        static_cast<uint8_t>(std::clamp(baseColor.a * intensity * 0.88f, 0.0f, 255.0f))
+    };
+    sakura::core::Color softEdge{ baseColor.r, baseColor.g, baseColor.b, 0 };
+
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
-
-    for (int i = layers; i >= 0; --i)
-    {
-        float t         = static_cast<float>(i) / static_cast<float>(layers);
-        float thickness = coreThickness * (1.0f + t * (glowMultiplier - 1.0f));
-        float layerAlpha = (1.0f - t * 0.8f);
-        renderer.DrawLine(x1, y1, x2, y2,
-                          GlowLayerColor(baseColor, layerAlpha),
-                          thickness);
-    }
-
+    const sakura::core::RibbonNode nodes[2] = {
+        { x1, y1, fullWidth, hotCore, softEdge },
+        { x2, y2, fullWidth, hotCore, softEdge }
+    };
+    renderer.DrawRibbonStrip(nodes, 2, true);
     renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 }
 
@@ -108,25 +160,37 @@ void GlowEffect::DrawGlowBar(sakura::core::Renderer& renderer,
 {
     if (!sakura::core::Theme::GetInstance().Settings().glowEnabled) return;
     const float intensity = sakura::core::Config::GetInstance().Get<float>("graphics.effect_intensity", 0.7f);
-    baseColor.a = static_cast<uint8_t>(baseColor.a * intensity * 0.45f);
-    layers = std::max(1, layers);
+    if (intensity <= 0.001f || baseColor.a == 0) return;
+    (void)layers;
+
     renderer.SetBlendMode(sakura::core::BlendMode::Additive);
 
-    for (int i = layers; i >= 0; --i)
+    const auto streak = GetStreakGlowSprite();
+    const float alpha01 = std::clamp((baseColor.a / 255.0f) * intensity * 0.85f, 0.0f, 1.0f);
+    if (streak != sakura::core::INVALID_HANDLE)
     {
-        float t       = static_cast<float>(i) / static_cast<float>(layers);
-        float expand  = t * glowExpand;
-        float alpha   = 1.0f - t * 0.85f;
-
-        sakura::core::NormRect rect{
-            x - expand,
-            y - expand,
-            width  + expand * 2.0f,
-            height + expand * 2.0f
+        sakura::core::NormRect haloRect{
+            x - glowExpand * 1.4f,
+            y - glowExpand * 2.4f,
+            width + glowExpand * 2.8f,
+            height + glowExpand * 4.8f
         };
-        renderer.DrawFilledRect(rect, GlowLayerColor(baseColor, alpha));
+        sakura::core::Color tint{ baseColor.r, baseColor.g, baseColor.b, 255 };
+        renderer.DrawSprite(streak, haloRect, 0.0f, tint, alpha01);
+    }
+    else
+    {
+        renderer.DrawSoftShadow({ x, y, width, height }, height * 0.5f, glowExpand * 1.6f,
+                                GlowLayerColor(baseColor, intensity * 0.72f), 0.0f, 8);
     }
 
+    sakura::core::Color coreCol{
+        static_cast<uint8_t>(std::min(255, baseColor.r + 50)),
+        static_cast<uint8_t>(std::min(255, baseColor.g + 50)),
+        static_cast<uint8_t>(std::min(255, baseColor.b + 50)),
+        static_cast<uint8_t>(std::clamp(baseColor.a * intensity * 0.90f, 0.0f, 255.0f))
+    };
+    renderer.DrawRoundedRect({ x, y, width, height }, height * 0.5f, coreCol, true, 6);
     renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 }
 

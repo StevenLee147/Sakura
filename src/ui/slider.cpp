@@ -170,26 +170,46 @@ void Slider::Render(sakura::core::Renderer& renderer)
                           sakura::core::TextAlign::Left);
     }
 
-    // 轨道背景
-    renderer.DrawRoundedRect(
-        { trackX, trackY, trackW, trackH },
-        trackH * 0.5f,
-        m_trackColor,
-        true);
+    // 磨砂玻璃凹槽轨道背景
+    const sakura::core::NormRect trackRect{ trackX, trackY, trackW, trackH };
+    renderer.DrawRoundedGradientRect(
+        trackRect, trackH * 0.5f,
+        { 12, 16, 30, m_trackColor.a }, { 12, 16, 30, m_trackColor.a },
+        m_trackColor, m_trackColor, 10, true);
+    renderer.DrawRoundedRectOutlineGradient(
+        trackRect, trackH * 0.5f,
+        { 196, 178, 214, 72 }, { 250, 216, 157, 42 }, 0.0010f, 10);
 
-    // 填充部分
-    if (t > 0.0f)
+    // 琉璃樱粉→鎏金流光填充条
+    if (t > 0.002f)
     {
-        renderer.DrawRoundedRect(
-            { trackX, trackY, trackW * t, trackH },
+        const float fillW = std::max(trackH, trackW * t);
+        sakura::core::Color fillRight{
+            static_cast<uint8_t>(std::min(255, static_cast<int>(m_fillColor.r) + 6)),
+            static_cast<uint8_t>(std::min(255, static_cast<int>(m_fillColor.g) + 36)),
+            static_cast<uint8_t>(std::max(0, static_cast<int>(m_fillColor.b) - 34)),
+            m_fillColor.a
+        };
+        renderer.DrawRoundedGradientRect(
+            { trackX, trackY, std::min(trackW, fillW), trackH },
             trackH * 0.5f,
-            m_fillColor,
-            true);
+            m_fillColor, fillRight,
+            m_fillColor, fillRight, 10, true);
     }
 
-    // 拇指
-    float thumbX = trackX + trackW * t;
-    renderer.DrawCircleFilled(thumbX, trackCY, thumbRadius, m_thumbColor);
+    // 发光珍珠鎏金滑块拇指
+    const float thumbX = trackX + trackW * t;
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(
+        thumbX, trackCY,
+        thumbRadius * (1.8f + m_thumbAnim * 0.6f),
+        thumbRadius * (1.8f + m_thumbAnim * 0.6f),
+        { 246, 178, 206, static_cast<uint8_t>(75 + m_thumbAnim * 65.0f) },
+        { 246, 178, 206, 0 }, 32);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    renderer.DrawCircleFilled(thumbX, trackCY, thumbRadius, m_thumbColor, 36);
+    renderer.DrawCircleOutline(thumbX, trackCY, thumbRadius, { 250, 216, 157, 230 }, 0.0014f, 36);
+    renderer.DrawCircleFilled(thumbX, trackCY, thumbRadius * 0.38f, { 246, 156, 194, 240 }, 24);
 
     // 数值文字
     if (m_showValue && m_fontHandle != 0)

@@ -2,7 +2,7 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v0.6.1-alpha** · Windows x64 · C++20 / SDL3
+当前版本：**v0.7.0-alpha** · Windows x64 · C++20 / SDL3
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
@@ -71,7 +71,7 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.6.1-alpha`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.7.0-alpha`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
 

@@ -72,27 +72,47 @@ void ProgressBar::Render(sakura::core::Renderer& renderer)
     sakura::core::Color bg = m_bgColor;
     bg.a = static_cast<uint8_t>(bg.a * m_opacity);
 
-    // 背景轨道
-    renderer.DrawRoundedRect(m_bounds, m_normCornerRadius, bg, true);
+    // 磨砂玻璃轨道槽
+    renderer.DrawRoundedGradientRect(
+        m_bounds, m_normCornerRadius,
+        { 12, 16, 30, bg.a }, { 12, 16, 30, bg.a }, bg, bg, 10, true);
 
-    // 填充条（根据 displayValue 缩放宽度）
-    float fillW = m_bounds.width * std::max(0.0f, std::min(1.0f, m_displayValue));
-    if (fillW > m_normCornerRadius * 2.0f)
+    // 琉璃樱粉→香槟金发光进度条
+    float fillW = m_bounds.width * std::clamp(m_displayValue, 0.0f, 1.0f);
+    if (fillW > 0.002f)
     {
+        const float drawW = std::max(std::min(m_bounds.width, m_normCornerRadius * 2.0f), fillW);
         sakura::core::NormRect fillRect = {
-            m_bounds.x, m_bounds.y, fillW, m_bounds.height
+            m_bounds.x, m_bounds.y, drawW, m_bounds.height
         };
-        sakura::core::Color fill = m_fillColor;
-        fill.a = static_cast<uint8_t>(fill.a * m_opacity);
-        renderer.DrawRoundedRect(fillRect, m_normCornerRadius, fill, true);
+        sakura::core::Color fillLeft = m_fillColor;
+        fillLeft.a = static_cast<uint8_t>(fillLeft.a * m_opacity);
+        sakura::core::Color fillRight{
+            250, 216, 157, fillLeft.a
+        };
+        renderer.DrawRoundedGradientRect(
+            fillRect, m_normCornerRadius,
+            fillLeft, fillRight, fillLeft, fillRight, 10, true);
+
+        // 前缘光珠
+        const float tipX = m_bounds.x + drawW;
+        const float tipY = m_bounds.y + m_bounds.height * 0.5f;
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        renderer.DrawRadialGradient(
+            tipX, tipY, m_bounds.height * 1.4f, m_bounds.height * 1.4f,
+            { 255, 232, 196, static_cast<uint8_t>(110 * m_opacity) }, { 255, 232, 196, 0 }, 24);
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
     }
 
-    // 边框
+    // 鎏金渐变细边框
     if (m_showBorder)
     {
         sakura::core::Color border = m_borderColor;
         border.a = static_cast<uint8_t>(border.a * m_opacity);
-        renderer.DrawRoundedRect(m_bounds, m_normCornerRadius, border, false);
+        renderer.DrawRoundedRectOutlineGradient(
+            m_bounds, m_normCornerRadius,
+            border, { border.r, border.g, border.b, static_cast<uint8_t>(border.a * 0.4f) },
+            0.0012f, 10);
     }
 
     // 百分比文字

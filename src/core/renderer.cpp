@@ -781,24 +781,646 @@ void Renderer::DrawRoundedRect(NormRect rect, float normCornerRadius,
     }
     else
     {
-        // 轮廓：四条直线 + 四段圆弧
-        const float normT = normThickness;
-
-        // 转换回归一化坐标绘制直线
-        auto pxToNX = [sw](float px) { return px / sw; };
-        auto pxToNY = [sh](float py) { return py / sh; };
-
-        DrawLine(pxToNX(pxX + r),      pxToNY(pxY),          pxToNX(pxX + pxW - r), pxToNY(pxY),          color, normT);
-        DrawLine(pxToNX(pxX + r),      pxToNY(pxY + pxH),    pxToNX(pxX + pxW - r), pxToNY(pxY + pxH),    color, normT);
-        DrawLine(pxToNX(pxX),          pxToNY(pxY + r),       pxToNX(pxX),           pxToNY(pxY + pxH - r), color, normT);
-        DrawLine(pxToNX(pxX + pxW),    pxToNY(pxY + r),       pxToNX(pxX + pxW),     pxToNY(pxY + pxH - r), color, normT);
-
-        const float normR = r / std::min(static_cast<float>(sw), static_cast<float>(sh));
-        DrawArc(pxToNX(pxX + pxW - r), pxToNY(pxY + r),        normR, -90.0f,   0.0f, color, normT, cornerSegments);
-        DrawArc(pxToNX(pxX + r),       pxToNY(pxY + r),         normR, 180.0f, 270.0f, color, normT, cornerSegments);
-        DrawArc(pxToNX(pxX + r),       pxToNY(pxY + pxH - r),  normR,  90.0f,  180.0f, color, normT, cornerSegments);
-        DrawArc(pxToNX(pxX + pxW - r), pxToNY(pxY + pxH - r),  normR,   0.0f,   90.0f, color, normT, cornerSegments);
+        DrawRoundedRectOutlineGradient(rect, normCornerRadius, color, color, normThickness, cornerSegments);
     }
+}
+
+namespace
+{
+
+SDL_FColor LerpFColor(const SDL_FColor& a, const SDL_FColor& b, float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    return {
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t,
+        a.a + (b.a - a.a) * t
+    };
+}
+
+SDL_FColor BilerpFColor(const SDL_FColor& tl, const SDL_FColor& tr,
+                        const SDL_FColor& bl, const SDL_FColor& br,
+                        float u, float v)
+{
+    const SDL_FColor top = LerpFColor(tl, tr, u);
+    const SDL_FColor bot = LerpFColor(bl, br, u);
+    return LerpFColor(top, bot, v);
+}
+
+Color LerpColor8(Color a, Color b, float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    return {
+        static_cast<uint8_t>(std::lround(a.r + (b.r - a.r) * t)),
+        static_cast<uint8_t>(std::lround(a.g + (b.g - a.g) * t)),
+        static_cast<uint8_t>(std::lround(a.b + (b.b - a.b) * t)),
+        static_cast<uint8_t>(std::lround(a.a + (b.a - a.a) * t))
+    };
+}
+
+struct RoundedPerimeterPoint
+{
+    float x  = 0.0f;
+    float y  = 0.0f;
+    float nx = 0.0f;
+    float ny = 0.0f;
+};
+
+void BuildRoundedPerimeter(float pxX, float pxY, float pxW, float pxH, float r,
+                           int cornerSegments, std::vector<RoundedPerimeterPoint>& outPts)
+{
+    outPts.clear();
+    const int segs = std::max(2, cornerSegments);
+    outPts.reserve(static_cast<size_t>((segs + 1) * 4));
+
+    struct CornerArc { float cx; float cy; float startRad; };
+    const CornerArc arcs[4] = {
+        { pxX + pxW - r, pxY + r,       -kPi * 0.5f }, // 右上: -90 -> 0
+        { pxX + pxW - r, pxY + pxH - r,  0.0f       }, // 右下: 0 -> 90
+        { pxX + r,       pxY + pxH - r,  kPi * 0.5f }, // 左下: 90 -> 180
+        { pxX + r,       pxY + r,        kPi        }  // 左上: 180 -> 270
+    };
+
+    for (int c = 0; c < 4; ++c)
+    {
+        for (int i = 0; i <= segs; ++i)
+        {
+            const float a = arcs[c].startRad + (kPi * 0.5f) * (static_cast<float>(i) / static_cast<float>(segs));
+            const float nx = std::cos(a);
+            const float ny = std::sin(a);
+            outPts.push_back({ arcs[c].cx + nx * r, arcs[c].cy + ny * r, nx, ny });
+        }
+    }
+}
+
+} // namespace
+
+void Renderer::DrawRoundedGradientRect(NormRect rect, float normCornerRadius,
+                                       Color topLeft, Color topRight,
+                                       Color bottomLeft, Color bottomRight,
+                                       int cornerSegments, bool antiAliased)
+{
+    if (!m_renderer || rect.width <= 0.0f || rect.height <= 0.0f) return;
+    if (topLeft.a == 0 && topRight.a == 0 && bottomLeft.a == 0 && bottomRight.a == 0) return;
+
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    if (sw <= 0 || sh <= 0) return;
+
+    const float pxX = rect.x * static_cast<float>(sw);
+    const float pxY = rect.y * static_cast<float>(sh);
+    const float pxW = rect.width * static_cast<float>(sw);
+    const float pxH = rect.height * static_cast<float>(sh);
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float r = std::clamp(normCornerRadius * minDim, 0.0f, std::min(pxW, pxH) * 0.5f);
+
+    const SDL_FColor tl = topLeft.ToSDLFColor();
+    const SDL_FColor tr = topRight.ToSDLFColor();
+    const SDL_FColor bl = bottomLeft.ToSDLFColor();
+    const SDL_FColor br = bottomRight.ToSDLFColor();
+
+    static thread_local std::vector<RoundedPerimeterPoint> perim;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    BuildRoundedPerimeter(pxX, pxY, pxW, pxH, r, cornerSegments, perim);
+    const int n = static_cast<int>(perim.size());
+    if (n < 4) return;
+
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>(1 + n * (antiAliased ? 2 : 1)));
+    indices.reserve(static_cast<size_t>(n * (antiAliased ? 9 : 3)));
+
+    auto sampleAt = [&](float x, float y) -> SDL_FColor {
+        const float u = (pxW > 0.001f) ? std::clamp((x - pxX) / pxW, 0.0f, 1.0f) : 0.5f;
+        const float v = (pxH > 0.001f) ? std::clamp((y - pxY) / pxH, 0.0f, 1.0f) : 0.5f;
+        return BilerpFColor(tl, tr, bl, br, u, v);
+    };
+
+    const float cx = pxX + pxW * 0.5f;
+    const float cy = pxY + pxH * 0.5f;
+    const float feather = antiAliased ? 0.65f : 0.0f;
+    verts.push_back({ { cx, cy }, sampleAt(cx, cy), { 0.5f, 0.5f } });
+
+    for (int i = 0; i < n; ++i)
+    {
+        const float ix = perim[i].x - perim[i].nx * (feather * 0.5f);
+        const float iy = perim[i].y - perim[i].ny * (feather * 0.5f);
+        verts.push_back({ { ix, iy }, sampleAt(perim[i].x, perim[i].y), { 0.0f, 0.0f } });
+    }
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int next = (i + 1) % n;
+        indices.push_back(0);
+        indices.push_back(1 + i);
+        indices.push_back(1 + next);
+    }
+
+    if (antiAliased)
+    {
+        const int outerBase = 1 + n;
+        for (int i = 0; i < n; ++i)
+        {
+            SDL_FColor edgeCol = sampleAt(perim[i].x, perim[i].y);
+            edgeCol.a = 0.0f;
+            const float ox = perim[i].x + perim[i].nx * (feather * 0.85f);
+            const float oy = perim[i].y + perim[i].ny * (feather * 0.85f);
+            verts.push_back({ { ox, oy }, edgeCol, { 0.0f, 0.0f } });
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            const int next = (i + 1) % n;
+            const int i0 = 1 + i;
+            const int i1 = 1 + next;
+            const int o0 = outerBase + i;
+            const int o1 = outerBase + next;
+            indices.push_back(i0); indices.push_back(o0); indices.push_back(i1);
+            indices.push_back(i1); indices.push_back(o0); indices.push_back(o1);
+        }
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawRoundedRectOutlineGradient(NormRect rect, float normCornerRadius,
+                                              Color topColor, Color bottomColor,
+                                              float normThickness, int cornerSegments)
+{
+    if (!m_renderer || rect.width <= 0.0f || rect.height <= 0.0f) return;
+    if (topColor.a == 0 && bottomColor.a == 0) return;
+
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    if (sw <= 0 || sh <= 0) return;
+
+    const float pxX = rect.x * static_cast<float>(sw);
+    const float pxY = rect.y * static_cast<float>(sh);
+    const float pxW = rect.width * static_cast<float>(sw);
+    const float pxH = rect.height * static_cast<float>(sh);
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float r = std::clamp(normCornerRadius * minDim, 0.0f, std::min(pxW, pxH) * 0.5f);
+    const float halfT = std::max(0.5f, normThickness * minDim * 0.5f);
+    const float feather = 0.65f;
+
+    const SDL_FColor tc = topColor.ToSDLFColor();
+    const SDL_FColor bc = bottomColor.ToSDLFColor();
+
+    static thread_local std::vector<RoundedPerimeterPoint> perim;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    BuildRoundedPerimeter(pxX, pxY, pxW, pxH, r, cornerSegments, perim);
+    const int n = static_cast<int>(perim.size());
+    if (n < 4) return;
+
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>(n * 4));
+    indices.reserve(static_cast<size_t>(n * 18));
+
+    for (int i = 0; i < n; ++i)
+    {
+        const float v = (pxH > 0.001f) ? std::clamp((perim[i].y - pxY) / pxH, 0.0f, 1.0f) : 0.5f;
+        const SDL_FColor midCol = LerpFColor(tc, bc, v);
+        SDL_FColor zeroCol = midCol;
+        zeroCol.a = 0.0f;
+
+        const float d0 = -halfT - feather;
+        const float d1 = -halfT;
+        const float d2 =  halfT;
+        const float d3 =  halfT + feather;
+
+        verts.push_back({ { perim[i].x + perim[i].nx * d0, perim[i].y + perim[i].ny * d0 }, zeroCol, { 0.0f, 0.0f } });
+        verts.push_back({ { perim[i].x + perim[i].nx * d1, perim[i].y + perim[i].ny * d1 }, midCol,  { 0.0f, 0.0f } });
+        verts.push_back({ { perim[i].x + perim[i].nx * d2, perim[i].y + perim[i].ny * d2 }, midCol,  { 0.0f, 0.0f } });
+        verts.push_back({ { perim[i].x + perim[i].nx * d3, perim[i].y + perim[i].ny * d3 }, zeroCol, { 0.0f, 0.0f } });
+    }
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int next = (i + 1) % n;
+        for (int band = 0; band < 3; ++band)
+        {
+            const int a0 = i * 4 + band;
+            const int a1 = i * 4 + band + 1;
+            const int b0 = next * 4 + band;
+            const int b1 = next * 4 + band + 1;
+            indices.push_back(a0); indices.push_back(a1); indices.push_back(b0);
+            indices.push_back(b0); indices.push_back(a1); indices.push_back(b1);
+        }
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawSoftShadow(NormRect rect, float normCornerRadius,
+                              float normSpread, Color shadowColor,
+                              float normOffsetY, int cornerSegments)
+{
+    if (!m_renderer || shadowColor.a == 0 || normSpread <= 0.0f) return;
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    if (sw <= 0 || sh <= 0) return;
+
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float pxX = rect.x * static_cast<float>(sw);
+    const float pxY = (rect.y + normOffsetY) * static_cast<float>(sh);
+    const float pxW = rect.width * static_cast<float>(sw);
+    const float pxH = rect.height * static_cast<float>(sh);
+    const float r = std::clamp(normCornerRadius * minDim, 0.0f, std::min(pxW, pxH) * 0.5f);
+    const float spreadPx = normSpread * minDim;
+
+    const SDL_FColor innerCol = shadowColor.ToSDLFColor();
+    SDL_FColor midCol = innerCol;
+    midCol.a *= 0.36f;
+    SDL_FColor outerCol = innerCol;
+    outerCol.a = 0.0f;
+
+    static thread_local std::vector<RoundedPerimeterPoint> perim;
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    BuildRoundedPerimeter(pxX, pxY, pxW, pxH, r, cornerSegments, perim);
+    const int n = static_cast<int>(perim.size());
+    if (n < 4) return;
+
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>(1 + n * 3));
+    indices.reserve(static_cast<size_t>(n * 15));
+
+    const float cx = pxX + pxW * 0.5f;
+    const float cy = pxY + pxH * 0.5f;
+    verts.push_back({ { cx, cy }, innerCol, { 0.5f, 0.5f } });
+
+    for (int i = 0; i < n; ++i)
+    {
+        verts.push_back({ { perim[i].x, perim[i].y }, innerCol, { 0.0f, 0.0f } });
+        verts.push_back({ { perim[i].x + perim[i].nx * (spreadPx * 0.42f), perim[i].y + perim[i].ny * (spreadPx * 0.42f) }, midCol, { 0.0f, 0.0f } });
+        verts.push_back({ { perim[i].x + perim[i].nx * spreadPx, perim[i].y + perim[i].ny * spreadPx }, outerCol, { 0.0f, 0.0f } });
+    }
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int next = (i + 1) % n;
+        const int b0 = 1 + i * 3;
+        const int b1 = 1 + next * 3;
+        indices.push_back(0); indices.push_back(b0); indices.push_back(b1);
+        for (int band = 0; band < 2; ++band)
+        {
+            indices.push_back(b0 + band);     indices.push_back(b0 + band + 1); indices.push_back(b1 + band);
+            indices.push_back(b1 + band);     indices.push_back(b0 + band + 1); indices.push_back(b1 + band + 1);
+        }
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawRadialGradient(float cx, float cy,
+                                  float normRadiusX, float normRadiusY,
+                                  Color innerColor, Color outerColor,
+                                  int segments)
+{
+    if (!m_renderer || (innerColor.a == 0 && outerColor.a == 0)) return;
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float pxCX = cx * static_cast<float>(sw);
+    const float pxCY = cy * static_cast<float>(sh);
+    const float rx = normRadiusX * minDim;
+    const float ry = normRadiusY * minDim;
+    if (rx <= 0.1f || ry <= 0.1f) return;
+
+    const int n = std::max(8, segments);
+    const SDL_FColor ic = innerColor.ToSDLFColor();
+    const SDL_FColor oc = outerColor.ToSDLFColor();
+    const SDL_FColor mc = LerpFColor(ic, oc, 0.58f);
+
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>(1 + (n + 1) * 2));
+    indices.reserve(static_cast<size_t>(n * 9));
+
+    verts.push_back({ { pxCX, pxCY }, ic, { 0.5f, 0.5f } });
+    for (int i = 0; i <= n; ++i)
+    {
+        const float a = (kPi * 2.0f * static_cast<float>(i)) / static_cast<float>(n);
+        const float ca = std::cos(a);
+        const float sa = std::sin(a);
+        verts.push_back({ { pxCX + ca * rx * 0.52f, pxCY + sa * ry * 0.52f }, mc, { 0.5f, 0.5f } });
+        verts.push_back({ { pxCX + ca * rx,         pxCY + sa * ry         }, oc, { 0.5f, 0.5f } });
+        if (i > 0)
+        {
+            const int prevMid = 1 + (i - 1) * 2;
+            const int currMid = 1 + i * 2;
+            indices.push_back(0);       indices.push_back(prevMid);     indices.push_back(currMid);
+            indices.push_back(prevMid); indices.push_back(prevMid + 1); indices.push_back(currMid);
+            indices.push_back(currMid); indices.push_back(prevMid + 1); indices.push_back(currMid + 1);
+        }
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawRingGradient(float cx, float cy,
+                                float normInnerRadius, float normOuterRadius,
+                                Color innerColor, Color outerColor,
+                                int segments,
+                                float startAngleDeg, float endAngleDeg)
+{
+    if (!m_renderer || normOuterRadius <= normInnerRadius) return;
+    if (innerColor.a == 0 && outerColor.a == 0) return;
+
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    const float minDim = static_cast<float>(std::min(sw, sh));
+    const float pxCX = cx * static_cast<float>(sw);
+    const float pxCY = cy * static_cast<float>(sh);
+    const float inR = std::max(0.0f, normInnerRadius * minDim);
+    const float outR = normOuterRadius * minDim;
+
+    const int n = std::max(6, segments);
+    const float sRad = startAngleDeg * kPi / 180.0f;
+    const float eRad = endAngleDeg * kPi / 180.0f;
+    const SDL_FColor ic = innerColor.ToSDLFColor();
+    const SDL_FColor oc = outerColor.ToSDLFColor();
+
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>((n + 1) * 2));
+    indices.reserve(static_cast<size_t>(n * 6));
+
+    for (int i = 0; i <= n; ++i)
+    {
+        const float a = sRad + (eRad - sRad) * (static_cast<float>(i) / static_cast<float>(n));
+        const float ca = std::cos(a);
+        const float sa = std::sin(a);
+        verts.push_back({ { pxCX + ca * inR,  pxCY + sa * inR  }, ic, { 0.0f, 0.0f } });
+        verts.push_back({ { pxCX + ca * outR, pxCY + sa * outR }, oc, { 0.0f, 0.0f } });
+        if (i > 0)
+        {
+            const int b = (i - 1) * 2;
+            indices.push_back(b);     indices.push_back(b + 1); indices.push_back(b + 2);
+            indices.push_back(b + 2); indices.push_back(b + 1); indices.push_back(b + 3);
+        }
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawQuad(NormPoint p0, NormPoint p1, NormPoint p2, NormPoint p3,
+                        Color c0, Color c1, Color c2, Color c3)
+{
+    if (!m_renderer) return;
+    const float sw = static_cast<float>(GetScreenWidth());
+    const float sh = static_cast<float>(GetScreenHeight());
+    SDL_Vertex verts[4] = {
+        { { p0.x * sw, p0.y * sh }, c0.ToSDLFColor(), { 0.0f, 0.0f } },
+        { { p1.x * sw, p1.y * sh }, c1.ToSDLFColor(), { 1.0f, 0.0f } },
+        { { p2.x * sw, p2.y * sh }, c2.ToSDLFColor(), { 1.0f, 1.0f } },
+        { { p3.x * sw, p3.y * sh }, c3.ToSDLFColor(), { 0.0f, 1.0f } }
+    };
+    const int indices[6] = { 0, 1, 2, 0, 2, 3 };
+    QueueGeometry(verts, 4, indices, 6);
+}
+
+void Renderer::DrawSpriteQuad(TextureHandle texHandle,
+                              NormPoint p0, NormPoint p1, NormPoint p2, NormPoint p3,
+                              Color tint, float alpha)
+{
+    SDL_Texture* tex = ResourceManager::GetInstance().GetTexture(texHandle);
+    if (!tex || !m_renderer || alpha <= 0.001f) return;
+
+    Flush();
+    const float sw = static_cast<float>(GetScreenWidth());
+    const float sh = static_cast<float>(GetScreenHeight());
+    SDL_FColor fc = tint.ToSDLFColor();
+    fc.a *= std::clamp(alpha, 0.0f, 1.0f);
+
+    SDL_Vertex verts[4] = {
+        { { p0.x * sw, p0.y * sh }, fc, { 0.0f, 0.0f } },
+        { { p1.x * sw, p1.y * sh }, fc, { 1.0f, 0.0f } },
+        { { p2.x * sw, p2.y * sh }, fc, { 1.0f, 1.0f } },
+        { { p3.x * sw, p3.y * sh }, fc, { 0.0f, 1.0f } }
+    };
+    const int indices[6] = { 0, 1, 2, 0, 2, 3 };
+    SDL_RenderGeometry(m_renderer, tex, verts, 4, indices, 6);
+}
+
+void Renderer::DrawRibbonStrip(const RibbonNode* nodes, int count, bool roundedCaps)
+{
+    if (!m_renderer || !nodes || count < 2) return;
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
+    if (sw <= 0 || sh <= 0) return;
+    const float fsw = static_cast<float>(sw);
+    const float fsh = static_cast<float>(sh);
+    const float minDim = static_cast<float>(std::min(sw, sh));
+
+    struct PxNode
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float halfW = 0.0f;
+        SDL_FColor core{};
+        SDL_FColor edge{};
+    };
+
+    static thread_local std::vector<PxNode> pts;
+    pts.clear();
+    pts.reserve(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+    {
+        const float px = nodes[i].x * fsw;
+        const float py = nodes[i].y * fsh;
+        if (!pts.empty())
+        {
+            const float dx = px - pts.back().x;
+            const float dy = py - pts.back().y;
+            if (dx * dx + dy * dy < 0.09f && i < count - 1) continue;
+        }
+        pts.push_back({
+            px, py,
+            std::max(0.5f, nodes[i].normWidth * minDim * 0.5f),
+            nodes[i].coreColor.ToSDLFColor(),
+            nodes[i].edgeColor.ToSDLFColor()
+        });
+    }
+
+    const int n = static_cast<int>(pts.size());
+    if (n < 2) return;
+
+    static thread_local std::vector<SDL_Vertex> verts;
+    static thread_local std::vector<int> indices;
+    verts.clear();
+    indices.clear();
+    verts.reserve(static_cast<size_t>(n * 4 + 36));
+    indices.reserve(static_cast<size_t>((n - 1) * 18 + 96));
+
+    auto segNormal = [&](int idxA, int idxB, float& outNx, float& outNy) {
+        const float dx = pts[idxB].x - pts[idxA].x;
+        const float dy = pts[idxB].y - pts[idxA].y;
+        const float len = std::sqrt(dx * dx + dy * dy);
+        if (len > 0.0001f) { outNx = -dy / len; outNy = dx / len; }
+        else { outNx = 0.0f; outNy = 1.0f; }
+    };
+
+    for (int i = 0; i < n; ++i)
+    {
+        float nx = 0.0f, ny = 1.0f;
+        if (i == 0)
+        {
+            segNormal(0, 1, nx, ny);
+        }
+        else if (i == n - 1)
+        {
+            segNormal(n - 2, n - 1, nx, ny);
+        }
+        else
+        {
+            float n0x = 0.0f, n0y = 1.0f, n1x = 0.0f, n1y = 1.0f;
+            segNormal(i - 1, i, n0x, n0y);
+            segNormal(i, i + 1, n1x, n1y);
+            float mx = n0x + n1x;
+            float my = n0y + n1y;
+            const float mlen = std::sqrt(mx * mx + my * my);
+            if (mlen > 0.001f)
+            {
+                mx /= mlen;
+                my /= mlen;
+                const float dot = std::max(0.45f, mx * n1x + my * n1y);
+                const float miter = std::min(1.85f, 1.0f / dot);
+                nx = mx * miter;
+                ny = my * miter;
+            }
+            else
+            {
+                nx = n1x;
+                ny = n1y;
+            }
+        }
+
+        const float hw = pts[i].halfW;
+        const float cw = hw * 0.34f;
+        verts.push_back({ { pts[i].x - nx * hw, pts[i].y - ny * hw }, pts[i].edge, { 0.0f, 0.0f } });
+        verts.push_back({ { pts[i].x - nx * cw, pts[i].y - ny * cw }, pts[i].core, { 0.35f, 0.0f } });
+        verts.push_back({ { pts[i].x + nx * cw, pts[i].y + ny * cw }, pts[i].core, { 0.65f, 0.0f } });
+        verts.push_back({ { pts[i].x + nx * hw, pts[i].y + ny * hw }, pts[i].edge, { 1.0f, 0.0f } });
+    }
+
+    for (int i = 0; i < n - 1; ++i)
+    {
+        for (int band = 0; band < 3; ++band)
+        {
+            const int a0 = i * 4 + band;
+            const int a1 = i * 4 + band + 1;
+            const int b0 = (i + 1) * 4 + band;
+            const int b1 = (i + 1) * 4 + band + 1;
+            indices.push_back(a0); indices.push_back(a1); indices.push_back(b0);
+            indices.push_back(b0); indices.push_back(a1); indices.push_back(b1);
+        }
+    }
+
+    if (roundedCaps)
+    {
+        auto addCap = [&](const PxNode& capPt, float dirX, float dirY) {
+            const float baseAng = std::atan2(dirY, dirX);
+            constexpr int capSegs = 10;
+            const int centerIdx = static_cast<int>(verts.size());
+            verts.push_back({ { capPt.x, capPt.y }, capPt.core, { 0.5f, 0.5f } });
+            for (int s = 0; s <= capSegs; ++s)
+            {
+                const float a = baseAng - kPi * 0.5f + kPi * (static_cast<float>(s) / static_cast<float>(capSegs));
+                const float ca = std::cos(a);
+                const float sa = std::sin(a);
+                verts.push_back({ { capPt.x + ca * capPt.halfW * 0.36f, capPt.y + sa * capPt.halfW * 0.36f }, capPt.core, { 0.5f, 0.5f } });
+                verts.push_back({ { capPt.x + ca * capPt.halfW,         capPt.y + sa * capPt.halfW         }, capPt.edge, { 0.5f, 0.5f } });
+                if (s > 0)
+                {
+                    const int pm = centerIdx + 1 + (s - 1) * 2;
+                    const int cm = centerIdx + 1 + s * 2;
+                    indices.push_back(centerIdx); indices.push_back(pm);     indices.push_back(cm);
+                    indices.push_back(pm);        indices.push_back(pm + 1); indices.push_back(cm);
+                    indices.push_back(cm);        indices.push_back(pm + 1); indices.push_back(cm + 1);
+                }
+            }
+        };
+
+        float sdx = pts[0].x - pts[1].x, sdy = pts[0].y - pts[1].y;
+        const float slen = std::max(0.0001f, std::sqrt(sdx * sdx + sdy * sdy));
+        addCap(pts[0], sdx / slen, sdy / slen);
+
+        float edx = pts[n - 1].x - pts[n - 2].x, edy = pts[n - 1].y - pts[n - 2].y;
+        const float elen = std::max(0.0001f, std::sqrt(edx * edx + edy * edy));
+        addCap(pts[n - 1], edx / elen, edy / elen);
+    }
+
+    QueueGeometry(verts.data(), static_cast<int>(verts.size()), indices.data(), static_cast<int>(indices.size()));
+}
+
+void Renderer::DrawCatmullRomRibbon(const NormPoint* controlPoints, int count,
+                                    float startNormWidth, float endNormWidth,
+                                    Color coreStart, Color coreEnd,
+                                    Color auraStart, Color auraEnd,
+                                    int subdivisionsPerSegment,
+                                    bool roundedCaps)
+{
+    if (!m_renderer || !controlPoints || count < 2) return;
+
+    static thread_local std::vector<RibbonNode> ribbon;
+    ribbon.clear();
+
+    if (count == 2)
+    {
+        ribbon.push_back({ controlPoints[0].x, controlPoints[0].y, startNormWidth, coreStart, auraStart });
+        ribbon.push_back({ controlPoints[1].x, controlPoints[1].y, endNormWidth,   coreEnd,   auraEnd   });
+        DrawRibbonStrip(ribbon.data(), 2, roundedCaps);
+        return;
+    }
+
+    const int subs = std::clamp(subdivisionsPerSegment, 2, 24);
+    const int totalSamples = (count - 1) * subs + 1;
+    ribbon.reserve(static_cast<size_t>(totalSamples));
+
+    auto catmull = [](float p0, float p1, float p2, float p3, float t) -> float {
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        return 0.5f * ((2.0f * p1)
+                     + (-p0 + p2) * t
+                     + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
+                     + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+    };
+
+    for (int seg = 0; seg < count - 1; ++seg)
+    {
+        const NormPoint p1 = controlPoints[seg];
+        const NormPoint p2 = controlPoints[seg + 1];
+        const NormPoint p0 = (seg > 0) ? controlPoints[seg - 1]
+                                       : NormPoint{ p1.x * 2.0f - p2.x, p1.y * 2.0f - p2.y };
+        const NormPoint p3 = (seg + 2 < count) ? controlPoints[seg + 2]
+                                               : NormPoint{ p2.x * 2.0f - p1.x, p2.y * 2.0f - p1.y };
+
+        const int limit = (seg == count - 2) ? subs : (subs - 1);
+        for (int s = 0; s <= limit; ++s)
+        {
+            const float localT = static_cast<float>(s) / static_cast<float>(subs);
+            const float globalT = (static_cast<float>(seg) + localT) / static_cast<float>(count - 1);
+            const float rx = catmull(p0.x, p1.x, p2.x, p3.x, localT);
+            const float ry = catmull(p0.y, p1.y, p2.y, p3.y, localT);
+            const float rw = startNormWidth + (endNormWidth - startNormWidth) * globalT;
+            ribbon.push_back({
+                rx, ry, rw,
+                LerpColor8(coreStart, coreEnd, globalT),
+                LerpColor8(auraStart, auraEnd, globalT)
+            });
+        }
+    }
+
+    DrawRibbonStrip(ribbon.data(), static_cast<int>(ribbon.size()), roundedCaps);
 }
 
 } // namespace sakura::core

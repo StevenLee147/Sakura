@@ -121,24 +121,76 @@ void AudioVisualizer::RenderBars(sakura::core::Renderer& renderer,
                                  sakura::core::Color highColor,
                                  float opacity) const
 {
-    float gap = area.width * 0.005f;
-    float barWidth = (area.width - gap * static_cast<float>(kBandCount - 1)) / static_cast<float>(kBandCount);
+    if (opacity <= 0.001f || area.width <= 0.0f || area.height <= 0.0f) return;
+
+    const float gap = area.width * 0.0065f;
+    const float barWidth = (area.width - gap * static_cast<float>(kBandCount - 1)) / static_cast<float>(kBandCount);
+    const float cornerR = std::min(0.004f, barWidth * 0.45f);
+    const float baseY = area.y + area.height;
+
+    std::array<sakura::core::NormPoint, kBandCount> crestPts{};
 
     for (std::size_t index = 0; index < kBandCount; ++index)
     {
-        float x = area.x + index * (barWidth + gap);
-        float level = std::clamp(m_bands[index], 0.0f, 1.0f);
-        float peak = std::clamp(m_peaks[index], 0.0f, 1.0f);
-        float height = area.height * level;
-        sakura::core::Color barColor = ScaleAlpha(
-            LerpColor(lowColor, highColor, static_cast<float>(index) / static_cast<float>(kBandCount - 1)),
-            opacity);
+        const float u = static_cast<float>(index) / static_cast<float>(kBandCount - 1);
+        const float x = area.x + static_cast<float>(index) * (barWidth + gap);
+        const float level = std::clamp(m_bands[index], 0.0f, 1.0f);
+        const float peak = std::clamp(m_peaks[index], 0.0f, 1.0f);
+        const float height = std::max(0.0025f, area.height * level);
+        const float topY = baseY - height;
 
-        renderer.DrawFilledRect({ x, area.y + area.height - height, barWidth, height }, barColor);
-        renderer.DrawFilledRect(
-            { x, area.y + area.height - area.height * peak - 0.003f, barWidth, 0.003f },
-            ScaleAlpha(sakura::core::Color{ 255, 240, 220, 240 }, opacity));
+        const sakura::core::Color baseCol = LerpColor(lowColor, highColor, u);
+        const sakura::core::Color topCol = ScaleAlpha(
+            sakura::core::Color{
+                static_cast<uint8_t>(std::min(255, baseCol.r + 36)),
+                static_cast<uint8_t>(std::min(255, baseCol.g + 32)),
+                static_cast<uint8_t>(std::min(255, baseCol.b + 36)),
+                baseCol.a
+            },
+            opacity * (0.55f + 0.45f * level));
+        const sakura::core::Color botCol = ScaleAlpha(baseCol, opacity * 0.14f);
+
+        // Luminous rounded glass spectrum pillar
+        renderer.DrawRoundedGradientRect(
+            { x, topY, barWidth, height },
+            cornerR,
+            topCol, topCol,
+            botCol, botCol,
+            5, true);
+
+        // Subtle downward water reflection under baseline
+        if (level > 0.04f)
+        {
+            const float reflH = height * 0.24f;
+            renderer.DrawGradientRect(
+                { x, baseY + 0.001f, barWidth, reflH },
+                ScaleAlpha(baseCol, opacity * 0.16f), ScaleAlpha(baseCol, opacity * 0.16f),
+                { baseCol.r, baseCol.g, baseCol.b, 0 }, { baseCol.r, baseCol.g, baseCol.b, 0 });
+        }
+
+        // Floating gilded peak jewel
+        const float peakY = baseY - area.height * peak - 0.0035f;
+        renderer.DrawRoundedRect(
+            { x, peakY, barWidth, 0.0026f },
+            0.0013f,
+            ScaleAlpha(sakura::core::Color{ 252, 226, 174, 225 }, opacity),
+            true, 4);
+
+        crestPts[index] = { x + barWidth * 0.5f, topY };
     }
+
+    // Connecting silk harmonic ribbon over bar crests
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawCatmullRomRibbon(
+        crestPts.data(),
+        static_cast<int>(kBandCount),
+        0.0035f, 0.0035f,
+        ScaleAlpha(lowColor, opacity * 0.55f),
+        ScaleAlpha(highColor, opacity * 0.55f),
+        { lowColor.r, lowColor.g, lowColor.b, 0 },
+        { highColor.r, highColor.g, highColor.b, 0 },
+        4, true);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 }
 
 void AudioVisualizer::RenderCircle(sakura::core::Renderer& renderer,
@@ -148,21 +200,60 @@ void AudioVisualizer::RenderCircle(sakura::core::Renderer& renderer,
                                    sakura::core::Color color,
                                    float opacity) const
 {
-    sakura::core::Color ringColor = ScaleAlpha(color, opacity * 0.45f);
-    renderer.DrawCircleOutline(centerX, centerY, baseRadius, ringColor, 0.002f, 64);
+    if (opacity <= 0.001f || baseRadius <= 0.0f) return;
 
-    for (std::size_t index = 0; index < kBandCount; ++index)
+    const float aspect = static_cast<float>(renderer.GetScreenHeight()) /
+                         static_cast<float>(std::max(1, renderer.GetScreenWidth()));
+    float avgEnergy = 0.0f;
+    for (float b : m_bands) avgEnergy += b;
+    avgEnergy /= static_cast<float>(kBandCount);
+
+    // Soft radial aura ring
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRingGradient(
+        centerX, centerY,
+        baseRadius * 0.96f,
+        baseRadius * (1.06f + avgEnergy * 0.14f),
+        ScaleAlpha(color, opacity * 0.36f),
+        { color.r, color.g, color.b, 0 },
+        72);
+
+    // Closed smooth silk crown + radial harmonic ticks
+    std::array<sakura::core::NormPoint, kBandCount + 3> crown{};
+    for (std::size_t index = 0; index < kBandCount + 3; ++index)
     {
-        float angle = (static_cast<float>(index) / static_cast<float>(kBandCount)) * 2.0f * std::numbers::pi_v<float>;
-        float level = std::clamp(m_bands[index], 0.0f, 1.0f);
-        float innerRadius = baseRadius;
-        float outerRadius = baseRadius + 0.01f + level * 0.05f;
-        float x1 = centerX + std::cos(angle) * innerRadius;
-        float y1 = centerY + std::sin(angle) * innerRadius;
-        float x2 = centerX + std::cos(angle) * outerRadius;
-        float y2 = centerY + std::sin(angle) * outerRadius;
-        renderer.DrawLine(x1, y1, x2, y2, ScaleAlpha(color, opacity), 0.0014f + level * 0.0014f);
+        const std::size_t bIdx = index % kBandCount;
+        const float angle = (static_cast<float>(index) / static_cast<float>(kBandCount)) * 2.0f * std::numbers::pi_v<float> - std::numbers::pi_v<float> * 0.5f;
+        const float level = std::clamp(m_bands[bIdx], 0.0f, 1.0f);
+        const float outerR = baseRadius + 0.006f + level * 0.044f;
+        crown[index] = {
+            centerX + std::cos(angle) * outerR * aspect,
+            centerY + std::sin(angle) * outerR
+        };
+
+        if (index < kBandCount)
+        {
+            const float x1 = centerX + std::cos(angle) * (baseRadius * 1.01f) * aspect;
+            const float y1 = centerY + std::sin(angle) * (baseRadius * 1.01f);
+            const sakura::core::Color tickCol = LerpColor(color, { 250, 218, 162, color.a }, level);
+            renderer.DrawLine(x1, y1, crown[index].x, crown[index].y,
+                              ScaleAlpha(tickCol, opacity * (0.38f + 0.62f * level)),
+                              0.0012f + level * 0.0016f);
+        }
     }
+
+    renderer.DrawCatmullRomRibbon(
+        crown.data(),
+        static_cast<int>(crown.size()),
+        0.0042f, 0.0042f,
+        ScaleAlpha({ 252, 224, 176, 230 }, opacity * 0.72f),
+        ScaleAlpha(color, opacity * 0.72f),
+        { color.r, color.g, color.b, 0 },
+        { color.r, color.g, color.b, 0 },
+        4, false);
+
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    renderer.DrawCircleOutline(centerX, centerY, baseRadius, ScaleAlpha(color, opacity * 0.50f), 0.0015f, 72);
 }
 
 void AudioVisualizer::RenderWave(sakura::core::Renderer& renderer,
@@ -170,22 +261,36 @@ void AudioVisualizer::RenderWave(sakura::core::Renderer& renderer,
                                  sakura::core::Color color,
                                  float opacity) const
 {
-    if (m_waveform.size() < 2)
+    if (m_waveform.size() < 2 || opacity <= 0.001f)
         return;
 
-    sakura::core::Color waveColor = ScaleAlpha(color, opacity);
-    float centerY = area.y + area.height * 0.5f;
-    float amplitude = area.height * 0.45f;
-    for (std::size_t index = 1; index < m_waveform.size(); ++index)
+    static thread_local std::vector<sakura::core::NormPoint> pts;
+    pts.clear();
+    pts.reserve(m_waveform.size());
+
+    const float centerY = area.y + area.height * 0.5f;
+    const float amplitude = area.height * 0.44f;
+    for (std::size_t index = 0; index < m_waveform.size(); ++index)
     {
-        float t1 = static_cast<float>(index - 1) / static_cast<float>(m_waveform.size() - 1);
-        float t2 = static_cast<float>(index) / static_cast<float>(m_waveform.size() - 1);
-        float x1 = area.x + area.width * t1;
-        float x2 = area.x + area.width * t2;
-        float y1 = centerY - m_waveform[index - 1] * amplitude;
-        float y2 = centerY - m_waveform[index] * amplitude;
-        renderer.DrawLine(x1, y1, x2, y2, waveColor, 0.0016f);
+        const float t = static_cast<float>(index) / static_cast<float>(m_waveform.size() - 1);
+        pts.push_back({
+            area.x + area.width * t,
+            centerY - m_waveform[index] * amplitude
+        });
     }
+
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    sakura::core::Color coreStart = ScaleAlpha(color, opacity * 0.85f);
+    sakura::core::Color coreEnd   = ScaleAlpha({ 250, 218, 162, color.a }, opacity * 0.85f);
+    renderer.DrawCatmullRomRibbon(
+        pts.data(),
+        static_cast<int>(pts.size()),
+        0.0055f, 0.0055f,
+        coreStart, coreEnd,
+        { color.r, color.g, color.b, 0 },
+        { 250, 218, 162, 0 },
+        3, true);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
 }
 
 bool AudioVisualizer::OpenDecoder(std::string_view path)

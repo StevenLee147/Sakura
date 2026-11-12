@@ -123,7 +123,7 @@ void SceneMenu::SetupButtons()
         LOG_INFO("[SceneMenu] 点击：开始游戏");
         m_manager.SwitchScene(
             std::make_unique<SceneSelect>(m_manager),
-            TransitionType::SlideLeft, 0.4f);
+            TransitionType::SakuraSweep, 0.45f);
     });
 
     // 教程 → 新手教程场景
@@ -132,7 +132,7 @@ void SceneMenu::SetupButtons()
         LOG_INFO("[SceneMenu] 点击：教程");
         m_manager.SwitchScene(
             std::make_unique<SceneTutorial>(m_manager, false),
-            TransitionType::SlideLeft, 0.4f);
+            TransitionType::SilkShutter, 0.42f);
     });
 
     // 统计 → 进入统计场景
@@ -141,7 +141,7 @@ void SceneMenu::SetupButtons()
         LOG_INFO("[SceneMenu] 点击：统计");
         m_manager.SwitchScene(
             std::make_unique<SceneStats>(m_manager),
-            TransitionType::SlideLeft, 0.4f);
+            TransitionType::SilkShutter, 0.42f);
     });
 
     // 谱面编辑器 → 显示编辑器子菜单
@@ -158,7 +158,7 @@ void SceneMenu::SetupButtons()
         LOG_INFO("[SceneMenu] 点击：设置");
         m_manager.SwitchScene(
             std::make_unique<SceneSettings>(m_manager),
-            TransitionType::SlideLeft, 0.4f);
+            TransitionType::SilkShutter, 0.42f);
     });
 
     // 退出 → 弹出确认对话框
@@ -380,7 +380,8 @@ void SceneMenu::OnUpdate(float dt)
             // 临时移动按钮 bounds 到动画偏移位置（X轴偏移）
             auto origBounds = m_buttons[i]->GetBounds();
             sakura::core::NormRect animBounds = origBounds;
-            animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
+            animBounds.x = origBounds.x + m_anim.btnOffsetX[i] + (i % 2 == 1 ? 0.006f : 0.0f);
+
             m_buttons[i]->SetBounds(animBounds);
 
             m_buttons[i]->Update(dt);
@@ -407,100 +408,184 @@ void SceneMenu::OnUpdate(float dt)
 }
 
 // ── OnRender ──────────────────────────────────────────────────────────────────
-
 void SceneMenu::OnRender(sakura::core::Renderer& renderer)
 {
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
-
     sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_glowPhase);
     if (m_fontTitle == sakura::core::INVALID_HANDLE) return;
-    const auto pink = sakura::core::Color{234, 173, 193, 255};
-    const auto dim = sakura::core::Color{161, 169, 191, 255};
+
+    const float aspect = static_cast<float>(renderer.GetScreenHeight()) / std::max(1, renderer.GetScreenWidth());
+    const auto [mx, my] = sakura::core::Input::GetMousePosition();
+    const float parX = (mx - 0.5f) * 0.014f;
+    const float parY = (my - 0.5f) * 0.010f;
+
+    // ── 右侧月夜樱纹星盘与律动光环 ────────────────────────────────────────────
+    const float crestCX = 0.72f + parX;
+    const float crestCY = 0.45f + parY;
+    const float breath  = 0.5f + 0.5f * std::sin(m_glowPhase * 1.8f);
+
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(
+        crestCX, crestCY, 0.24f + breath * 0.02f, 0.24f + breath * 0.02f,
+        { 246, 172, 200, static_cast<uint8_t>(48 + breath * 22.0f) }, { 246, 172, 200, 0 }, 48);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+
+    sakura::audio::AudioVisualizer::GetInstance().RenderCircle(
+        renderer, crestCX, crestCY, 0.145f, { 246, 178, 206, 210 }, 0.72f);
+
+    renderer.DrawCircleOutline(crestCX, crestCY, 0.185f, { 250, 216, 157, 72 }, 0.0011f, 72);
+    renderer.DrawArc(crestCX, crestCY, 0.205f, m_glowPhase * 18.0f, m_glowPhase * 18.0f + 135.0f,
+                     { 250, 216, 157, 130 }, 0.0018f, 48);
+    renderer.DrawArc(crestCX, crestCY, 0.205f, m_glowPhase * 18.0f + 180.0f, m_glowPhase * 18.0f + 315.0f,
+                     { 246, 172, 200, 125 }, 0.0018f, 48);
+
+    const auto crestTex = sakura::ui::VisualStyle::GetSakuraCrestTexture();
+    if (crestTex != sakura::core::INVALID_HANDLE)
+    {
+        const float s = 0.21f * (0.98f + 0.03f * breath);
+        const float w = s * aspect;
+        renderer.DrawSprite(crestTex, { crestCX - w * 0.5f, crestCY - s * 0.5f, w, s },
+                            m_glowPhase * 7.5f, sakura::core::Color::White, 0.94f);
+    }
+
+    // 右下角磨砂琉璃双模说明铭牌
+    sakura::ui::VisualStyle::DrawGlassCard(
+        renderer,
+        { 0.585f + parX * 0.5f, 0.735f + parY * 0.5f, 0.27f, 0.125f },
+        { 22, 28, 52, 188 }, { 14, 18, 36, 208 },
+        { 250, 216, 157, 145 }, { 164, 154, 212, 58 },
+        0.015f, 0.42f);
+
+    const auto pink = sakura::core::Color{ 246, 178, 206, 255 };
+    const auto gold = sakura::core::Color{ 250, 216, 157, 245 };
+    const auto dim  = sakura::core::Color{ 176, 184, 210, 235 };
+    renderer.DrawText(m_fontSub, "4 KEYS  +  MOUSE  HYBRID", 0.72f + parX * 0.5f, 0.758f + parY * 0.5f, 0.019f, gold, sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.625f + parX * 0.5f, 0.815f + parX * 0.5f, 0.795f + parY * 0.5f, 0.55f);
+    renderer.DrawText(m_fontSub, "左手键盘落键 · 右手丝滑轨迹", 0.72f + parX * 0.5f, 0.810f + parY * 0.5f, 0.021f, dim, sakura::core::TextAlign::Center);
+
+    // ── 左侧导航磨砂底座与主标题 ─────────────────────────────────────────────
     const float titleX = TITLE_X + m_anim.titleOffsetX;
-    renderer.DrawText(m_fontSub, "A DUAL RHYTHM JOURNEY", titleX, 0.12f, 0.018f, pink);
-    renderer.DrawText(m_fontTitle, "Sakura", titleX, TITLE_Y, 0.102f, {245,235,235,255});
-    renderer.DrawText(m_fontTitle, "樱", titleX + 0.238f, TITLE_Y + 0.021f, 0.068f, pink);
-    renderer.DrawLine(titleX, 0.345f, titleX + 0.040f, 0.345f, pink, 0.002f);
-    renderer.DrawText(m_fontSub, "指尖落樱，双手成诗。", titleX + 0.05f, 0.327f, 0.022f, dim);
-    renderer.DrawText(m_fontSub, "4 KEYS  +  MOUSE", 0.735f, 0.771f, 0.020f, pink, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSub, "左手节奏 · 右手旋律", 0.735f, 0.814f, 0.023f, dim, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSub, "↑ ↓ 选择   ·   Enter 确认", 0.075f, 0.880f, 0.017f, dim);
-    // ── 按钮（应用 X 动画偏移，同时做溢出裁剪）──────────────────────────────
+    sakura::ui::VisualStyle::DrawGlassCard(
+        renderer,
+        { 0.052f, 0.088f, 0.345f, 0.835f },
+        { 18, 24, 46, 168 }, { 10, 14, 28, 196 },
+        { 250, 216, 157, 128 }, { 154, 162, 206, 48 },
+        0.020f, 0.48f);
+
+    sakura::ui::VisualStyle::DrawBadgePill(
+        renderer,
+        { titleX, 0.115f, 0.215f, 0.032f },
+        "A DUAL RHYTHM JOURNEY",
+        m_fontSub, 0.015f,
+        { 46, 34, 66, 195 }, { 250, 216, 157, 145 }, gold);
+
+    renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+    renderer.DrawRadialGradient(
+        titleX + 0.12f, TITLE_Y + 0.055f, 0.15f, 0.09f,
+        { 246, 172, 200, static_cast<uint8_t>(36 + breath * 22.0f) }, { 246, 172, 200, 0 }, 36);
+    renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+
+    renderer.DrawText(m_fontTitle, "Sakura", titleX, TITLE_Y - 0.008f, 0.098f, { 250, 244, 248, 255 });
+    renderer.DrawText(m_fontTitle, "樱", titleX + 0.236f, TITLE_Y + 0.015f, 0.068f, pink);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, titleX, titleX + 0.29f, 0.308f, 0.78f);
+    renderer.DrawText(m_fontSub, "月华琉璃，指尖落樱成诗。", titleX, 0.324f, 0.021f, dim);
+
+    // ── 按钮（错落阶梯感 + 鎏金键盘焦点指示）────────────────────────────────
     for (int i = 0; i < BUTTON_COUNT; ++i)
     {
         if (!m_buttons[i]) continue;
 
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
+        animBounds.x = origBounds.x + m_anim.btnOffsetX[i] + (i % 2 == 1 ? 0.006f : 0.0f);
 
-        // 若完全在左侧屏幕外则跳过渲染
         if (animBounds.x + animBounds.width < 0.0f) continue;
 
         m_buttons[i]->SetBounds(animBounds);
         m_buttons[i]->Render(renderer);
         if (i == m_keyboardFocus)
-            renderer.DrawFilledRect({animBounds.x - 0.010f, animBounds.y + 0.013f, 0.002f, animBounds.height - 0.026f}, {234,173,193,220});
-        m_buttons[i]->SetBounds(origBounds);   // 还原
+        {
+            renderer.DrawRoundedGradientRect(
+                { animBounds.x - 0.009f, animBounds.y + 0.010f, 0.0034f, animBounds.height - 0.020f },
+                0.0017f, gold, pink, gold, pink, 6, true);
+        }
+        m_buttons[i]->SetBounds(origBounds);
+    }
+
+    renderer.DrawText(m_fontSub, "↑ ↓ 选择   ·   Enter 确认   ·   Esc 退出", 0.075f, 0.876f, 0.016f, dim);
+
+    // ── 三层景深樱瓣与点击涟漪 ───────────────────────────────────────────────
+    m_particles.Render(renderer);
+    for (const auto& ring : m_clickRings)
+    {
+        const float rt = std::clamp(ring.timer / 0.4f, 0.0f, 1.0f);
+        const float rad = 0.008f + sakura::utils::EaseOutCubic(rt) * 0.045f;
+        const uint8_t ra = static_cast<uint8_t>((1.0f - rt) * 195.0f);
+        renderer.DrawRingGradient(ring.x, ring.y, rad * 0.78f, rad, { 250, 216, 157, ra }, { 246, 172, 200, 0 }, 40);
     }
 
     // ── 版本号 ────────────────────────────────────────────────────────────────
-    renderer.DrawText(m_fontSub, "v" SAKURA_VERSION_STRING,
-        0.075f, 0.95f, 0.016f,
-        sakura::core::Color{ 200, 200, 200, 160 },
+    renderer.DrawText(m_fontSub, "v" SAKURA_VERSION_STRING "  ·  LUMINOUS GLASS EDITION",
+        0.075f, 0.948f, 0.015f,
+        sakura::core::Color{ 208, 212, 232, 168 },
         sakura::core::TextAlign::Left);
 
     // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
     if (m_showEditorMenu)
     {
-        sakura::ui::VisualStyle::DrawScrim(renderer);
-        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.30f, 0.28f, 0.40f, 0.44f }, true, true);
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.66f);
+        sakura::ui::VisualStyle::DrawGlassCard(
+            renderer, { 0.295f, 0.265f, 0.41f, 0.465f },
+            { 28, 34, 62, 236 }, { 16, 20, 40, 244 },
+            { 250, 216, 157, 190 }, { 246, 172, 200, 92 },
+            0.018f, 0.62f);
 
-        // 标题
+        sakura::ui::VisualStyle::DrawBadgePill(
+            renderer, { 0.425f, 0.285f, 0.15f, 0.028f },
+            "CHART ATELIER", m_fontSub, 0.013f,
+            { 54, 38, 74, 210 }, { 250, 216, 157, 155 }, gold);
         renderer.DrawText(m_fontSub, "谱面编辑器",
-            0.50f, 0.325f, 0.038f,
-            sakura::core::Color{ 230, 210, 255, 240 },
+            0.50f, 0.322f, 0.036f,
+            sakura::core::Color{ 248, 242, 248, 250 },
             sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.33f, 0.67f, 0.374f, 0.78f);
 
-        // 分隔线
-        renderer.DrawLine(0.32f, 0.375f, 0.68f, 0.375f,
-            sakura::core::Color{ 100, 80, 150, 120 }, 0.001f);
-
-        // 自制谱列表信息
         if (m_customCharts.empty())
         {
-            renderer.DrawText(m_fontSub, "（暂无自制谱面）",
-                0.50f, 0.422f, 0.022f,
-                sakura::core::Color{ 160, 150, 190, 160 },
+            renderer.DrawText(m_fontSub, "（暂无自制谱面 · 点击下方新建）",
+                0.50f, 0.420f, 0.021f,
+                sakura::core::Color{ 176, 182, 210, 185 },
                 sakura::core::TextAlign::Center);
         }
         else
         {
-            // 显示最多 3 条自制谱名称供参考
             int showCount = std::min(static_cast<int>(m_customCharts.size()), 3);
             for (int i = 0; i < showCount; ++i)
             {
                 bool selected = (m_selectedChartIdx == i);
+                if (selected)
+                {
+                    renderer.DrawRoundedGradientRect(
+                        { 0.345f, 0.394f + i * 0.029f, 0.31f, 0.026f },
+                        0.006f, { 82, 54, 88, 170 }, { 48, 38, 72, 130 },
+                        { 82, 54, 88, 170 }, { 48, 38, 72, 130 }, 8, true);
+                }
                 renderer.DrawText(m_fontSub,
-                    (selected ? "> " : "  ") + m_customCharts[i].title,
-                    0.36f, 0.398f + i * 0.028f, 0.022f,
-                    sakura::core::Color{ selected ? 255u : 200u,
-                                        selected ? 220u : 195u,
-                                        selected ? 255u : 230u,
-                                        selected ? 240u : 180u },
+                    (selected ? "◆  " : "   ") + m_customCharts[i].title,
+                    0.358f, 0.396f + i * 0.029f, 0.021f,
+                    selected ? gold : sakura::core::Color{ 210, 214, 234, 195 },
                     sakura::core::TextAlign::Left);
             }
             if (static_cast<int>(m_customCharts.size()) > 3)
             {
                 renderer.DrawText(m_fontSub,
-                    "  ...（共" + std::to_string(m_customCharts.size()) + "首）",
-                    0.36f, 0.398f + 3 * 0.028f, 0.020f,
-                    sakura::core::Color{ 160, 155, 185, 140 },
+                    "   ...（共 " + std::to_string(m_customCharts.size()) + " 首自制谱面）",
+                    0.358f, 0.396f + 3 * 0.029f, 0.018f,
+                    sakura::core::Color{ 168, 174, 202, 155 },
                     sakura::core::TextAlign::Left);
             }
         }
 
-        // 动作按钮（若无自制谱，"打开已有谱面"按钮禁用）
         if (m_btnEditorOpen)
         {
             m_btnEditorOpen->SetEnabled(!m_customCharts.empty());
@@ -513,16 +598,21 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     // ── 退出确认对话框 ────────────────────────────────────────────────────────
     if (m_showExitConfirm)
     {
-        sakura::ui::VisualStyle::DrawScrim(renderer);
-        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.32f, 0.35f, 0.36f, 0.26f }, true, true);
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.66f);
+        sakura::ui::VisualStyle::DrawGlassCard(
+            renderer, { 0.315f, 0.34f, 0.37f, 0.275f },
+            { 28, 34, 62, 238 }, { 16, 20, 40, 246 },
+            { 250, 216, 157, 190 }, { 246, 172, 200, 92 },
+            0.018f, 0.62f);
 
-        // 提示文字
+        renderer.DrawText(m_fontSub, "EXIT SAKURA",
+            0.50f, 0.368f, 0.015f, gold, sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.36f, 0.64f, 0.398f, 0.72f);
         renderer.DrawText(m_fontSub, "确定要退出游戏吗？",
-            0.50f, 0.425f, 0.032f,
-            sakura::core::Color{ 240, 230, 255, 240 },
+            0.50f, 0.422f, 0.031f,
+            sakura::core::Color{ 248, 242, 248, 250 },
             sakura::core::TextAlign::Center);
 
-        // 确认 / 取消 按钮
         if (m_btnConfirmYes) m_btnConfirmYes->Render(renderer);
         if (m_btnConfirmNo)  m_btnConfirmNo ->Render(renderer);
     }
@@ -616,9 +706,9 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         // 临时应用偏移
         auto origBounds = m_buttons[i]->GetBounds();
         sakura::core::NormRect animBounds = origBounds;
-        animBounds.x = origBounds.x + m_anim.btnOffsetX[i];
-        m_buttons[i]->SetBounds(animBounds);
+        animBounds.x = origBounds.x + m_anim.btnOffsetX[i] + (i % 2 == 1 ? 0.006f : 0.0f);
 
+        m_buttons[i]->SetBounds(animBounds);
         m_buttons[i]->HandleEvent(event);
 
         m_buttons[i]->SetBounds(origBounds);

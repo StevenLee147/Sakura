@@ -7,6 +7,7 @@
 #include "scene_editor.h"
 #include "core/resource_manager.h"
 #include "utils/logger.h"
+#include "core/theme.h"
 #include "ui/toast.h"
 #include "ui/visual_style.h"
 
@@ -122,15 +123,15 @@ void SceneChartWizard::SetupFields()
 void SceneChartWizard::SetupButtons()
 {
     m_btnCreate = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.38f, 0.745f, 0.20f, 0.055f },
+        sakura::core::NormRect{ 0.38f, 0.802f, 0.20f, 0.054f },
         "创建谱面", m_fontTitle, 0.022f, 0.010f);
     sakura::ui::VisualStyle::ApplyButton(m_btnCreate.get(), sakura::ui::ButtonVariant::Primary);
     m_btnCreate->SetOnClick([this]() { ValidateAndCreate(); });
 
     m_btnCancel = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.60f, 0.745f, 0.20f, 0.055f },
+        sakura::core::NormRect{ 0.60f, 0.802f, 0.20f, 0.054f },
         "取消", m_fontTitle, 0.022f, 0.010f);
-    sakura::ui::VisualStyle::ApplyButton(m_btnCancel.get(), sakura::ui::ButtonVariant::Danger);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCancel.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnCancel->SetOnClick([this]() {
         m_manager.SwitchScene(
             std::make_unique<SceneMenu>(m_manager),
@@ -188,59 +189,64 @@ void SceneChartWizard::OnUpdate(float dt)
 
 void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
 {
+    const auto& palette = sakura::core::Theme::GetInstance().Colors();
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
-    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.18f, 0.145f, 0.66f, 0.70f }, false, true);
+    sakura::ui::VisualStyle::DrawPanel(renderer, { 0.17f, 0.148f, 0.67f, 0.730f }, false, true);
 
-    // 标题
+    // 标题与徽章
     if (m_fontTitle != sakura::core::INVALID_HANDLE)
     {
+        sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.43f, 0.022f, 0.14f, 0.026f }, "CHART STUDIO",
+            m_fontLabel, 0.013f, { 36, 28, 56, 195 }, palette.gildedHairline, palette.accent);
         renderer.DrawText(m_fontTitle, "新建谱面向导",
-            0.5f, 0.070f, 0.042f,
-            sakura::core::Color{ 255, 200, 240, 230 },
+            0.5f, 0.056f, 0.040f,
+            palette.text,
             sakura::core::TextAlign::Center);
-        renderer.DrawText(m_fontTitle, "填写谱面基本信息，创建后将自动切换到编辑器",
-            0.5f, 0.118f, 0.020f,
-            sakura::core::Color{ 160, 150, 200, 180 },
+
+        renderer.DrawText(m_fontTitle, "配置曲目元数据与音频封面资源，创建后自动进入制谱工作台",
+            0.5f, 0.104f, 0.0185f,
+            palette.textDim,
             sakura::core::TextAlign::Center);
     }
 
-    // 横线
-    renderer.DrawLine(0.10f, 0.145f, 0.90f, 0.145f,
-        sakura::core::Color{ 80, 60, 120, 120 }, 0.001f);
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.22f, 0.79f, 0.138f, 0.78f);
 
     // 字段标签 + 输入框
     const char* labelTexts[FIELD_COUNT] = {
-        "曲名 *", "作曲/艺术家", "BPM *", "偏移 (ms)", "难度名称 *",
+        "曲名", "作曲 / 艺术家", "基准 BPM", "初始偏移 (ms)", "难度名称",
         "音乐源文件", "封面源文件", "背景源文件", "输出目录"
     };
-    constexpr float LABEL_X    = 0.37f;
+    constexpr float LABEL_X    = 0.362f;
     constexpr float FIELD_H    = 0.044f;
-    constexpr float LABEL_SIZE = 0.020f;
+    constexpr float LABEL_SIZE = 0.0195f;
     constexpr float FIELD_Y0   = 0.175f;
     constexpr float FIELD_STEP = 0.068f;
 
-    bool required[FIELD_COUNT] = { true, false, true, false, true, true, false, false, false };
+    const bool required[FIELD_COUNT] = { true, false, true, false, true, true, false, false, false };
 
     for (int i = 0; i < FIELD_COUNT; ++i)
     {
-        float y = FIELD_Y0 + i * FIELD_STEP;
+        const float y = FIELD_Y0 + static_cast<float>(i) * FIELD_STEP;
+        const bool focused = (i == m_focusedField);
+        if (focused)
+        {
+            renderer.DrawRoundedGradientRect({ 0.205f, y - 0.006f, 0.610f, FIELD_H + 0.012f }, 0.009f,
+                { 42, 32, 64, 95 }, { 26, 24, 48, 55 }, { 42, 32, 64, 95 }, { 26, 24, 48, 55 });
+        }
 
         // 标签
         if (m_fontLabel != sakura::core::INVALID_HANDLE)
         {
-            sakura::core::Color labelColor = (i == m_focusedField)
-                ? sakura::core::Color{ 200, 180, 255, 230 }
-                : sakura::core::Color{ 140, 130, 180, 200 };
+            const sakura::core::Color labelColor = focused ? palette.accent : palette.textDim;
             renderer.DrawText(m_fontLabel, labelTexts[i],
                 LABEL_X, y + (FIELD_H - LABEL_SIZE) * 0.5f, LABEL_SIZE,
                 labelColor,
                 sakura::core::TextAlign::Right);
 
-            // 必填红点
             if (required[i])
             {
-                renderer.DrawFilledRect({ LABEL_X + 0.003f, y + 0.012f, 0.006f, 0.006f },
-                    sakura::core::Color{ 220, 80, 80, 220 });
+                renderer.DrawCircleFilled(LABEL_X + 0.008f, y + FIELD_H * 0.5f, 0.0032f,
+                    palette.primary, 16);
             }
         }
 
@@ -248,13 +254,13 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
         if (m_fields[i]) m_fields[i]->Render(renderer);
     }
 
-    // Tab 提示
+    // 快捷键提示
     if (m_fontLabel != sakura::core::INVALID_HANDLE)
     {
         renderer.DrawText(m_fontLabel,
-            "Tab 切换字段  |  Enter 确认  |  ESC 取消",
-            0.5f, 0.703f, 0.017f,
-            sakura::core::Color{ 100, 90, 140, 160 },
+            "Tab / Shift+Tab 切换字段   ·   Enter 下一项 / 提交   ·   ESC 返回主菜单",
+            0.5f, 0.772f, 0.0155f,
+            palette.textMuted,
             sakura::core::TextAlign::Center);
     }
 
@@ -264,15 +270,12 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
     if (m_btnCreate) m_btnCreate->Render(renderer);
     if (m_btnCancel) m_btnCancel->Render(renderer);
 
-    // 错误信息
+    // 错误信息气泡
     if (m_errorTimer > 0.0f && !m_errorMsg.empty() && m_fontLabel != sakura::core::INVALID_HANDLE)
     {
-        renderer.DrawFilledRect({ 0.25f, 0.816f, 0.50f, 0.040f },
-            sakura::core::Color{ 160, 30, 40, 200 });
-        renderer.DrawText(m_fontLabel, m_errorMsg,
-            0.50f, 0.836f, 0.018f,
-            sakura::core::Color{ 255, 200, 200, 230 },
-            sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawBadgePill(renderer, { 0.25f, 0.892f, 0.50f, 0.042f },
+            m_errorMsg, m_fontLabel, 0.0175f,
+            { 88, 24, 38, 225 }, { 255, 120, 140, 215 }, { 255, 228, 232, 245 });
     }
 }
 
