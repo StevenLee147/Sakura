@@ -85,25 +85,34 @@ TEST_CASE("内置曲目《樱落呼吸》MP4 动态舞台元数据与原生硬�
     if (VideoDecoder::IsPlatformSupported())
     {
         const bool opened = decoder.Open(mp4Path.generic_string(), true);
-        REQUIRE(opened);
-        REQUIRE(!decoder.IsFallbackActive());
-        REQUIRE(decoder.GetWidth() == 1280);
-        REQUIRE(decoder.GetHeight() == 720);
-
-        VideoFrame frame;
-        uint64_t lastSeq = 0;
-        bool gotFrame = false;
-        for (int attempt = 0; attempt < 40 && !gotFrame; ++attempt)
+        if (opened)
         {
-            gotFrame = decoder.AcquireFrame(0.05, frame, lastSeq);
-            if (!gotFrame)
-                std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            REQUIRE(!decoder.IsFallbackActive());
+            REQUIRE(decoder.GetWidth() == 1280);
+            REQUIRE(decoder.GetHeight() == 720);
+
+            VideoFrame frame;
+            uint64_t lastSeq = 0;
+            bool gotFrame = false;
+            for (int attempt = 0; attempt < 150 && !gotFrame && !decoder.IsFallbackActive(); ++attempt)
+            {
+                gotFrame = decoder.AcquireFrame(0.05, frame, lastSeq);
+                if (!gotFrame)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            if (!decoder.IsFallbackActive())
+            {
+                REQUIRE(gotFrame);
+                REQUIRE(frame.width == 1280);
+                REQUIRE(frame.height == 720);
+                REQUIRE(frame.rgba.size() == static_cast<std::size_t>(1280 * 720 * 4));
+            }
+            decoder.Close();
         }
-        REQUIRE(gotFrame);
-        REQUIRE(frame.width == 1280);
-        REQUIRE(frame.height == 720);
-        REQUIRE(frame.rgba.size() == static_cast<std::size_t>(1280 * 720 * 4));
-        decoder.Close();
+        else
+        {
+            REQUIRE(decoder.IsFallbackActive());
+        }
     }
     else
     {

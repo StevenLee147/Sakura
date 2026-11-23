@@ -92,7 +92,7 @@ bool VideoDecoder::Open(std::string_view filePath, bool loop)
     m_worker = std::thread(&VideoDecoder::DecodeWorker, this, std::string(filePath), loop);
 
     std::unique_lock<std::mutex> lock(m_mutex);
-    m_cv.wait_for(lock, std::chrono::milliseconds(600), [this] {
+    m_cv.wait_for(lock, std::chrono::milliseconds(3000), [this] {
         return m_ready.load(std::memory_order_acquire)
             || m_fallback.load(std::memory_order_acquire)
             || m_stopRequested.load(std::memory_order_acquire);
