@@ -8,6 +8,7 @@
 #include "audio_manager.h"
 #include "audio_visualizer.h"
 #include "sfx_generator.h"
+#include "time_stretcher.h"
 #include "core/config.h"
 #include "core/paths.h"
 #include <algorithm>
@@ -155,34 +156,101 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     // 停止当前音乐
     StopMusic();
 
-    // 创建新的流式 ma_sound
+    // 创建新的 ma_sound
     m_music = new ma_sound();
+    m_activeStretchRate = 1.0f;
     ma_uint32 flags = MA_SOUND_FLAG_STREAM;  // 流式加载，适合长音乐
 
-    ma_result result;
+    ma_result result = MA_ERROR;
     auto extension=std::filesystem::path(path).extension().string();
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
-    if(extension==".ogg" || extension==".oga"){
-        // stb_vorbis callback streaming cannot report length. Its memory pull
-        // decoder supports exact seeking while keeping compressed data in RAM.
-        const auto size=std::filesystem::file_size(path);
-        if(size==0 || size>256*1024*1024){delete m_music;m_music=nullptr;return false;}
-        m_compressedMusic.resize(static_cast<size_t>(size));
-        std::ifstream source(path,std::ios::binary);
-        if(!source.read(reinterpret_cast<char*>(m_compressedMusic.data()),static_cast<std::streamsize>(size))){delete m_music;m_music=nullptr;m_compressedMusic.clear();return false;}
-        m_musicDecoder=new ma_decoder();
-        auto decoderConfig=ma_decoder_config_init(ma_format_f32,0,0);
-        result=ma_decoder_init_memory(m_compressedMusic.data(),m_compressedMusic.size(),&decoderConfig,m_musicDecoder);
-        if(result==MA_SUCCESS)result=ma_sound_init_from_data_source(m_engine,m_musicDecoder,MA_SOUND_FLAG_NO_SPATIALIZATION,nullptr,m_music);
-        else {delete m_musicDecoder;m_musicDecoder=nullptr;}
-    }else result = ma_sound_init_from_file(
-        m_engine,
-        path.c_str(),
-        flags,
-        nullptr,    // pGroup（无）
-        nullptr,    // pFence（无）
-        m_music
-    );
+    const bool useWsola = !m_offlineClock && std::abs(m_playbackSpeed - 1.0f) >= 0.01f &&
+        sakura::core::Config::GetInstance().Get<bool>("audio.pitch_lock", true);
+
+    if (useWsola)
+    {
+        constexpr int kTargetSr = 48000;
+        ma_decoder tempDec{};
+        auto decCfg = ma_decoder_config_init(ma_format_f32, 2, kTargetSr);
+        ma_result decRes = MA_ERROR;
+        std::vector<unsigned char> oggBytes;
+        if (extension == ".ogg" || extension == ".oga")
+        {
+            const auto fsz = std::filesystem::file_size(path);
+            if (fsz > 0 && fsz <= 256 * 1024 * 1024)
+            {
+                oggBytes.resize(static_cast<size_t>(fsz));
+                std::ifstream src(path, std::ios::binary);
+                if (src.read(reinterpret_cast<char*>(oggBytes.data()), static_cast<std::streamsize>(fsz)))
+                    decRes = ma_decoder_init_memory(oggBytes.data(), oggBytes.size(), &decCfg, &tempDec);
+            }
+        }
+        else
+        {
+            decRes = ma_decoder_init_file(path.c_str(), &decCfg, &tempDec);
+        }
+        if (decRes == MA_SUCCESS)
+        {
+            std::vector<float> rawPcm;
+            rawPcm.reserve(kTargetSr * 2 * 90);
+            std::vector<float> chunk(8192 * 2);
+            ma_uint64 framesRead = 0;
+            constexpr std::size_t kMaxSamples = static_cast<std::size_t>(kTargetSr) * 2 * 900;
+            while (rawPcm.size() < kMaxSamples &&
+                   ma_decoder_read_pcm_frames(&tempDec, chunk.data(), 8192, &framesRead) == MA_SUCCESS &&
+                   framesRead > 0)
+            {
+                rawPcm.insert(rawPcm.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(framesRead * 2));
+            }
+            ma_decoder_uninit(&tempDec);
+            if (!rawPcm.empty())
+            {
+                m_stretchedPcm = TimeStretcher::StretchInterleaved(rawPcm, 2, kTargetSr, m_playbackSpeed);
+                auto* audioBuf = new ma_audio_buffer();
+                m_stretchedBuffer = audioBuf;
+                auto bufCfg = ma_audio_buffer_config_init(
+                    ma_format_f32, 2, m_stretchedPcm.size() / 2, m_stretchedPcm.data(), nullptr);
+                bufCfg.sampleRate = kTargetSr;
+                if (ma_audio_buffer_init(&bufCfg, audioBuf) == MA_SUCCESS)
+                {
+                    result = ma_sound_init_from_data_source(
+                        m_engine, audioBuf, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_music);
+                    if (result == MA_SUCCESS)
+                        m_activeStretchRate = m_playbackSpeed;
+                }
+                if (result != MA_SUCCESS)
+                {
+                    ma_audio_buffer_uninit(audioBuf);
+                    delete audioBuf;
+                    m_stretchedBuffer = nullptr;
+                    m_stretchedPcm.clear();
+                }
+            }
+        }
+    }
+
+    if (result != MA_SUCCESS)
+    {
+        if(extension==".ogg" || extension==".oga"){
+            const auto size=std::filesystem::file_size(path);
+            if(size==0 || size>256*1024*1024){delete m_music;m_music=nullptr;return false;}
+            m_compressedMusic.resize(static_cast<size_t>(size));
+            std::ifstream source(path,std::ios::binary);
+            if(!source.read(reinterpret_cast<char*>(m_compressedMusic.data()),static_cast<std::streamsize>(size))){delete m_music;m_music=nullptr;m_compressedMusic.clear();return false;}
+            m_musicDecoder=new ma_decoder();
+            auto decoderConfig=ma_decoder_config_init(ma_format_f32,0,0);
+            result=ma_decoder_init_memory(m_compressedMusic.data(),m_compressedMusic.size(),&decoderConfig,m_musicDecoder);
+            if(result==MA_SUCCESS)result=ma_sound_init_from_data_source(m_engine,m_musicDecoder,MA_SOUND_FLAG_NO_SPATIALIZATION,nullptr,m_music);
+            else {delete m_musicDecoder;m_musicDecoder=nullptr;}
+        }else result = ma_sound_init_from_file(
+            m_engine,
+            path.c_str(),
+            flags,
+            nullptr,
+            nullptr,
+            m_music
+        );
+    }
 
     if (result != MA_SUCCESS)
     {
@@ -204,15 +272,15 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
     // 设置音量
     ApplyMusicVolume();
 
-    // 设置播放速度
-    ma_sound_set_pitch(m_music, m_playbackSpeed);
+    // 设置播放速度（WSOLA 激活时 m_playbackSpeed / m_activeStretchRate == 1.0f 保持原调）
+    ma_sound_set_pitch(m_music, m_playbackSpeed / m_activeStretchRate);
 
-    // 在 start 前 seek 到指定起始位置，避免异步启动后再 seek 的竞争问题
-    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
+    // 在 start 前 seek 到指定起始位置
     double appliedStartSeconds = 0.0;
     if (startPositionSeconds > 0.0)
     {
-        ma_result seekResult = ma_sound_seek_to_second(m_music, static_cast<float>(startPositionSeconds));
+        ma_result seekResult = ma_sound_seek_to_second(
+            m_music, static_cast<float>(startPositionSeconds / static_cast<double>(m_activeStretchRate)));
         if (seekResult != MA_SUCCESS)
         {
             LOG_WARN("PlayMusic: 起始位置 seek 失败 (pos={:.3f}s, error={}), 将从头播放",
@@ -305,6 +373,9 @@ void AudioManager::StopMusic()
     delete m_music;
     m_music       = nullptr;
     if(m_musicDecoder){ma_decoder_uninit(m_musicDecoder);delete m_musicDecoder;m_musicDecoder=nullptr;}
+    if(m_stretchedBuffer){auto* ab=static_cast<ma_audio_buffer*>(m_stretchedBuffer);ma_audio_buffer_uninit(ab);delete ab;m_stretchedBuffer=nullptr;}
+    std::vector<float>{}.swap(m_stretchedPcm);
+    m_activeStretchRate = 1.0f;
     std::vector<unsigned char>{}.swap(m_compressedMusic);
     m_musicPath   = "";
     m_musicPaused = false;
@@ -374,8 +445,9 @@ bool AudioManager::SetMusicPosition(double seconds)
         return true;
     }
 
-    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换
-    ma_result result = ma_sound_seek_to_second(m_music, static_cast<float>(seconds));
+    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换与 WSOLA 变速比例
+    ma_result result = ma_sound_seek_to_second(
+        m_music, static_cast<float>(seconds / static_cast<double>(m_activeStretchRate)));
     if (result != MA_SUCCESS)
     {
         LOG_ERROR("SetMusicPosition 失败: error={}", static_cast<int>(result));
@@ -392,7 +464,7 @@ double AudioManager::GetMusicPosition() const
     float cursor = 0.0f;
     ma_result result = ma_sound_get_cursor_in_seconds(m_music, &cursor);
     if (result != MA_SUCCESS) return 0.0;
-    return static_cast<double>(cursor);
+    return static_cast<double>(cursor) * static_cast<double>(m_activeStretchRate);
 }
 
 double AudioManager::GetMusicDuration() const
@@ -402,7 +474,7 @@ double AudioManager::GetMusicDuration() const
     float length = 0.0f;
     ma_result result = ma_sound_get_length_in_seconds(m_music, &length);
     if (result != MA_SUCCESS) return -1.0;
-    return static_cast<double>(length);
+    return static_cast<double>(length) * static_cast<double>(m_activeStretchRate);
 }
 
 bool AudioManager::IsPlaying() const
@@ -509,7 +581,7 @@ void AudioManager::SetPlaybackSpeed(float speed)
     m_playbackSpeed = std::max(0.1f, std::min(4.0f, speed));
     if (m_music)
     {
-        ma_sound_set_pitch(m_music, m_playbackSpeed);
+        ma_sound_set_pitch(m_music, m_playbackSpeed / m_activeStretchRate);
     }
     LOG_DEBUG("播放速度设置为 {:.2f}x", m_playbackSpeed);
 }

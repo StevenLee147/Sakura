@@ -15,6 +15,7 @@
 // 前向声明 miniaudio 类型（避免在头文件中包含大型单文件库）
 struct ma_engine;
 struct ma_sound;
+struct ma_decoder;
 
 namespace sakura::audio
 {
@@ -162,6 +163,9 @@ private:
     ma_engine* m_engine    = nullptr;   // miniaudio 高层引擎
     ma_sound*  m_music     = nullptr;   // 当前背景音乐 sound 对象
     ma_decoder* m_musicDecoder = nullptr;
+    void* m_stretchedBuffer = nullptr;
+    std::vector<float> m_stretchedPcm;
+    float m_activeStretchRate = 1.0f;
     std::vector<unsigned char> m_compressedMusic;
     ma_sound* m_sfxGroup = nullptr;
     std::unordered_map<std::string, std::array<ma_sound*, 4>> m_sfxCache;

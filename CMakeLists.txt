@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 0.8.1
+    VERSION 0.9.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
 
 # 预发布标签（留空则为正式版）
-set(SAKURA_VERSION_PRERELEASE "alpha")
+set(SAKURA_VERSION_PRERELEASE "beta")
 if(SAKURA_VERSION_PRERELEASE STREQUAL "")
     set(SAKURA_VERSION_FULL "${PROJECT_VERSION}")
 else()
@@ -277,6 +277,7 @@ endif()
 if(SAKURA_BUILD_TESTS)
     # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
     add_library(sakura-game-logic STATIC
+        src/audio/time_stretcher.cpp
         src/core/config.cpp
         src/core/record_script.cpp
         src/data/database.cpp
@@ -288,6 +289,7 @@ if(SAKURA_BUILD_TESTS)
         src/game/chart_utils.cpp
         src/game/play_session.cpp
         src/game/replay.cpp
+        src/utils/archive.cpp
         src/utils/file_io.cpp
         src/game/judge.cpp
         src/game/tutorial_data.cpp

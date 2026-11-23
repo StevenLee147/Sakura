@@ -98,7 +98,8 @@ private:
     int m_propertyKeyboard=-1,m_propertyMouse=-1;
     std::vector<std::string> m_propertyLabels;
     std::vector<std::unique_ptr<sakura::ui::TextInput>> m_propertyInputs;
-    std::unique_ptr<sakura::ui::Button> m_btnProperties,m_propertyApply,m_propertyCancel;
+    std::unique_ptr<sakura::ui::Button> m_btnProperties,m_btnExport,m_propertyApply,m_propertyCancel;
+    void DoExportSakura();
     void OpenProperties();
     void ApplyProperties();
     void CloseProperties();

@@ -143,6 +143,7 @@ void SceneSettings::BuildPages()
     AddSlider(0, "轨道不透明度", "调整键盘区域与背景的对比", "gameplay.lane_opacity", 0.2f, 1, 0.05f);
     AddToggle(0, "判定偏差", "显示 EARLY / LATE 和实时偏差条", "gameplay.show_hit_error");
     AddToggle(0, "连击数字", "在舞台中显示当前连击", "gameplay.show_combo");
+    AddToggle(0, "变速锁定音高", "练习与回放变速时采用 WSOLA 保持原调", "audio.pitch_lock");
     AddAction(0, "练习与自动演示", "在曲库选择模式、速度与练习区间", "前往曲库", [this]
     { if (Save()) m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::Fade, 0.25f); });
 

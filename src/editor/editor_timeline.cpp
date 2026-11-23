@@ -59,7 +59,7 @@ int EditorTimeline::XToLane(float x) const
     if (x < TRACK_X || x > TRACK_X + TRACK_W)
         return -1;
     int lane = static_cast<int>((x - TRACK_X) / TRACK_LANE_W);
-    if (lane < 0 || lane > 3) return -1;
+    if (lane < 0 || lane > 4) return -1;
     return lane;
 }
 
@@ -339,13 +339,14 @@ void EditorTimeline::DrawBackground(sakura::core::Renderer& renderer)
         { 18, 22, 42, 248 }, { 14, 17, 32, 248 },
         { 12, 15, 30, 252 }, { 10, 12, 24, 252 });
 
-    // 交替轨道柔光底带
-    for (int lane = 0; lane < 4; ++lane)
+    // 交替轨道柔光底带（第 5 轨为鎏金 Space 拇指轨）
+    for (int lane = 0; lane < 5; ++lane)
     {
         const float lx = TRACK_X + static_cast<float>(lane) * TRACK_LANE_W;
-        const sakura::core::Color tint = (lane % 2 == 0)
-            ? sakura::core::Color{ 24, 28, 50, 62 }
-            : sakura::core::Color{ 16, 20, 38, 34 };
+        const sakura::core::Color tint = (lane == 4)
+            ? sakura::core::Color{ 52, 40, 24, 72 }
+            : ((lane % 2 == 0) ? sakura::core::Color{ 24, 28, 50, 62 }
+                               : sakura::core::Color{ 16, 20, 38, 34 });
         renderer.DrawFilledRect({ lx, AREA_Y, TRACK_LANE_W, AREA_H }, tint);
     }
 }
@@ -404,6 +405,34 @@ void EditorTimeline::DrawGrid(sakura::core::Renderer& renderer)
     {
         renderer.DrawLine(x1, y0, x2, y0, palette.accent, 0.0026f);
     }
+
+    // BPM 与 SV 节点可视化标记
+    const auto& chart = m_core.GetChartData();
+    for (const auto& tp : chart.timingPoints)
+    {
+        const float y = TimeToY(tp.time);
+        if (y < AREA_Y + 0.01f || y > 0.995f) continue;
+        renderer.DrawLine(x1, y, x2, y, { 255, 212, 118, 195 }, 0.0018f);
+        if (m_font != sakura::core::INVALID_HANDLE)
+        {
+            std::ostringstream bs;
+            bs << "BPM " << std::fixed << std::setprecision(0) << tp.bpm;
+            renderer.DrawText(m_font, bs.str(), x1 + 0.006f, y - 0.015f, 0.012f, { 255, 222, 138, 235 });
+        }
+    }
+    for (const auto& sv : chart.svPoints)
+    {
+        const float y = TimeToY(sv.time);
+        if (y < AREA_Y + 0.01f || y > 0.995f) continue;
+        renderer.DrawLine(x1, y, x2, y, { 120, 232, 255, 195 }, 0.0018f);
+        if (m_font != sakura::core::INVALID_HANDLE)
+        {
+            std::ostringstream ss;
+            ss << "SV " << std::fixed << std::setprecision(2) << sv.speed << "x";
+            renderer.DrawText(m_font, ss.str(), x2 - 0.006f, y - 0.015f, 0.012f,
+                { 138, 238, 255, 235 }, sakura::core::TextAlign::Right);
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -412,11 +441,21 @@ void EditorTimeline::DrawGrid(sakura::core::Renderer& renderer)
 void EditorTimeline::DrawLaneDividers(sakura::core::Renderer& renderer)
 {
     const auto& palette = sakura::core::Theme::GetInstance().Colors();
-    for (int i = 0; i <= 4; ++i)
+    const char* laneTags[5] = { "A", "S", "D", "F", "SP" };
+    for (int i = 0; i <= 5; ++i)
     {
         const float x = TRACK_X + static_cast<float>(i) * TRACK_LANE_W;
-        renderer.DrawLine(x, AREA_Y, x, 1.0f,
-            { 140, 135, 185, static_cast<uint8_t>((i == 0 || i == 4) ? 140 : 75) }, 0.0011f);
+        const sakura::core::Color lineCol = (i == 4)
+            ? sakura::core::Color{ palette.accent.r, palette.accent.g, palette.accent.b, 155 }
+            : sakura::core::Color{ 140, 135, 185, static_cast<uint8_t>((i == 0 || i == 5) ? 140 : 75) };
+        renderer.DrawLine(x, AREA_Y, x, 1.0f, lineCol, 0.0011f);
+        if (i < 5 && m_font != sakura::core::INVALID_HANDLE)
+        {
+            renderer.DrawText(m_font, laneTags[i],
+                x + TRACK_LANE_W * 0.5f, AREA_Y + 0.008f, 0.013f,
+                i == 4 ? palette.accent : palette.textMuted,
+                sakura::core::TextAlign::Center);
+        }
     }
 
     renderer.DrawLine(RULER_W, AREA_Y, RULER_W, 1.0f, palette.surfaceBorder, 0.0012f);
@@ -480,7 +519,9 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
 
         const float x = LaneToX(n.lane);
         const bool isSelected = (i == selectedIdx);
-        const sakura::core::Color laneCol = palette.laneColors[std::clamp(n.lane, 0, 3)];
+        const sakura::core::Color laneCol = (n.lane == 4)
+            ? palette.accent
+            : palette.laneColors[std::clamp(n.lane, 0, 3)];
 
         if (n.type == sakura::game::NoteType::Hold && n.duration > 0)
         {
@@ -526,6 +567,10 @@ void EditorTimeline::DrawNotes(sakura::core::Renderer& renderer)
                 { 255, 240, 248, 242 }, baseCol, baseCol, palette.primary);
             renderer.DrawRoundedRectOutlineGradient(gemRect, 0.006f,
                 { 255, 255, 255, 210 }, palette.gildedHairline, 0.0013f);
+        }
+        if (n.linkId > 0)
+        {
+            renderer.DrawCircleFilled(x + TRACK_LANE_W * 0.5f, y, 0.0032f, { 132, 232, 255, 240 }, 10);
         }
     }
 }
@@ -615,6 +660,7 @@ void EditorTimeline::DrawWaveform(sakura::core::Renderer& renderer)
     const auto& palette = sakura::core::Theme::GetInstance().Colors();
 
     const float centerX = RULER_W * 0.50f;
+    const float trackCenterX = TRACK_X + TRACK_W * 0.50f;
     for (int i = 0; i < static_cast<int>(m_waveform.size()); ++i)
     {
         const int   timeMs = i * m_waveformWindowMs;
@@ -624,6 +670,12 @@ void EditorTimeline::DrawWaveform(sakura::core::Renderer& renderer)
         const float amplitude = std::clamp(m_waveform[i], 0.0f, 1.0f);
         const float halfW     = RULER_W * 0.44f * amplitude;
         if (halfW < 0.0004f) continue;
+
+        const float trackHalfW = TRACK_W * 0.42f * amplitude;
+        renderer.DrawFilledRect(
+            { trackCenterX - trackHalfW, y - 0.0018f, trackHalfW * 2.0f, 0.0036f },
+            { palette.holdColor.r, palette.holdColor.g, palette.holdColor.b,
+              static_cast<uint8_t>(14 + 28 * amplitude) });
 
         const sakura::core::Color edgeCol{
             palette.holdColor.r, palette.holdColor.g, palette.holdColor.b,
@@ -661,6 +713,7 @@ void EditorTimeline::LoadWaveform(const std::string& audioPath)
 
     std::vector<float> buf(static_cast<size_t>(windowSamples));
 
+    float maxPeak = 0.0f;
     while (true)
     {
         ma_uint64 framesRead = 0;
@@ -673,9 +726,14 @@ void EditorTimeline::LoadWaveform(const std::string& audioPath)
             float v = std::abs(buf[static_cast<size_t>(s)]);
             if (v > peak) peak = v;
         }
+        maxPeak = std::max(maxPeak, peak);
         m_waveform.push_back(peak);
 
         if (res != MA_SUCCESS) break;
+    }
+    if (maxPeak > 1e-5f)
+    {
+        for (float& v : m_waveform) v = std::clamp(v / maxPeak, 0.0f, 1.0f);
     }
 
     ma_decoder_uninit(&decoder);

@@ -66,6 +66,7 @@ void Config::ApplyDefaults()
     setDefault("audio.hitsound", std::string("default"));
     setDefault("audio.hitsounds_enabled", true);
     setDefault("audio.judgment_sounds", false);
+    setDefault("audio.pitch_lock", true);
     setDefault("graphics.glow", true);
     setDefault("graphics.background_blur", true);
     setDefault("graphics.shake", true);

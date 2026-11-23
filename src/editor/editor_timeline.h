@@ -79,10 +79,10 @@ private:
     // 左侧时间标尺宽度
     static constexpr float RULER_W = 0.04f;
 
-    // 轨道区域（4条轨道均分 AREA_W-RULER_W）
+    // 轨道区域（5条轨道：4键标准轨 + 第5轨 Space 拇指轨）
     static constexpr float TRACK_X = AREA_X + RULER_W;        // = 0.04
     static constexpr float TRACK_W = AREA_W - RULER_W;        // = 0.36
-    static constexpr float TRACK_LANE_W = TRACK_W / 4.0f;     // = 0.09
+    static constexpr float TRACK_LANE_W = TRACK_W / 5.0f;     // = 0.072
 
     // 音符矩形高度（归一化）
     static constexpr float NOTE_H = 0.008f;

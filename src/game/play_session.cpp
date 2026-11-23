@@ -46,7 +46,9 @@ void PlaySession::Initialize(ChartData& chart, bool autoPlay, int startMs, int e
 void PlaySession::Emit(JudgmentEvent event)
 {
     const bool isThumb = event.keyboard && event.lane == kThumbLaneIndex;
-    m_score.OnJudge(event.result, event.error, event.timed, event.synergy, isThumb);
+    const int eventTime = std::max(0, m_time);
+    m_score.OnJudge(event.result, event.error, event.timed, event.synergy, isThumb,
+                    eventTime, event.keyboard, event.lane);
     if (m_onJudge) m_onJudge(event);
 }
 

@@ -94,6 +94,61 @@ void SceneResult::OnEnter()
         if(!m_result.replayFile.empty())options.replayFile=m_result.replayFile;
         m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_chartInfo,m_result.difficultyIndex,options),sakura::scene::TransitionType::SakuraSweep,0.40f);});
 
+    m_showDetail = false;
+    m_btnDetail = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.37f,0.913f,0.18f,0.054f},"详细分析 / Tab",m_fontUI,0.022f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDetail.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnDetail->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnDetail->SetOnClick([this]{ m_showDetail = true; });
+
+    m_btnCloseDetail = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.80f,0.062f,0.14f,0.044f},"关闭报告 / Tab",m_fontUI,0.019f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnCloseDetail.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnCloseDetail->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnCloseDetail->SetOnClick([this]{ m_showDetail = false; });
+
+    // 计算 4 分段准确率与最薄弱区间
+    int maxSampleMs = static_cast<int>(std::max(4.0, m_result.playTimeSeconds) * 1000.0);
+    for (const auto& s : m_result.samples) maxSampleMs = std::max(maxSampleMs, s.timeMs + 500);
+    const int qSpan = std::max(1000, maxSampleMs / 4);
+    std::array<float, 4> wSum{ 0.f, 0.f, 0.f, 0.f };
+    std::array<int, 4>   wCnt{ 0, 0, 0, 0 };
+    auto judgeW = [](sakura::game::JudgeResult r) -> float {
+        switch (r) {
+            case sakura::game::JudgeResult::Perfect: return 100.f;
+            case sakura::game::JudgeResult::Great:   return 70.f;
+            case sakura::game::JudgeResult::Good:    return 40.f;
+            case sakura::game::JudgeResult::Bad:     return 10.f;
+            default: return 0.f;
+        }
+    };
+    for (const auto& s : m_result.samples) {
+        const int q = std::clamp(s.timeMs / qSpan, 0, 3);
+        wSum[q] += judgeW(s.result);
+        ++wCnt[q];
+    }
+    m_weakestSection = 0;
+    float lowestAcc = 101.f;
+    for (int q = 0; q < 4; ++q) {
+        m_sectionAcc[q] = wCnt[q] > 0 ? (wSum[q] / static_cast<float>(wCnt[q])) : m_result.accuracy;
+        if (wCnt[q] > 0 && m_sectionAcc[q] < lowestAcc) {
+            lowestAcc = m_sectionAcc[q];
+            m_weakestSection = q;
+        }
+    }
+    m_weakStartMs = std::max(0, m_weakestSection * qSpan - 1000);
+    m_weakEndMs   = (m_weakestSection + 1) * qSpan + 1000;
+    m_btnPracticeWeak = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.78f,0.858f,0.16f,0.044f},"练习薄弱段",m_fontUI,0.019f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnPracticeWeak.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnPracticeWeak->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnPracticeWeak->SetOnClick([this]{
+        auto opts = m_options;
+        opts.mode    = sakura::game::PlayMode::Practice;
+        opts.startMs = m_weakStartMs;
+        opts.endMs   = m_weakEndMs;
+        opts.loop    = true;
+        m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager, m_chartInfo, m_result.difficultyIndex, opts),
+                              sakura::scene::TransitionType::SakuraSweep, 0.40f);
+    });
+
     m_bgCover.UnloadImage();
     const std::string artRel = !m_chartInfo.coverFile.empty() ? m_chartInfo.coverFile : m_chartInfo.backgroundFile;
     if (!artRel.empty() && m_bgCover.LoadImage(m_chartInfo.folderPath + "/" + artRel))
@@ -194,9 +249,16 @@ void SceneResult::OnUpdate(float dt)
     m_particles.Update(dt);
 
 
+    if (m_showDetail)
+    {
+        if (m_btnCloseDetail)  m_btnCloseDetail->Update(dt);
+        if (m_btnPracticeWeak) m_btnPracticeWeak->Update(dt);
+        return;
+    }
+    if (m_btnDetail) m_btnDetail->Update(dt);
     if (m_btnReplay) m_btnReplay->Update(dt);
-    if (m_btnRetry) m_btnRetry->Update(dt);
-    if (m_btnBack)  m_btnBack ->Update(dt);
+    if (m_btnRetry)  m_btnRetry->Update(dt);
+    if (m_btnBack)   m_btnBack ->Update(dt);
 }
 
 // ── ElemAlpha ─────────────────────────────────────────────────────────────────
@@ -388,14 +450,165 @@ void SceneResult::OnRender(sakura::core::Renderer& r)
     r.DrawText(m_fontUI,"0 ms",0.716f,0.812f,0.015f,gold,TextAlign::Center);
     r.DrawText(m_fontUI,"−150 ms  LATE",0.931f,0.812f,0.015f,dim,TextAlign::Right);
 
+    if (m_btnDetail) m_btnDetail->Render(r);
     m_btnBack->Render(r);m_btnReplay->Render(r);m_btnRetry->Render(r);
     m_particles.Render(r);
+    if (m_showDetail) RenderDetailOverlay(r);
+}
+
+void SceneResult::RenderDetailOverlay(sakura::core::Renderer& r)
+{
+    using namespace sakura::core;
+    using namespace sakura::ui;
+    auto fmt = [](double v, int p = 1) { std::ostringstream s; s << std::fixed << std::setprecision(p) << v; return s.str(); };
+    const Color gold{250, 216, 157, 255}, pink{246, 178, 206, 255}, cyan{138, 218, 248, 255};
+    const Color white{248, 244, 252, 255}, dim{170, 178, 208, 255};
+
+    VisualStyle::DrawScrim(r, 0.78f);
+    VisualStyle::DrawGlassCard(r, {0.035f, 0.045f, 0.930f, 0.910f},
+        {20, 24, 46, 244}, {12, 16, 32, 248}, {250, 216, 157, 195}, {168, 158, 214, 85}, 0.018f, 0.55f);
+
+    r.DrawText(m_fontUI, "PERFORMANCE TELEMETRY / 深度演奏分析报告", 0.060f, 0.064f, 0.025f, white);
+    const double ur = m_deviation * 10.0;
+    r.DrawText(m_fontUI, "Unstable Rate (UR)  " + fmt(ur, 1) + "   ·   均值偏差 " + fmt(m_meanError, 1) + " ms",
+        0.520f, 0.070f, 0.018f, gold);
+    if (m_btnCloseDetail) m_btnCloseDetail->Render(r);
+    VisualStyle::DrawGildedDivider(r, 0.055f, 0.945f, 0.116f, 0.72f);
+
+    int totalMs = std::max(4000, static_cast<int>(m_result.playTimeSeconds * 1000.0));
+    for (const auto& s : m_result.samples) totalMs = std::max(totalMs, s.timeMs + 200);
+
+    // 1. Top-Left: Timing Scatter Plot
+    VisualStyle::DrawGlassCard(r, {0.055f, 0.132f, 0.435f, 0.365f},
+        {16, 20, 38, 220}, {12, 15, 30, 232}, {250, 216, 157, 110}, {130, 142, 188, 48}, 0.012f, 0.35f);
+    r.DrawText(m_fontUI, "TIMING SCATTER / 全曲时间散点 (±150ms)", 0.072f, 0.146f, 0.017f, white);
+    const float sx0 = 0.075f, sxW = 0.395f, syMid = 0.325f, syHalf = 0.130f;
+    r.DrawFilledRect({sx0, syMid - syHalf * (50.f / 150.f), sxW, syHalf * (100.f / 150.f)}, {72, 134, 178, 30});
+    r.DrawFilledRect({sx0, syMid - syHalf * (25.f / 150.f), sxW, syHalf * (50.f / 150.f)}, {250, 216, 157, 34});
+    r.DrawLine(sx0, syMid, sx0 + sxW, syMid, {250, 216, 157, 150}, 0.0013f);
+    for (const auto& s : m_result.samples)
+    {
+        if (!s.timed && s.result != sakura::game::JudgeResult::Miss) continue;
+        const float px = sx0 + std::clamp(static_cast<float>(s.timeMs) / static_cast<float>(totalMs), 0.f, 1.f) * sxW;
+        if (s.result == sakura::game::JudgeResult::Miss)
+        {
+            r.DrawCircleFilled(px, syMid + syHalf * 0.94f, 0.0026f, {242, 106, 132, 225}, 8);
+            continue;
+        }
+        const float normErr = std::clamp(static_cast<float>(s.hitErrorMs) / 150.f, -1.f, 1.f);
+        const float py = syMid - normErr * syHalf;
+        const int absE = std::abs(s.hitErrorMs);
+        const Color dotC = absE <= 25 ? gold : (s.hitErrorMs > 0 ? cyan : pink);
+        r.DrawCircleFilled(px, py, 0.0023f, dotC.WithAlpha(210), 8);
+    }
+    r.DrawText(m_fontUI, "EARLY +150", sx0, 0.178f, 0.013f, cyan);
+    r.DrawText(m_fontUI, "LATE -150", sx0, 0.462f, 0.013f, pink);
+
+    // 2. Top-Right: Combo Curve & Judgment Donut Ring
+    VisualStyle::DrawGlassCard(r, {0.510f, 0.132f, 0.435f, 0.365f},
+        {16, 20, 38, 220}, {12, 15, 30, 232}, {250, 216, 157, 110}, {130, 142, 188, 48}, 0.012f, 0.35f);
+    r.DrawText(m_fontUI, "COMBO & RATIO / 连击曲线与判定环", 0.528f, 0.146f, 0.017f, white);
+    const float cx0 = 0.528f, cxW = 0.255f, cyBot = 0.455f, cyH = 0.255f;
+    r.DrawLine(cx0, cyBot, cx0 + cxW, cyBot, {150, 160, 198, 110}, 0.0011f);
+    int maxComboDenom = std::max(1, m_result.maxCombo);
+    for (const auto& s : m_result.samples) maxComboDenom = std::max(maxComboDenom, s.comboAfter);
+    float prevX = cx0, prevY = cyBot;
+    for (std::size_t i = 0; i < m_result.samples.size(); ++i)
+    {
+        const auto& s = m_result.samples[i];
+        const float x = cx0 + std::clamp(static_cast<float>(s.timeMs) / static_cast<float>(totalMs), 0.f, 1.f) * cxW;
+        const float y = cyBot - std::clamp(static_cast<float>(s.comboAfter) / static_cast<float>(maxComboDenom), 0.f, 1.f) * cyH;
+        if (i > 0) r.DrawLine(prevX, prevY, x, y, gold.WithAlpha(210), 0.0018f);
+        if (s.result == sakura::game::JudgeResult::Miss || s.result == sakura::game::JudgeResult::Bad)
+            r.DrawCircleFilled(x, cyBot - 0.006f, 0.0035f, {244, 98, 126, 240}, 10);
+        prevX = x; prevY = y;
+    }
+    const int jCounts[5] = { m_result.perfectCount, m_result.greatCount, m_result.goodCount, m_result.badCount, m_result.missCount };
+    const Color jCols[5] = { gold, cyan, {154,226,188,255}, {244,184,132,255}, {238,124,146,255} };
+    const int jSum = std::max(1, jCounts[0] + jCounts[1] + jCounts[2] + jCounts[3] + jCounts[4]);
+    float deg = -90.f;
+    for (int i = 0; i < 5; ++i)
+    {
+        if (jCounts[i] <= 0) continue;
+        const float sweep = 360.f * static_cast<float>(jCounts[i]) / static_cast<float>(jSum);
+        r.DrawArc(0.865f, 0.320f, 0.056f, deg, deg + std::max(2.f, sweep - 1.5f), jCols[i], 0.0085f, 28);
+        deg += sweep;
+    }
+    r.DrawText(m_fontUI, fmt(m_result.accuracy, 1) + "%", 0.865f, 0.308f, 0.019f, white, TextAlign::Center);
+
+    // 3. Bottom-Left: Dual-Zone & 5-Lane Breakdown
+    VisualStyle::DrawGlassCard(r, {0.055f, 0.518f, 0.435f, 0.405f},
+        {16, 20, 38, 220}, {12, 15, 30, 232}, {250, 216, 157, 110}, {130, 142, 188, 48}, 0.012f, 0.35f);
+    r.DrawText(m_fontUI, "ZONE & 5-LANE / 轨道与双区准度", 0.072f, 0.532f, 0.017f, white);
+    std::array<float, 7> bSum{}; std::array<int, 7> bCnt{};
+    auto wOf = [](sakura::game::JudgeResult jr) {
+        return jr == sakura::game::JudgeResult::Perfect ? 100.f : jr == sakura::game::JudgeResult::Great ? 70.f :
+               jr == sakura::game::JudgeResult::Good ? 40.f : jr == sakura::game::JudgeResult::Bad ? 10.f : 0.f;
+    };
+    for (const auto& s : m_result.samples)
+    {
+        const float w = wOf(s.result);
+        if (s.isKeyboard) { const int idx = std::clamp(s.lane, 0, 4); bSum[idx] += w; ++bCnt[idx]; }
+        else { bSum[5] += w; ++bCnt[5]; }
+        if (s.isSynergy) { bSum[6] += w; ++bCnt[6]; }
+    }
+    const char* bNames[7] = { "轨道 1 (A)", "轨道 2 (S)", "轨道 3 (D)", "轨道 4 (F)", "拇指轨 (SP)", "鼠标区 (MS)", "双区协同" };
+    for (int i = 0; i < 7; ++i)
+    {
+        const float ry = 0.576f + i * 0.046f;
+        const float acc = bCnt[i] > 0 ? (bSum[i] / static_cast<float>(bCnt[i])) : 100.f;
+        r.DrawText(m_fontUI, bNames[i], 0.072f, ry, 0.0155f, dim);
+        r.DrawRoundedRect({0.195f, ry + 0.007f, 0.205f, 0.011f}, 0.005f, {36, 42, 68, 165}, true, 6);
+        if (bCnt[i] > 0)
+        {
+            const Color barC = i == 4 || i == 6 ? gold : (i == 5 ? cyan : pink);
+            r.DrawRoundedGradientRect({0.195f, ry + 0.007f, std::max(0.010f, 0.205f * acc / 100.f), 0.011f},
+                0.005f, barC, gold, barC, gold, 6, true);
+        }
+        r.DrawText(m_fontUI, bCnt[i] > 0 ? (fmt(acc, 1) + "%") : "—", 0.472f, ry, 0.0155f, white, TextAlign::Right);
+    }
+
+    // 4. Bottom-Right: Quartile Section Accuracy & Practice Trigger
+    VisualStyle::DrawGlassCard(r, {0.510f, 0.518f, 0.435f, 0.405f},
+        {16, 20, 38, 220}, {12, 15, 30, 232}, {250, 216, 157, 110}, {130, 142, 188, 48}, 0.012f, 0.35f);
+    r.DrawText(m_fontUI, "SECTION STABILITY / 四分段稳定性诊断", 0.528f, 0.532f, 0.017f, white);
+    const char* qNames[4] = { "第一段  0%–25%", "第二段  25%–50%", "第三段  50%–75%", "第四段  75%–100%" };
+    for (int q = 0; q < 4; ++q)
+    {
+        const float qy = 0.584f + q * 0.064f;
+        const bool weak = (q == m_weakestSection);
+        r.DrawText(m_fontUI, qNames[q], 0.528f, qy, 0.0165f, weak ? gold : dim);
+        r.DrawRoundedRect({0.675f, qy + 0.008f, 0.180f, 0.013f}, 0.006f, {36, 42, 68, 165}, true, 6);
+        const Color qCol = weak ? Color{246, 152, 132, 245} : cyan;
+        r.DrawRoundedGradientRect({0.675f, qy + 0.008f, std::max(0.010f, 0.180f * m_sectionAcc[q] / 100.f), 0.013f},
+            0.006f, qCol, gold, qCol, gold, 6, true);
+        r.DrawText(m_fontUI, fmt(m_sectionAcc[q], 1) + "%", 0.928f, qy, 0.0165f, weak ? gold : white, TextAlign::Right);
+    }
+    r.DrawText(m_fontUI, "薄弱区间：" + std::to_string(m_weakStartMs / 1000) + "s – " + std::to_string(m_weakEndMs / 1000) + "s",
+        0.528f, 0.868f, 0.017f, gold);
+    if (m_btnPracticeWeak) m_btnPracticeWeak->Render(r);
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
 void SceneResult::OnEvent(const SDL_Event& event)
 {
-    // ESC → 返回选歌（与"返回"按钮相同行为）
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_TAB)
+    {
+        m_showDetail = !m_showDetail;
+        return;
+    }
+    if (m_showDetail)
+    {
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)
+        {
+            m_showDetail = false;
+            return;
+        }
+        if (m_btnCloseDetail && m_btnCloseDetail->HandleEvent(event)) return;
+        if (m_btnPracticeWeak && m_btnPracticeWeak->HandleEvent(event)) return;
+        return;
+    }
+    // ESC / Enter → 返回选歌
     if (event.type == SDL_EVENT_KEY_DOWN &&
         (event.key.scancode == SDL_SCANCODE_ESCAPE || event.key.scancode == SDL_SCANCODE_RETURN))
     {
@@ -406,7 +619,8 @@ void SceneResult::OnEvent(const SDL_Event& event)
     }
 
     if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_R){m_btnRetry->Activate();return;}
-    if(m_btnReplay)m_btnReplay->HandleEvent(event);
+    if(m_btnDetail) m_btnDetail->HandleEvent(event);
+    if(m_btnReplay) m_btnReplay->HandleEvent(event);
     if (m_btnRetry) m_btnRetry->HandleEvent(event);
     if (m_btnBack)  m_btnBack ->HandleEvent(event);
 }

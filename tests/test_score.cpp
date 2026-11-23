@@ -215,3 +215,25 @@ TEST_CASE("命中偏差被记录，Miss 不被记录", "[score][hiterror]")
     REQUIRE(errs[1] == -8);
     REQUIRE(errs[2] == 25);
 }
+
+TEST_CASE("逐音符结算遥测快照完整记录五轨、协同修饰与连击曲线", "[score][telemetry]")
+{
+    ScoreCalculator sc;
+    sc.Initialize(4);
+    sc.OnJudge(JudgeResult::Perfect, -4, true, false, true,  500,  true,  4); // 第5轨 Space 拇指键
+    sc.OnJudge(JudgeResult::Great,    9, true, true,  false, 1000, false, -1); // 鼠标协同音符
+    sc.OnJudge(JudgeResult::Miss,     0, true, false, false, 1500, true,  1); // 断连
+    sc.OnJudge(JudgeResult::Perfect,  2, true, false, false, 2000, true,  0); // 恢复连击
+
+    const GameResult res = sc.GetResult("chart_v3", "Chart V3", "Master", 2, 12.0f, 30.0);
+    REQUIRE(res.samples.size() == 4);
+    REQUIRE(res.samples[0].isKeyboard == true);
+    REQUIRE(res.samples[0].lane == 4);
+    REQUIRE(res.samples[0].comboAfter == 1);
+    REQUIRE(res.samples[1].isKeyboard == false);
+    REQUIRE(res.samples[1].isSynergy == true);
+    REQUIRE(res.samples[1].comboAfter == 2);
+    REQUIRE(res.samples[2].result == JudgeResult::Miss);
+    REQUIRE(res.samples[2].comboAfter == 0);
+    REQUIRE(res.samples[3].comboAfter == 1);
+}

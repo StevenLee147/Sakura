@@ -11,6 +11,7 @@
 #include "core/resource_manager.h"
 #include "audio/audio_manager.h"
 #include "ui/toast.h"
+#include "utils/archive.h"
 #include "utils/logger.h"
 
 #include <SDL3/SDL.h>
@@ -127,10 +128,15 @@ void SceneEditor::OnEnter()
     m_timeline.CenterOnTime(0);
 
     SetupToolbar();
-    m_btnProperties=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.50f,0.84f,0.17f,0.034f},"编辑属性",m_fontUI,0.018f);
+    m_btnProperties=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.575f,0.834f,0.158f,0.033f},"编辑属性",m_fontUI,0.0175f);
     m_btnProperties->SetTextAlign(sakura::core::TextAlign::Center);
     sakura::ui::VisualStyle::ApplyButton(m_btnProperties.get(),sakura::ui::ButtonVariant::Secondary);
     m_btnProperties->SetOnClick([this]{OpenProperties();});
+
+    m_btnExport=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.435f,0.834f,0.132f,0.033f},"导出 .sakura",m_fontUI,0.0175f);
+    m_btnExport->SetTextAlign(sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::ApplyButton(m_btnExport.get(),sakura::ui::ButtonVariant::Accent);
+    m_btnExport->SetOnClick([this]{DoExportSakura();});
     UpdateToolButtons();
 }
 
@@ -400,6 +406,27 @@ void SceneEditor::DoSave()
     }
 }
 
+void SceneEditor::DoExportSakura()
+{
+    if (m_core.IsDirty())
+    {
+        if (!m_core.SaveChart())
+        {
+            sakura::ui::ToastManager::Instance().Show("导出前保存失败", sakura::ui::ToastType::Error);
+            return;
+        }
+    }
+    const auto& info = m_core.GetChartInfo();
+    std::string safeId = info.id.empty() ? "chart" : info.id;
+    for (char& c : safeId)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_')) c = '_';
+    const auto outPath = std::filesystem::path(sakura::core::Paths::User("exports")) / (safeId + ".sakura");
+    if (sakura::utils::CreateZipArchive(m_core.GetFolderPath(), outPath))
+        sakura::ui::ToastManager::Instance().Show("已导出谱面包：" + outPath.filename().string(), sakura::ui::ToastType::Success, 4.5f);
+    else
+        sakura::ui::ToastManager::Instance().Show(".sakura 谱面包导出失败", sakura::ui::ToastType::Error);
+}
+
 // ── SwitchDifficulty ──────────────────────────────────────────────────────────
 
 void SceneEditor::SwitchDifficulty(int index)
@@ -489,7 +516,7 @@ void SceneEditor::OpenProperties(){
     const auto& data=m_core.GetChartData();
     if(m_propertyKeyboard>=0&&m_propertyKeyboard<static_cast<int>(data.keyboardNotes.size())){
         const auto& n=data.keyboardNotes[m_propertyKeyboard];
-        m_propertyLabels={"时间 / ms","轨道 / 1–4","持续时间 / ms（Tap 为 0）"};
+        m_propertyLabels={"时间 / ms","轨道 / 1–5 (5=Space)","持续时间 / ms（Tap 为 0）"};
         values={std::to_string(n.time),std::to_string(n.lane+1),std::to_string(n.duration)};
     }else if(m_propertyMouse>=0&&m_propertyMouse<static_cast<int>(data.mouseNotes.size())){
         const auto& n=data.mouseNotes[m_propertyMouse];
@@ -518,7 +545,7 @@ void SceneEditor::ApplyProperties(){
         auto number=[this](int i,double low,double high){size_t used=0;const auto& text=m_propertyInputs[i]->GetText();const double value=std::stod(text,&used);
             if(used!=text.size()||!std::isfinite(value)||value<low||value>high)throw std::runtime_error("请输入范围内的有效数值");return value;};
         auto data=m_core.GetChartData();auto info=m_core.GetChartInfo();
-        if(m_propertyKeyboard>=0){auto& n=data.keyboardNotes[m_propertyKeyboard];n.time=static_cast<int>(number(0,0,3600000));n.lane=static_cast<int>(number(1,1,4))-1;
+        if(m_propertyKeyboard>=0){auto& n=data.keyboardNotes[m_propertyKeyboard];n.time=static_cast<int>(number(0,0,3600000));n.lane=static_cast<int>(number(1,1,5))-1;
             n.duration=static_cast<int>(number(2,0,600000));n.type=n.duration>0?sakura::game::NoteType::Hold:sakura::game::NoteType::Tap;
         }else if(m_propertyMouse>=0){auto& n=data.mouseNotes[m_propertyMouse];n.time=static_cast<int>(number(0,0,3600000));n.x=static_cast<float>(number(1,0,1));n.y=static_cast<float>(number(2,0,1));
             n.sliderDuration=static_cast<int>(number(3,n.type==sakura::game::NoteType::Slider?1:0,n.type==sakura::game::NoteType::Slider?600000:0));
@@ -590,6 +617,7 @@ void SceneEditor::OnUpdate(float dt)
     if(m_exitDialog){for(auto& button:m_exitButtons)button->Update(dt);return;}
     if(m_propertyEditing){for(auto& i:m_propertyInputs)i->Update(dt);m_propertyApply->Update(dt);m_propertyCancel->Update(dt);return;}
     if(m_btnProperties)m_btnProperties->Update(dt);
+    if(m_btnExport)m_btnExport->Update(dt);
     m_recoveryTimer+=dt;
     if(m_recoveryTimer>=45){
         m_recoveryTimer=0;
@@ -829,16 +857,17 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
             px, 0.795f, 0.017f, palette.accent, sakura::core::TextAlign::Center);
     }
     if (m_btnProperties) m_btnProperties->Render(renderer);
+    if (m_btnExport)     m_btnExport->Render(renderer);
 
     sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.870f, 0.45f);
-    renderer.DrawText(m_fontSmall, "1-4 工具  ·  Space 播放  ·  Del 删除",
-        px, 0.878f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "Ctrl+Z/Y 撤销重做  ·  Ctrl+S 保存  ·  Ctrl+M 镜像",
-        px, 0.901f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
-    renderer.DrawText(m_fontSmall, "F5/F6 完整试玩  ·  F8 内嵌预览  ·  ESC 退出",
-        px, 0.924f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "1-4 工具  ·  第5轨 SP=拇指轨  ·  Space 播放",
+        px, 0.878f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "L 联动  ·  G 协同  ·  B/V 节点  ·  Ctrl+M 镜像",
+        px, 0.901f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+    renderer.DrawText(m_fontSmall, "Ctrl+Z/Y 撤销重做  ·  Ctrl+S 保存  ·  F5/F8 试玩",
+        px, 0.924f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
     renderer.DrawText(m_fontSmall, "点击左侧时间尺或右侧全曲轴可快速跳转",
-        px, 0.947f, 0.015f, palette.textMuted, sakura::core::TextAlign::Center);
+        px, 0.947f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
 }
 
 // ── HandleOverviewAxisEvent ─────────────────────────────────────────────────
@@ -924,10 +953,11 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
         const float noteY    = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
         if (noteY < OVERVIEW_Y + 0.006f || noteY > OVERVIEW_Y + OVERVIEW_H - 0.010f) continue;
 
-        const float noteX = OVERVIEW_X + 0.006f + (static_cast<float>(n.lane) + 0.5f) / 4.0f * (kbRegionW - 0.012f);
-        const sakura::core::Color tickCol = (n.type == sakura::game::NoteType::Hold)
-            ? palette.holdColor
-            : palette.laneColors[std::clamp(n.lane, 0, 3)];
+        const float noteX = OVERVIEW_X + 0.006f + (static_cast<float>(std::clamp(n.lane, 0, 4)) + 0.5f) / 5.0f * (kbRegionW - 0.012f);
+        const sakura::core::Color tickCol = (n.lane == 4)
+            ? palette.accent
+            : ((n.type == sakura::game::NoteType::Hold) ? palette.holdColor
+                                                        : palette.laneColors[std::clamp(n.lane, 0, 3)]);
         renderer.DrawFilledRect(
             { noteX - 0.0045f, noteY - 0.0016f, 0.009f, 0.0032f },
             { tickCol.r, tickCol.g, tickCol.b, 205 });
@@ -1126,7 +1156,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
             return;
         }
 
-        // Ctrl+M → 水平镜像所有键盘音符（道 0↔3，1↔2）
+        // Ctrl+M → 水平镜像所有键盘音符（道 0↔3，1↔2，第5拇指轨保持居中）
         if (m_ctrlHeld && sc == SDL_SCANCODE_M)
         {
             const auto& notes = m_core.GetChartData().keyboardNotes;
@@ -1136,13 +1166,106 @@ void SceneEditor::OnEvent(const SDL_Event& event)
                 for (int i = 0; i < static_cast<int>(notes.size()); ++i)
                 {
                     auto newNote = notes[i];
-                    newNote.lane = 3 - newNote.lane;
+                    if (newNote.lane >= 0 && newNote.lane <= 3) newNote.lane = 3 - newNote.lane;
                     batch->Add(std::make_unique<sakura::editor::ModifyNoteCommand>(
                         i, notes[i], newNote));
                 }
                 m_core.ExecuteCommand(std::move(batch));
                 sakura::ui::ToastManager::Instance().Show(
                     "所有键盘音符已镜像", sakura::ui::ToastType::Info);
+            }
+            return;
+        }
+
+        // L → 将当前游标 (±40ms) 处的键盘音符与鼠标音符绑定/解绑双区联动
+        if (!m_ctrlHeld && sc == SDL_SCANCODE_L)
+        {
+            auto data = m_core.GetChartData();
+            const int t = m_core.GetCurrentTimeMs();
+            std::vector<int> kbHits, msHits;
+            int maxId = 0;
+            for (int i = 0; i < static_cast<int>(data.keyboardNotes.size()); ++i) {
+                maxId = std::max(maxId, data.keyboardNotes[i].linkId);
+                if (std::abs(data.keyboardNotes[i].time - t) <= 40) kbHits.push_back(i);
+            }
+            for (int i = 0; i < static_cast<int>(data.mouseNotes.size()); ++i) {
+                maxId = std::max(maxId, data.mouseNotes[i].linkId);
+                if (std::abs(data.mouseNotes[i].time - t) <= 40) msHits.push_back(i);
+            }
+            if (kbHits.empty() || msHits.empty()) {
+                sakura::ui::ToastManager::Instance().Show("游标 ±40ms 处需同时存在键盘与鼠标音符才可绑定联动", sakura::ui::ToastType::Info);
+                return;
+            }
+            const bool unlink = data.keyboardNotes[kbHits.front()].linkId > 0;
+            const int newId = unlink ? 0 : (maxId + 1);
+            for (int idx : kbHits) data.keyboardNotes[idx].linkId = newId;
+            for (int idx : msHits) data.mouseNotes[idx].linkId = newId;
+            data.version = std::max(3, data.version);
+            m_core.ExecuteCommand(std::make_unique<EditPropertiesCommand>(m_core, std::move(data), m_core.GetChartInfo()));
+            sakura::ui::ToastManager::Instance().Show(unlink ? "已解除游标双区联动" : ("已绑定双区联动 #" + std::to_string(newId)), sakura::ui::ToastType::Success);
+            return;
+        }
+
+        // V → 在当前游标添加/循环切换 SV 变速节点 (0.75x -> 1.00x -> 1.25x -> 1.50x -> 删除)
+        if (!m_ctrlHeld && sc == SDL_SCANCODE_V)
+        {
+            auto data = m_core.GetChartData();
+            const int t = std::max(0, m_core.QuantizeTime(m_core.GetCurrentTimeMs()));
+            auto it = std::find_if(data.svPoints.begin(), data.svPoints.end(),
+                [t](const auto& p) { return std::abs(p.time - t) <= 25; });
+            std::string msg;
+            if (it == data.svPoints.end()) {
+                data.svPoints.push_back({ t, 1.25f, "linear" });
+                msg = "已插入 SV 1.25x 节点";
+            } else if (it->speed < 0.90f) { it->speed = 1.00f; msg = "SV 节点更新为 1.00x"; }
+            else if (it->speed < 1.12f)   { it->speed = 1.25f; msg = "SV 节点更新为 1.25x"; }
+            else if (it->speed < 1.38f)   { it->speed = 1.50f; msg = "SV 节点更新为 1.50x"; }
+            else if (it->speed < 1.75f && !m_shiftHeld) { it->speed = 0.75f; msg = "SV 节点更新为 0.75x"; }
+            else { data.svPoints.erase(it); msg = "已移除当前游标 SV 节点"; }
+            std::stable_sort(data.svPoints.begin(), data.svPoints.end(), [](const auto& a, const auto& b) { return a.time < b.time; });
+            m_core.ExecuteCommand(std::make_unique<EditPropertiesCommand>(m_core, std::move(data), m_core.GetChartInfo()));
+            sakura::ui::ToastManager::Instance().Show(msg, sakura::ui::ToastType::Success);
+            return;
+        }
+
+        // B → 在当前游标插入/微调 BPM 变速节点 (B: +5 BPM, Shift+B: -5 BPM)
+        if (!m_ctrlHeld && sc == SDL_SCANCODE_B)
+        {
+            auto data = m_core.GetChartData();
+            const int t = std::max(0, m_core.QuantizeTime(m_core.GetCurrentTimeMs()));
+            const float step = m_shiftHeld ? -5.0f : 5.0f;
+            auto it = std::find_if(data.timingPoints.begin(), data.timingPoints.end(),
+                [t](const auto& p) { return std::abs(p.time - t) <= 25; });
+            float newBpm = m_core.GetChartInfo().bpm;
+            if (it == data.timingPoints.end()) {
+                newBpm = std::clamp(std::round((newBpm + step) / 5.0f) * 5.0f, 30.0f, 400.0f);
+                data.timingPoints.push_back({ t, newBpm, 4 });
+            } else {
+                it->bpm = std::clamp(it->bpm + step, 30.0f, 400.0f);
+                newBpm = it->bpm;
+            }
+            std::stable_sort(data.timingPoints.begin(), data.timingPoints.end(), [](const auto& a, const auto& b) { return a.time < b.time; });
+            auto info = m_core.GetChartInfo();
+            if (!data.timingPoints.empty() && data.timingPoints.front().time == 0) info.bpm = data.timingPoints.front().bpm;
+            m_core.ExecuteCommand(std::make_unique<EditPropertiesCommand>(m_core, std::move(data), std::move(info)));
+            sakura::ui::ToastManager::Instance().Show("游标 BPM 节点: " + std::to_string(static_cast<int>(std::round(newBpm))), sakura::ui::ToastType::Success);
+            return;
+        }
+
+        // G → 循环切换选中鼠标音符的协同按键修饰（无 -> Space -> A -> S -> D -> F -> RMB）
+        if (!m_ctrlHeld && sc == SDL_SCANCODE_G)
+        {
+            const int msel = m_core.GetSelectedMouseNote();
+            if (msel >= 0 && msel < static_cast<int>(m_core.GetChartData().mouseNotes.size())) {
+                auto data = m_core.GetChartData();
+                const int cur = data.mouseNotes[msel].requireLane;
+                const int next = (cur == -1) ? 4 : (cur == 4 ? 0 : (cur == 0 ? 1 : (cur == 1 ? 2 : (cur == 2 ? 3 : (cur == 3 ? 5 : -1)))));
+                data.mouseNotes[msel].requireLane = next;
+                data.version = std::max(3, data.version);
+                const char* name = (next == -1) ? "无修饰" : (next == 4 ? "需按住 Space" : (next == 5 ? "右键修饰" : "需按住轨道键"));
+                m_core.ExecuteCommand(std::make_unique<EditPropertiesCommand>(m_core, std::move(data), m_core.GetChartInfo()));
+                m_core.SelectMouseNote(msel);
+                sakura::ui::ToastManager::Instance().Show(std::string("鼠标协同修饰：") + name, sakura::ui::ToastType::Success);
             }
             return;
         }
@@ -1198,6 +1321,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
     }
 
     if(m_btnProperties && m_btnProperties->HandleEvent(event))return;
+    if(m_btnExport && m_btnExport->HandleEvent(event))return;
     if (HandleOverviewAxisEvent(event))
         return;
 

@@ -29,7 +29,8 @@ public:
     // result: 判定结果
     // hitError: 偏差（毫秒，可选，用于偏差图）
     void OnJudge(JudgeResult result, int hitError = 0, bool recordTiming = true,
-                 bool isSynergy = false, bool isThumb = false);
+                 bool isSynergy = false, bool isThumb = false,
+                 int timeMs = 0, bool isKeyboard = true, int lane = 0);
     void AdvanceFeverMs(int deltaMs);
 
     // ── 查询 ──────────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ public:
                          double             playTimeSeconds) const;
 
     const std::vector<int>& GetHitErrors() const { return m_hitErrors; }
+    const std::vector<JudgmentSample>& GetSamples() const { return m_samples; }
 
 private:
     int   m_totalNoteCount  = 0;
@@ -99,6 +101,7 @@ private:
     int   m_thumbHitCount    = 0;
 
     std::vector<int> m_hitErrors;  // 每次判定的偏差记录
+    std::vector<JudgmentSample> m_samples;
 
     static constexpr int FEVER_DURATION_MS = 8000;
 

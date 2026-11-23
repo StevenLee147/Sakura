@@ -16,6 +16,7 @@
 #include "data/database.h"
 #include "ui/visual_style.h"
 #include "ui/toast.h"
+#include "utils/archive.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -192,21 +193,32 @@ void SceneSelect::AcceptImport(const std::string& path) {
     if(path.empty())return;
     const auto target=std::filesystem::path(Paths::User("imports"))/("import-"+std::to_string(SDL_GetTicksNS()));
     try {
-        ChartLoader loader;auto info=loader.LoadChartInfo((std::filesystem::path(path)/"info.json").string());
-        if(!info)throw std::runtime_error("所选目录缺少有效的 info.json");
-        for(const auto& diff:info->difficulties)if(!loader.LoadChartData(info->folderPath+"/"+diff.chartFile))throw std::runtime_error("谱面数据无效："+diff.name);
-        if(!std::filesystem::is_regular_file(std::filesystem::path(path)/info->musicFile))throw std::runtime_error("没有找到音乐文件");
-        std::filesystem::create_directories(target);
-        for(const auto& entry:std::filesystem::recursive_directory_iterator(path)) {
-            if(entry.is_symlink())throw std::runtime_error("谱面目录不能包含符号链接");
-            const auto dest=target/std::filesystem::relative(entry.path(),path);
-            if(entry.is_directory())std::filesystem::create_directories(dest);
-            else if(entry.is_regular_file())std::filesystem::copy_file(entry.path(),dest);
+        const std::filesystem::path srcPath(path);
+        if(std::filesystem::is_regular_file(srcPath)) {
+            const auto ext = Lower(srcPath.extension().string());
+            if(ext != ".sakura" && ext != ".zip")
+                throw std::runtime_error("仅支持导入谱面文件夹或 .sakura / .zip 谱面包");
+            if(!sakura::utils::ExtractZipArchive(srcPath, target))
+                throw std::runtime_error(".sakura 谱面包校验或解压失败");
+        } else if(std::filesystem::is_directory(srcPath)) {
+            std::filesystem::create_directories(target);
+            for(const auto& entry:std::filesystem::recursive_directory_iterator(srcPath)) {
+                if(entry.is_symlink())throw std::runtime_error("谱面目录不能包含符号链接");
+                const auto dest=target/std::filesystem::relative(entry.path(),srcPath);
+                if(entry.is_directory())std::filesystem::create_directories(dest);
+                else if(entry.is_regular_file())std::filesystem::copy_file(entry.path(),dest);
+            }
+        } else {
+            throw std::runtime_error("未找到要导入的谱面路径");
         }
+        ChartLoader loader;auto info=loader.LoadChartInfo((target/"info.json").string());
+        if(!info)throw std::runtime_error("谱面包缺少有效的 info.json");
+        for(const auto& diff:info->difficulties)if(!loader.LoadChartData(info->folderPath+"/"+diff.chartFile))throw std::runtime_error("谱面数据无效："+diff.name);
+        if(!std::filesystem::is_regular_file(target/info->musicFile))throw std::runtime_error("没有找到音乐文件");
         const auto destination=std::filesystem::path(Paths::User("charts"))/target.filename();
         std::filesystem::create_directories(destination.parent_path());
         std::filesystem::rename(target,destination);
-        Scan();ToastManager::Instance().Show("谱面已导入曲库",ToastType::Success);
+        Scan();ToastManager::Instance().Show("谱面已导入曲库："+info->title,ToastType::Success);
     }catch(const std::exception& e){std::error_code ec;std::filesystem::remove_all(target,ec);ToastManager::Instance().Show(e.what(),ToastType::Error,5);}
 }
 void SceneSelect::Back(){m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SilkShutter,0.36f);}
@@ -355,6 +367,7 @@ void SceneSelect::OnRender(Renderer& r) {
     m_particles.Render(r);
 }
 void SceneSelect::OnEvent(const SDL_Event& e) {
+    if(e.type==SDL_EVENT_DROP_FILE && e.drop.data){AcceptImport(e.drop.data);return;}
     bool consumed=m_search->HandleEvent(e);
     if(m_options.mode==PlayMode::Practice){consumed=m_startInput->HandleEvent(e)||consumed;consumed=m_endInput->HandleEvent(e)||consumed;}
     if(consumed && (e.type==SDL_EVENT_KEY_DOWN || e.type==SDL_EVENT_TEXT_INPUT))return;

@@ -80,6 +80,19 @@ struct ChartData
 
 // ── 游戏结果 ──────────────────────────────────────────────────────────────────
 
+// 单次判定遥测采样（用于全屏深度结算分析报告）
+struct JudgmentSample
+{
+    int         timeMs     = 0;
+    int         hitErrorMs = 0;
+    JudgeResult result     = JudgeResult::None;
+    bool        isKeyboard = true;
+    int         lane       = 0;
+    bool        isSynergy  = false;
+    int         comboAfter = 0;
+    bool        timed      = false;
+};
+
 // GameResult — 一局游戏的完整结果，用于传递给结算界面和数据库
 struct GameResult
 {
@@ -107,6 +120,7 @@ struct GameResult
 
     long long playedAt   = 0;       // Unix 时间戳（秒）
     std::vector<int> hitErrors;     // 每个音符的判定偏差（毫秒）
+    std::vector<JudgmentSample> samples; // 逐判定遥测（详细结算报告）
     int totalJudgments = 0;
     int synergyCount   = 0;        // 本局触发的跨区连携/樱绽组合技次数
     int thumbHitCount  = 0;        // 本局命中的樱枝空格横梁次数

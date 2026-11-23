@@ -40,6 +40,8 @@ void ScoreCalculator::Initialize(int totalNoteCount)
     m_thumbHitCount    = 0;
     m_hitErrors.clear();
     m_hitErrors.reserve(m_totalNoteCount);
+    m_samples.clear();
+    m_samples.reserve(m_totalNoteCount);
 
     LOG_DEBUG("ScoreCalculator 初始化: 总音符={}, 每音符基础分={:.2f}",
               m_totalNoteCount, m_baseScorePerNote);
@@ -60,7 +62,8 @@ void ScoreCalculator::AdvanceFeverMs(int deltaMs)
 // ── OnJudge ───────────────────────────────────────────────────────────────────
 
 void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTiming,
-                              bool isSynergy, bool isThumb)
+                              bool isSynergy, bool isThumb,
+                              int timeMs, bool isKeyboard, int lane)
 {
     if (GetJudgedCount() >= m_totalNoteCount) return;
     // 记录偏差（仅记录实际命中的音符，Miss 不记录）
@@ -158,8 +161,11 @@ void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTimin
     m_exactScore += m_baseScorePerNote * scoreRatio * (1.0 + comboBonus);
     m_score = std::clamp(static_cast<int>(std::lround(m_exactScore)), 0, 1000000);
 
-    // 累积准确率权重
+    // 累积准确率权重与逐判定遥测
     m_accuracySum += accuracyWeight;
+    m_samples.push_back(JudgmentSample{
+        timeMs, hitError, result, isKeyboard, lane, isSynergy, m_combo, recordTiming
+    });
 }
 
 // ── GetAccuracy ───────────────────────────────────────────────────────────────
@@ -225,6 +231,7 @@ GameResult ScoreCalculator::GetResult(const std::string& chartId,
     result.playTimeSeconds = playTimeSeconds;
     result.playedAt     = static_cast<long long>(std::time(nullptr));
     result.hitErrors    = m_hitErrors;
+    result.samples      = m_samples;
 
     return result;
 }

@@ -16,6 +16,8 @@ add_executable(SakuraTests
     test_chart_loader_legacy.cpp
     test_record_script.cpp
     test_synergy_v3.cpp
+    test_time_stretch.cpp
+    test_sakura_archive.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

@@ -68,9 +68,18 @@ private:
     // 元素淡入计时
     float m_elemTimer = 0.0f;
 
-    // 按钮
+    // 按钮与深度结算分析弹层
     std::unique_ptr<sakura::ui::Button> m_btnRetry;
     std::unique_ptr<sakura::ui::Button> m_btnBack;
+    std::unique_ptr<sakura::ui::Button> m_btnDetail;
+    std::unique_ptr<sakura::ui::Button> m_btnCloseDetail;
+    std::unique_ptr<sakura::ui::Button> m_btnPracticeWeak;
+    bool m_showDetail = false;
+    int  m_weakStartMs = 0;
+    int  m_weakEndMs   = 0;
+    std::array<float, 4> m_sectionAcc{ 100.0f, 100.0f, 100.0f, 100.0f };
+    int  m_weakestSection = 0;
+    void RenderDetailOverlay(sakura::core::Renderer& renderer);
 
     sakura::effects::BackgroundRenderer m_bgCover;
     // 粒子系统（FC/AP 庆祝 + 樱花飘落）

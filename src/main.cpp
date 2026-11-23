@@ -51,7 +51,7 @@ public:
 private:
     std::filesystem::path m_directory;
     std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
-        "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "result"};
+        "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "result", "result_detail"};
     size_t m_stage = 0;
     bool m_started = false;
     bool m_capture = false;
@@ -149,7 +149,7 @@ private:
                 event.key.scancode = SDL_SCANCODE_ESCAPE;
                 manager.HandleEvent(event);
             }
-            if (name == "result")
+            if (name == "result" || name == "result_detail")
             {
                 sakura::game::GameResult result;
                 result.chartId = m_chart.id; result.chartTitle = m_chart.title;
@@ -157,8 +157,14 @@ private:
                 result.difficultyLevel = m_chart.difficulties[0].level;
                 result.score = 982430; result.accuracy = 98.42f; result.grade = sakura::game::Grade::S;
                 result.perfectCount = 187; result.greatCount = 10; result.goodCount = 2; result.missCount = 1;
-                result.maxCombo = 124; result.assisted = true;
-                for (int i = 0; i < 150; ++i) result.hitErrors.push_back((i * 17 % 67) - 27);
+                result.maxCombo = 124; result.playTimeSeconds = 75.0; result.assisted = true;
+                for (int i = 0; i < 150; ++i) {
+                    const int err = (i * 17 % 67) - 27;
+                    result.hitErrors.push_back(err);
+                    const auto jr = (i == 92) ? sakura::game::JudgeResult::Miss : sakura::game::JudgeResult::Perfect;
+                    const int cb = (i < 92) ? (i + 1) : (i == 92 ? 0 : (i - 92));
+                    result.samples.push_back({ i * 500, err, jr, (i % 4 != 3), i % 5, (i % 7 == 0), cb, true });
+                }
                 scene = std::make_unique<SceneResult>(manager, result, m_chart);
             }
             if(name.starts_with("verify_")){
@@ -190,6 +196,7 @@ private:
             if(name=="select_practice")Click(0.73f,0.615f);
             if(name=="editor_properties")Click(0.585f,0.852f);
             if(name=="editor_preview")Key(SDL_SCANCODE_F5);
+            if(name=="result_detail")Key(SDL_SCANCODE_TAB);
             if(name=="editor_return" || name=="first_run_skip")Key(SDL_SCANCODE_ESCAPE);
             if(name=="create_complete"){
                 const std::array<std::string,9> fields={"新建验证","Sakura QA","123","25","普通",

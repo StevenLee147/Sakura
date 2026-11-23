@@ -150,8 +150,14 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
         if (p.has_parent_path())
             fs::create_directories(p.parent_path());
 
+        bool usesV3 = (m_chartData.version >= 3);
+        for (const auto& n : m_chartData.keyboardNotes)
+            if (n.lane >= 4 || n.linkId > 0) { usesV3 = true; break; }
+        for (const auto& n : m_chartData.mouseNotes)
+            if (n.linkId > 0 || n.requireLane >= 0) { usesV3 = true; break; }
+
         json j;
-        j["version"] = m_chartData.version;
+        j["version"] = usesV3 ? std::max(3, m_chartData.version) : m_chartData.version;
 
         // timing_points
         json tpArr = json::array();
@@ -189,6 +195,7 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
             note["lane"]     = n.lane;
             note["type"]     = NoteTypeToStr(n.type);
             note["duration"] = n.duration;
+            if (n.linkId > 0) note["link_id"] = n.linkId;
             kbArr.push_back(std::move(note));
         }
         j["keyboard_notes"] = std::move(kbArr);
@@ -206,6 +213,8 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
             note["y"]    = n.y;
             note["type"] = NoteTypeToStr(n.type);
             note["slider_duration"] = n.sliderDuration;
+            if (n.linkId > 0)       note["link_id"]      = n.linkId;
+            if (n.requireLane >= 0) note["require_lane"] = n.requireLane;
             if (!n.sliderPath.empty())
             {
                 json pathArr = json::array();
@@ -232,16 +241,21 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
             }
             it->noteCount=kbSorted;it->mouseNoteCount=mouseSorted;
             it->holdCount=static_cast<int>(std::count_if(sortedKb.begin(),sortedKb.end(),[](const auto& n){return n.type==sakura::game::NoteType::Hold;}));
+            it->thumbCount=static_cast<int>(std::count_if(sortedKb.begin(),sortedKb.end(),[](const auto& n){return n.lane==sakura::game::kThumbLaneIndex;}));
+            it->synergyCount=static_cast<int>(std::count_if(sortedKb.begin(),sortedKb.end(),[](const auto& n){return n.linkId>0;})) +
+                             static_cast<int>(std::count_if(sortedMs.begin(),sortedMs.end(),[](const auto& n){return n.linkId>0 || n.requireLane>=0;}));
             const auto infoPath=p.parent_path()/"info.json";
             json meta;
             if(fs::exists(infoPath)){std::ifstream input(infoPath);meta=json::parse(input);}
-            else meta={{"version",2},{"id",info.id},{"title",info.title},{"artist",info.artist},{"charter",info.charter},
+            else meta={{"version",usesV3?3:2},{"id",info.id},{"title",info.title},{"artist",info.artist},{"charter",info.charter},
                 {"bpm",info.bpm},{"offset",info.offset},{"music_file",info.musicFile},{"cover_file",info.coverFile},
                 {"background_file",info.backgroundFile},{"preview_time",info.previewTime}};
+            if(usesV3) meta["version"] = std::max(3, meta.value("version", 2));
             meta["bpm"]=info.bpm;meta["offset"]=info.offset;meta["title"]=info.title;meta["artist"]=info.artist;
             meta["difficulties"]=json::array();
             for(const auto& diff:info.difficulties)meta["difficulties"].push_back({{"name",diff.name},{"level",diff.level},
-                {"chart_file",diff.chartFile},{"note_count",diff.noteCount},{"hold_count",diff.holdCount},{"mouse_note_count",diff.mouseNoteCount}});
+                {"chart_file",diff.chartFile},{"note_count",diff.noteCount},{"hold_count",diff.holdCount},
+                {"mouse_note_count",diff.mouseNoteCount},{"thumb_count",diff.thumbCount},{"synergy_count",diff.synergyCount}});
             const bool existed=fs::exists(fullPath);
             std::string previous;
             if(existed){std::ifstream input(fullPath,std::ios::binary);if(!input)return false;previous.assign(std::istreambuf_iterator<char>(input),{});}
@@ -336,7 +350,7 @@ void EditorCore::SetBeatSnap(int snap)
 
 bool EditorCore::PlaceKeyboardNote(int timeMs, int lane, int durationMs)
 {
-    if (lane < 0 || lane > 3) return false;
+    if (lane < 0 || lane > 4) return false;
 
     // 判断是否与现有音符重叠（同 lane、时间差 ≤ 1ms）
     if (FindKeyboardNote(timeMs, lane, 1) != -1)
