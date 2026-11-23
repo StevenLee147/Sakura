@@ -2,7 +2,7 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v0.8.0-alpha** · Windows x64 · C++20 / SDL3
+当前版本：**v0.8.1-alpha** · Windows x64 · C++20 / SDL3
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
@@ -29,7 +29,7 @@
 
 ## 已有功能
 
-- 7 首内置曲目、13 张谱面：主曲包 4 首原创程序合成乐曲，以及新曲《樱落呼吸》（178 BPM，Normal / Hard / Expert，由 Suno 生成，按「左手节奏、右手旋律」从音频分析制谱）。
+- 15 首内置曲目、36 张谱面：涵盖《樱落呼吸》《樱光初醒》《繁星》《遥远的星》《樱光未落》《樱落侧链梦》《樱落流光》《一瞬花绽》《Petal Storm: Overdrive》等音频分析 Chart v3 多难度曲包（支持左手四轨 + 空格樱枝横梁、跨区连携同押与樱绽组合技），同时保留 4 首经典合成曲与训练曲。
 - 六页设置：游玩、声音、操作、显示、视觉、数据；包括节拍校准、自定义键位、帧率限制和减少动态效果。
 - 曲库支持搜索、收藏、排序、导入、难度选择、分段变速循环练习和最近回放。
 - 谱面工房支持四种音符、撤销/重做、属性修改、自动恢复文件和完整双区试玩。
@@ -71,7 +71,7 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.8.0-alpha`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.8.1-alpha`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
 

@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "distant_star",
+  "title": "遥远的星",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "electronic",
+    "trance",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 64020,
+  "bpm": 184.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 4.5,
+      "chart_file": "normal.json",
+      "note_count": 255,
+      "hold_count": 17,
+      "mouse_note_count": 76,
+      "thumb_count": 11,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 7.5,
+      "chart_file": "hard.json",
+      "note_count": 467,
+      "hold_count": 20,
+      "mouse_note_count": 140,
+      "thumb_count": 18,
+      "synergy_count": 65
+    },
+    {
+      "name": "Expert",
+      "level": 10.5,
+      "chart_file": "expert.json",
+      "note_count": 707,
+      "hold_count": 18,
+      "mouse_note_count": 216,
+      "thumb_count": 21,
+      "synergy_count": 104
+    }
+  ]
+}

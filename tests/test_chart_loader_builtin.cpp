@@ -147,3 +147,44 @@ TEST_CASE("内置谱面难度与音符元数据保持一致", "[charts][load]")
             == diff->noteCount + diff->mouseNoteCount);
     }
 }
+
+TEST_CASE("Official Vol.03 Chart v3 song pack loads with thumb bar and synergy notes", "[charts][v3]")
+{
+    constexpr std::array<const char*, 8> kV3PackIds{{
+        "sakura_awakening", "starry_sky", "distant_star", "unfallen_light",
+        "sidechain_dream", "flowing_petals", "instant_bloom", "petal_storm_overdrive"
+    }};
+    ChartLoader loader;
+    auto charts = loader.ScanCharts(std::string(SAKURA_SOURCE_DIR) + "/resources/charts");
+    REQUIRE(charts.size() >= 15);
+
+    for (const char* id : kV3PackIds)
+    {
+        const ChartInfo* chart = FindChart(charts, id);
+        REQUIRE(chart != nullptr);
+        REQUIRE(chart->version == 3);
+        REQUIRE(chart->musicFile == "music.ogg");
+        REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
+        REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->coverFile));
+        REQUIRE(chart->difficulties.size() >= 2);
+
+        for (const auto& diff : chart->difficulties)
+        {
+            auto data = loader.LoadChartData(chart->folderPath + "/" + diff.chartFile);
+            REQUIRE(data.has_value());
+            REQUIRE(data->version == 3);
+            REQUIRE(static_cast<int>(data->keyboardNotes.size()) == diff.noteCount);
+            REQUIRE(static_cast<int>(data->mouseNotes.size()) == diff.mouseNoteCount);
+
+            const int thumbs = static_cast<int>(std::count_if(data->keyboardNotes.begin(), data->keyboardNotes.end(),
+                [](const KeyboardNote& n) { return n.lane == kThumbLaneIndex; }));
+            const int synergies = static_cast<int>(std::count_if(data->mouseNotes.begin(), data->mouseNotes.end(),
+                [](const MouseNote& n) { return n.linkId > 0 || n.requireLane >= 0; }));
+            REQUIRE(thumbs == diff.thumbCount);
+            REQUIRE(thumbs > 0);
+            REQUIRE(synergies == diff.synergyCount);
+            if (diff.name == "Hard" || diff.name == "Expert")
+                REQUIRE(synergies > 0);
+        }
+    }
+}

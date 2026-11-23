@@ -200,11 +200,22 @@ def watch_remote_release(target_tag: str) -> None:
     if run_id is None:
         raise RuntimeError(f"Could not locate GitHub Actions workflow run for tag {target_tag}.")
 
-    print(f"[autopilot] Watching workflow run {run_id} for {target_tag}...", flush=True)
-    watch = run(["gh", "run", "watch", str(run_id), "--exit-status"], check=False)
-    if watch.returncode != 0:
+    print(f"[autopilot] Polling workflow run {run_id} for {target_tag}...", flush=True)
+    deadline = time.time() + 1800.0
+    conclusion = None
+    while time.time() < deadline:
+        probe = run(["gh", "run", "view", str(run_id), "--json", "status,conclusion"], check=False, capture=True)
+        if probe.returncode == 0 and probe.stdout.strip():
+            info = json.loads(probe.stdout)
+            status = info.get("status")
+            conclusion = info.get("conclusion")
+            print(f"[autopilot]   run {run_id}: status={status} conclusion={conclusion}", flush=True)
+            if status == "completed":
+                break
+        time.sleep(15)
+    if conclusion != "success":
         run(["gh", "run", "view", str(run_id), "--log-failed"], check=False)
-        raise RuntimeError(f"GitHub Actions run {run_id} failed for {target_tag}.")
+        raise RuntimeError(f"GitHub Actions run {run_id} finished with conclusion={conclusion!r} for {target_tag}.")
 
     for _ in range(12):
         rel = run(["gh", "release", "view", target_tag, "--json", "tagName,isPrerelease,assets,url"], check=False, capture=True)

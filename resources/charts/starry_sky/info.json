@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "starry_sky",
+  "title": "繁星",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "synth",
+    "atmospheric",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 77870,
+  "bpm": 119.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 3.5,
+      "chart_file": "normal.json",
+      "note_count": 156,
+      "hold_count": 10,
+      "mouse_note_count": 48,
+      "thumb_count": 7,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 6.5,
+      "chart_file": "hard.json",
+      "note_count": 288,
+      "hold_count": 8,
+      "mouse_note_count": 89,
+      "thumb_count": 7,
+      "synergy_count": 39
+    },
+    {
+      "name": "Expert",
+      "level": 9.5,
+      "chart_file": "expert.json",
+      "note_count": 440,
+      "hold_count": 8,
+      "mouse_note_count": 133,
+      "thumb_count": 9,
+      "synergy_count": 57
+    }
+  ]
+}

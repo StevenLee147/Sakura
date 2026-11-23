@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "flowing_petals",
+  "title": "樱落流光",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "artcore",
+    "melodic",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 30270,
+  "bpm": 127.5,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 5.0,
+      "chart_file": "normal.json",
+      "note_count": 326,
+      "hold_count": 19,
+      "mouse_note_count": 102,
+      "thumb_count": 14,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 8.5,
+      "chart_file": "hard.json",
+      "note_count": 616,
+      "hold_count": 22,
+      "mouse_note_count": 190,
+      "thumb_count": 16,
+      "synergy_count": 85
+    },
+    {
+      "name": "Expert",
+      "level": 12.0,
+      "chart_file": "expert.json",
+      "note_count": 968,
+      "hold_count": 13,
+      "mouse_note_count": 296,
+      "thumb_count": 17,
+      "synergy_count": 118
+    }
+  ]
+}

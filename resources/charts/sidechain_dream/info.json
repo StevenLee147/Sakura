@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "sidechain_dream",
+  "title": "樱落侧链梦",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "future-bass",
+    "electronic",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 47160,
+  "bpm": 192.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 5.5,
+      "chart_file": "normal.json",
+      "note_count": 123,
+      "hold_count": 6,
+      "mouse_note_count": 36,
+      "thumb_count": 2,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 8.5,
+      "chart_file": "hard.json",
+      "note_count": 202,
+      "hold_count": 8,
+      "mouse_note_count": 63,
+      "thumb_count": 4,
+      "synergy_count": 29
+    },
+    {
+      "name": "Expert",
+      "level": 11.5,
+      "chart_file": "expert.json",
+      "note_count": 305,
+      "hold_count": 10,
+      "mouse_note_count": 92,
+      "thumb_count": 15,
+      "synergy_count": 46
+    }
+  ]
+}

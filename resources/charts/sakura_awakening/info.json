@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "sakura_awakening",
+  "title": "樱光初醒",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "electronic",
+    "melodic",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 46380,
+  "bpm": 124.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Easy",
+      "level": 2.5,
+      "chart_file": "easy.json",
+      "note_count": 66,
+      "hold_count": 3,
+      "mouse_note_count": 20,
+      "thumb_count": 3,
+      "synergy_count": 0
+    },
+    {
+      "name": "Normal",
+      "level": 4.5,
+      "chart_file": "normal.json",
+      "note_count": 117,
+      "hold_count": 2,
+      "mouse_note_count": 35,
+      "thumb_count": 4,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 7.0,
+      "chart_file": "hard.json",
+      "note_count": 177,
+      "hold_count": 6,
+      "mouse_note_count": 54,
+      "thumb_count": 4,
+      "synergy_count": 24
+    }
+  ]
+}

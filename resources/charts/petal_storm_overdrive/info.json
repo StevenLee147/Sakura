@@ -1,0 +1,42 @@
+{
+  "version": 3,
+  "id": "petal_storm_overdrive",
+  "title": "Petal Storm: Overdrive",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "speedcore",
+    "boss",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 179580,
+  "bpm": 187.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Hard",
+      "level": 10.5,
+      "chart_file": "hard.json",
+      "note_count": 896,
+      "hold_count": 26,
+      "mouse_note_count": 276,
+      "thumb_count": 33,
+      "synergy_count": 107
+    },
+    {
+      "name": "Expert",
+      "level": 14.5,
+      "chart_file": "expert.json",
+      "note_count": 1382,
+      "hold_count": 20,
+      "mouse_note_count": 415,
+      "thumb_count": 26,
+      "synergy_count": 152
+    }
+  ]
+}

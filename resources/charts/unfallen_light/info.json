@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "id": "unfallen_light",
+  "title": "樱光未落",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 03",
+  "tags": [
+    "original",
+    "drum-and-bass",
+    "sakura",
+    "v3-synergy"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 25890,
+  "bpm": 126.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 5.0,
+      "chart_file": "normal.json",
+      "note_count": 283,
+      "hold_count": 14,
+      "mouse_note_count": 86,
+      "thumb_count": 9,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 8.0,
+      "chart_file": "hard.json",
+      "note_count": 521,
+      "hold_count": 11,
+      "mouse_note_count": 161,
+      "thumb_count": 14,
+      "synergy_count": 80
+    },
+    {
+      "name": "Expert",
+      "level": 11.0,
+      "chart_file": "expert.json",
+      "note_count": 781,
+      "hold_count": 18,
+      "mouse_note_count": 237,
+      "thumb_count": 11,
+      "synergy_count": 115
+    }
+  ]
+}
