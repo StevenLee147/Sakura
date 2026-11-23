@@ -58,6 +58,19 @@ def runtime_directory(build: Path, requested: Path | None) -> Path:
     raise RuntimeError("MSVC x64 runtime not found; pass --crt-dir <Microsoft.VC143.CRT directory>.")
 
 
+def find_iscc() -> Path | None:
+    found = shutil.which("iscc") or shutil.which("ISCC")
+    if found:
+        return Path(found)
+    for candidate in (
+        Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Inno Setup 6/ISCC.exe",
+        Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Inno Setup 6/ISCC.exe",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def package(args: argparse.Namespace) -> Path:
     build = args.build_dir.resolve()
     binary = build / "Release/Sakura.exe"
@@ -97,8 +110,9 @@ def package(args: argparse.Namespace) -> Path:
         (stage / "doc").mkdir()
         for file in ("README.md", "THIRD_PARTY_NOTICES.md", "VERSION.json"):
             shutil.copy2(REPO / file, stage / file)
-        for file in ("PLAYER_GUIDE.md", "CHART_FORMAT_SPEC.md", "DEPENDENCIES.md", "RELEASE_REVIEW_0.6.0.md", "release-validation.json"):
-            shutil.copy2(REPO / "doc" / file, stage / "doc" / file)
+        for file in ("PLAYER_GUIDE.md", "CHART_FORMAT_SPEC.md", "ARCHITECTURE.md", "DEPENDENCIES.md", "RELEASE_REVIEW_0.6.0.md", "RELEASE_REVIEW_1.0.0.md", "release-validation.json"):
+            if (REPO / "doc" / file).is_file():
+                shutil.copy2(REPO / "doc" / file, stage / "doc" / file)
         shutil.copytree(REPO / "doc/images", stage / "doc/images")
         notices = stage / "licenses"
         notices.mkdir()
@@ -127,6 +141,32 @@ def package(args: argparse.Namespace) -> Path:
     print(f"Package: {destination}")
     print(f"Archive: {archive} ({archive.stat().st_size / 1024 / 1024:.1f} MiB)")
     print(f"SHA256: {digest(archive)}")
+
+    iss_script = REPO / "installer/sakura.iss"
+    if not args.portable and iss_script.is_file():
+        iscc = find_iscc()
+        tag_label = json.loads((REPO / "VERSION.json").read_text(encoding="utf-8"))["tag"]
+        setup_base = f"Sakura-{tag_label}-win64-setup"
+        if iscc:
+            subprocess.run(
+                [
+                    str(iscc),
+                    f"/DMyAppVersion={version}",
+                    f"/DSourceStageDir={destination}",
+                    f"/DOutputDirPath={output}",
+                    f"/DOutputBaseName={setup_base}",
+                    str(iss_script),
+                ],
+                cwd=REPO,
+                check=True,
+            )
+            setup_exe = output / f"{setup_base}.exe"
+            if not setup_exe.is_file():
+                raise RuntimeError(f"Inno Setup did not produce expected installer: {setup_exe}")
+            (output / f"{setup_exe.name}.sha256").write_text(f"{digest(setup_exe)}  {setup_exe.name}\n", encoding="ascii")
+            print(f"Installer: {setup_exe} ({setup_exe.stat().st_size / 1024 / 1024:.1f} MiB)")
+        else:
+            print("[package] Inno Setup (ISCC.exe) not installed locally; skipping setup.exe (CI builds setup.exe on windows-2022).")
     return archive
 
 

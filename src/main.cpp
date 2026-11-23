@@ -304,6 +304,8 @@ private:
 };
 }
 
+#include "utils/archive.h"
+
 int main(int argc, char* argv[])
 {
     try
@@ -312,6 +314,7 @@ int main(int argc, char* argv[])
         fs::path capture;
         fs::path verifyAudio;
         fs::path recordScript, recordOutput;
+        fs::path openPackage;
         int width = 1600, height = 900;bool verify=false,verifyImages=false;
         for (int i = 1; i < argc; ++i)
         {
@@ -323,6 +326,7 @@ int main(int argc, char* argv[])
             else if (arg == "--size" && i + 2 < argc) { width = std::stoi(argv[++i]); height = std::stoi(argv[++i]); }
             else if (arg == "--record" && i + 1 < argc) recordScript = Utf8ArgumentPath(argv[++i]);
             else if (arg == "--record-out" && i + 1 < argc) recordOutput = Utf8ArgumentPath(argv[++i]);
+            else if (!arg.starts_with("--") && openPackage.empty()) openPackage = Utf8ArgumentPath(argv[i]);
             else return 2;
         }
         // Offline recording owns its own isolated user directory and cannot be combined with QA modes.
@@ -346,6 +350,31 @@ int main(int argc, char* argv[])
         }
         fs::create_directories(userRoot);
         sakura::core::Paths::SetUserRoot(userRoot);
+        if (!openPackage.empty() && capture.empty())
+        {
+            std::error_code pkgEc;
+            if (fs::is_regular_file(openPackage, pkgEc))
+            {
+                const fs::path stage = fs::path(sakura::core::Paths::User("imports")) / ("assoc-" + std::to_string(SDL_GetTicksNS()));
+                if (sakura::utils::ExtractZipArchive(openPackage, stage))
+                {
+                    sakura::game::ChartLoader loader;
+                    if (auto info = loader.LoadChartInfo((stage / "info.json").string()))
+                    {
+                        bool valid = fs::is_regular_file(stage / info->musicFile, pkgEc);
+                        for (const auto& d : info->difficulties)
+                            valid &= loader.LoadChartData(info->folderPath + "/" + d.chartFile).has_value();
+                        if (valid)
+                        {
+                            const fs::path dest = fs::path(sakura::core::Paths::User("charts")) / stage.filename();
+                            fs::create_directories(dest.parent_path(), pkgEc);
+                            fs::rename(stage, dest, pkgEc);
+                        }
+                    }
+                }
+                fs::remove_all(stage, pkgEc);
+            }
+        }
         // Preserve installations created before the per-user storage migration.
         if (capture.empty())
             for (const char* relative : {"config/settings.json", "data/sakura.db"})

@@ -1,19 +1,20 @@
-# Sakura-樱 谱面格式规范 v2
+# Sakura-樱 谱面格式规范 v3（100% 向后兼容 v1 / v2）
 
-> 基于旧版格式扩展，新增 SV 变速、BPM 变化、多难度支持等功能
+> 在 v2 基础上扩展第 5 轨 Space 樱枝横梁 (`lane = 4`)、跨区连携同押 (`link_id`)、樱绽组合技修饰 (`require_lane`)、可选 MP4/WebM 动态视频舞台 (`video_file`) 以及 `.sakura` 标准 PKZIP 单文件分发包。
 
-## 谱面目录结构
+## 谱面目录与 `.sakura` 包结构
 
 ```
-resources/charts/{chart_id}/
-├── info.json              # 谱面元信息（包含多难度信息）
+resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
+├── info.json              # 谱面元信息（version: 3，兼容 1/2）
 ├── easy.json              # Easy 难度谱面数据（可选）
 ├── normal.json            # Normal 难度谱面数据
 ├── hard.json              # Hard 难度谱面数据
 ├── expert.json            # Expert 难度谱面数据（可选）
-├── music.ogg              # 音乐文件（推荐 OGG/FLAC）
+├── music.ogg              # 音乐文件（支持 OGG/FLAC/MP3/WAV）
 ├── cover.png              # 封面图片（建议 512x512 或 1024x1024）
-└── bg.png                 # 游戏内背景图片（可选）
+├── bg.png                 # 游戏内静态背景图片（可选）
+└── bg.mp4                 # 游戏内硬件加速循环背景视频（可选，info.json 配置 video_file）
 ```
 
 ---

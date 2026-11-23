@@ -222,8 +222,17 @@ def watch_remote_release(target_tag: str) -> None:
         if rel.returncode == 0 and rel.stdout.strip():
             data = json.loads(rel.stdout)
             assets = [a["name"] for a in data.get("assets", [])]
-            if assets:
-                print(f"[autopilot] Verified GitHub Release {target_tag}: {data.get('url')} assets={assets}", flush=True)
+            is_pre_tag = any(s in target_tag for s in ("-dev", "-alpha", "-beta", "-rc"))
+            expected = [f"Sakura-{target_tag}-win64.zip"]
+            if not is_pre_tag:
+                expected.extend([
+                    f"Sakura-{target_tag}-win64-setup.exe",
+                    f"Sakura-{target_tag}-SHA256SUMS.txt",
+                ])
+            if all(req in assets for req in expected):
+                if not is_pre_tag and data.get("isPrerelease") is not False:
+                    raise RuntimeError(f"Expected stable release {target_tag} isPrerelease==False, got {data.get('isPrerelease')!r}")
+                print(f"[autopilot] Verified GitHub Release {target_tag}: {data.get('url')} prerelease={data.get('isPrerelease')} assets={assets}", flush=True)
                 return
         time.sleep(5)
     raise RuntimeError(f"GitHub Release {target_tag} missing or has no uploaded assets.")

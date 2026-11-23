@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 0.9.1
+    VERSION 1.0.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
 
 # 预发布标签（留空则为正式版）
-set(SAKURA_VERSION_PRERELEASE "beta")
+set(SAKURA_VERSION_PRERELEASE "")
 if(SAKURA_VERSION_PRERELEASE STREQUAL "")
     set(SAKURA_VERSION_FULL "${PROJECT_VERSION}")
 else()

@@ -1,4 +1,4 @@
-﻿name: Build
+name: Build
 
 on:
   push:
@@ -107,12 +107,21 @@ jobs:
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
           if ($preset -eq "release") {
+            if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and -not (Test-Path 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe')) {
+              choco install innosetup -y --no-progress
+            }
+            New-Item -ItemType Directory -Force -Path artifacts/dist | Out-Null
             python scripts/package_release.py --build-dir "build/$preset" --output-dir artifacts/package
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $package = Get-ChildItem artifacts/package -Directory | Select-Object -First 1
             Copy-Item "$($package.FullName)/*" $outDir -Recurse
             $archive = Get-ChildItem artifacts/package -Filter '*.zip' | Select-Object -First 1
-            Copy-Item $archive.FullName artifacts/Sakura-win64.zip
+            $installer = Get-ChildItem artifacts/package -Filter '*-setup.exe' | Select-Object -First 1
+            if (-not $archive -or -not $installer) {
+              throw "Missing dual release artifacts (.zip and -setup.exe) in artifacts/package."
+            }
+            Copy-Item $archive.FullName artifacts/dist/Sakura-win64.zip
+            Copy-Item $installer.FullName artifacts/dist/Sakura-win64-setup.exe
           } else {
             Copy-Item "$buildDir/Sakura.exe" $outDir
             Copy-Item "$buildDir/*.dll" $outDir
@@ -128,12 +137,14 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      - name: Upload release zip
+      - name: Upload release distribution
         if: matrix.config.artifact_suffix == 'release' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/'))
         uses: actions/upload-artifact@v4
         with:
-          name: release-zip
-          path: artifacts/Sakura-win64.zip
+          name: release-dist
+          path: |
+            artifacts/dist/Sakura-win64.zip
+            artifacts/dist/Sakura-win64-setup.exe
           retention-days: 1
 
       - name: Build summary
@@ -208,24 +219,27 @@ jobs:
       contents: write
 
     steps:
-      - name: Download release zip
+      - name: Download release distribution
         uses: actions/download-artifact@v4
         with:
-          name: release-zip
+          name: release-dist
           path: dist/
 
-      - name: Rename zip with tag version
-        id: release_file
+      - name: Prepare dual artifacts and SHA256SUMS
         run: |
           TAG="$RELEASE_TAG"
           mv dist/Sakura-win64.zip "dist/Sakura-${TAG}-win64.zip"
-          echo "file=dist/Sakura-${TAG}-win64.zip" >> $GITHUB_OUTPUT
+          mv dist/Sakura-win64-setup.exe "dist/Sakura-${TAG}-win64-setup.exe"
+          (
+            cd dist
+            sha256sum "Sakura-${TAG}-win64-setup.exe" "Sakura-${TAG}-win64.zip" > "Sakura-${TAG}-SHA256SUMS.txt"
+          )
 
       - name: Determine pre-release flag
         id: prerelease
         run: |
           TAG="$RELEASE_TAG"
-          if [[ "$TAG" == *"-dev"* || "$TAG" == *"-alpha"* || "$TAG" == *"-beta"* ]]; then
+          if [[ "$TAG" == *"-dev"* || "$TAG" == *"-alpha"* || "$TAG" == *"-beta"* || "$TAG" == *"-rc"* ]]; then
             echo "value=true" >> $GITHUB_OUTPUT
           else
             echo "value=false" >> $GITHUB_OUTPUT
@@ -235,7 +249,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: ${{ steps.release_file.outputs.file }}
+          files: |
+            dist/Sakura-${{ env.RELEASE_TAG }}-win64-setup.exe
+            dist/Sakura-${{ env.RELEASE_TAG }}-win64.zip
+            dist/Sakura-${{ env.RELEASE_TAG }}-SHA256SUMS.txt
           prerelease: ${{ steps.prerelease.outputs.value }}
           generate_release_notes: true
           name: "Sakura-樱 ${{ env.RELEASE_TAG }}"

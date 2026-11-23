@@ -38,21 +38,21 @@
 │  Game Logic  │ │   UI System  │ │   Effects    │
 │  (game/)     │ │   (ui/)      │ │  (effects/)  │
 │              │ │              │ │              │
-│ • Note       │ │ • Button     │ │ • Particles  │
-│ • Judge      │ │ • ScrollList │ │ • Glow       │
-│ • Score      │ │ • InputField │ │ • Trail      │
-│ • ChartLoad  │ │ • Panel      │ │ • Shader     │
-│ • GameState  │ │ • ProgressBar│ │ • ScreenShake│
+│ • PlaySession│ │ • Button     │ │ • Particles  │
+│ • Note/Chart3│ │ • ScrollList │ │ • VideoBGA   │
+│ • Judge/Score│ │ • TextInput  │ │ • Shader/Glow│
+│ • Replay v2  │ │ • VisualStyle│ │ • ScreenShake│
+│ • GameState  │ │ • Toast      │ │ • Background │
 └──────────────┘ └──────────────┘ └──────────────┘
          │
          ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│    Audio     │ │   Database   │ │   Network    │
-│  (audio/)    │ │  (SQLite3)   │ │   (net/)     │
+│    Audio     │ │  Data & Zip  │ │   Network    │
+│  (audio/)    │ │ (data/utils) │ │   (net/)     │
 │              │ │              │ │              │
-│ • Manager    │ │ • Scores     │ │ • APIClient  │
-│ • Visualizer │ │ • Settings   │ │ • NetManager │
-│              │ │ • Achievment │ │              │
+│ • Manager    │ │ • SQLite3 DB │ │ • HttpClient │
+│ • WSOLA Pitch│ │ • .sakura Zip│ │ • APIClient  │
+│ • ClockSync  │ │ • Atomic I/O │ │ • Updater    │
 └──────────────┘ └──────────────┘ └──────────────┘
 ```
 

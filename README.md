@@ -2,42 +2,40 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v0.9.1-beta** · Windows x64 · C++20 / SDL3
+当前版本：**v1.0.0** · Windows x64 · C++20 / SDL3
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
-本版提供离线游玩、教程、曲库、练习、回放、本地成绩、设置和谱面工房，仍处于 Alpha 阶段。账号、在线排行榜、联网谱面市场和自动更新尚未提供。
+正式版完整提供双域协同演奏（Chart v3）、六课教程、15 首多难度曲库、WSOLA 变速不变调练习、深度结算分析、原生 MP4 背景视频舞台、谱面工房 v3（支持 `.sakura` 谱面包）与本地存档管理。在线生态见 [路线图](doc/ROADMAP.md)。
 
 ![Sakura 的主菜单、曲库、视觉设置与双区舞台](doc/images/sakura-0.6-overview.jpg)
 
 ## 开始游玩
 
-1. 在 [Releases](https://github.com/StevenLee147/Sakura/releases) 中选择版本，下载 Windows x64 游戏 ZIP（不是 GitHub 自动生成的 `Source code`）。标签推送后，发行包需等待 CI 构建成功才会出现。
-2. 完整解压到可写目录，运行 `Sakura.exe`，保留同目录的 DLL、`resources` 和 `config`。
-3. 首次启动建议完成五课教程，再从曲库选择曲目与难度，点击「开始演奏」。
+1. 在 [Releases](https://github.com/StevenLee147/Sakura/releases) 下载标准向导安装版 `Sakura-<版本>-win64-setup.exe`（支持桌面/开始菜单快捷方式、`.sakura` 谱面包文件关联及保留存档安全卸载），或下载免安装绿色版 `Sakura-<版本>-win64.zip`（非 GitHub 自动生成的 `Source code`）。
+2. 使用安装器按向导完成安装即可启动；若使用免安装 ZIP，请完整解压到可写目录并运行 `Sakura.exe`，保留同目录的 DLL、`resources` 和 `config`。
+3. 首次启动建议完成六课双域教程，再从曲库选择曲目与难度，点击「开始演奏」。
 
 支持 Windows 10 1903 及以上、Windows 11；建议使用耳机、实体键盘和鼠标，窗口最低 960 × 540。
 
 | 操作 | 默认按键 / 方式 |
 |---|---|
-| 左侧 Tap / Hold | A / S / D / F，短按或保持到长条结束 |
-| 右侧 Circle / Slider | 鼠标左键点击，或按住并沿路径移动 |
-| 暂停 / 重试 | Esc / R |
-| 切换全屏 | F11 |
+| 左侧 Tap / Hold + 樱枝横梁 | A / S / D / F 四轨 + Space 大拇指横梁，短按或保持到长条结束 |
+| 右侧 Circle / Slider + 樱绽组合技 | 鼠标左键点击/按住滑动；带修饰徽记时按住对应键（或右键）协同触发 |
+| 暂停 / 重试 / 性能诊断 | Esc / R / F3 |
+| 切换全屏 / 结算详细分析 | F11 / 结算界面按 Tab |
 
-四轨键位、暂停与重试可在设置中修改。正式演奏记录成绩；练习、自动演示和回放均明确标记为辅助模式。
+五键轨道、暂停与重试均可在设置中修改。正式演奏记录成绩与 Sakura Bloom 满开统计；练习、自动演示和回放均明确标记为辅助模式。
 
 ## 已有功能
 
-- 15 首内置曲目、36 张谱面：涵盖《樱落呼吸》《樱光初醒》《繁星》《遥远的星》《樱光未落》《樱落侧链梦》《樱落流光》《一瞬花绽》《Petal Storm: Overdrive》等音频分析 Chart v3 多难度曲包（支持左手四轨 + 空格樱枝横梁、跨区连携同押与樱绽组合技），同时保留 4 首经典合成曲与训练曲。
-- 六页设置：游玩、声音、操作、显示、视觉、数据；包括节拍校准、自定义键位、帧率限制和减少动态效果。
-- 曲库支持搜索、收藏、排序、导入、难度选择、分段变速循环练习和最近回放。
-- 谱面工房支持四种音符、撤销/重做、属性修改、自动恢复文件和完整双区试玩。
-- 成绩、设置、回放、自制谱面可一起备份与恢复。
+- 15 首内置曲目、36 张谱面：涵盖《樱落呼吸》（附原生硬件加速 MP4 动态夜樱舞台）与《樱光初醒》《繁星》《遥远的星》《樱光未落》《樱落侧链梦》《樱落流光》《一瞬花绽》《Petal Storm: Overdrive》等音频分析 Chart v3 多难度曲包，同时保留 4 首经典合成曲与训练曲。
+- 六页设置与专业工具：支持自研 WSOLA 变速锁定音高（0.5x ~ 2.0x 不变调）、背景视频舞台开关、节拍校准、自定义键位、帧率限制、F3 实时性能与时钟诊断面板。
+- 全屏深度结算报告：提供全曲时间轴偏差散点图、Unstable Rate (UR)、连击曲线与判定扇环、五轨及双区准度拆分、四分段稳定性诊断与一键薄弱段循环练习。
+- 谱面工房 v3 与 `.sakura` 包：支持五轨时间轴音频波形、BPM/SV 变速节点可视化编辑、`L` 双区联动、`G` 鼠标协同修饰，以及 `.sakura` 单文件谱面包导出与窗口拖拽一键导入。
+- 成绩、设置、回放、自制谱面可一起备份与恢复，损坏数据库启动时自动备份隔离并安全重建。
 
-完整操作见 [中文玩家指南](doc/PLAYER_GUIDE.md)。此前 0.6.0 开发构建的修复与验证见 [交付检查记录](doc/RELEASE_REVIEW_0.6.0.md)；该记录保留当时的 beta 标识，对应发布标签为 `v0.6.0-alpha`。
-
-练习变速会同时改变音高；内置程序合成曲包仍需玩家听测与难度反馈。更多后续计划见 [路线图](doc/ROADMAP.md)。
+完整操作见 [中文玩家指南](doc/PLAYER_GUIDE.md)，正式版质量验收见 [v1.0.0 交付验收报告](doc/RELEASE_REVIEW_1.0.0.md)（历史检查记录见 [0.6.0 记录](doc/RELEASE_REVIEW_0.6.0.md)）。更多在线生态演进计划见 [路线图](doc/ROADMAP.md)。
 
 ## 本地数据
 
@@ -71,7 +69,7 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v0.9.1-beta`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v1.0.0`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
 

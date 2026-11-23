@@ -215,6 +215,44 @@ bool Database::Initialize(std::string_view dbPath)
         return false;
     }
 
+    if (m_path != ":memory:")
+    {
+        sqlite3_stmt* checkStmt = nullptr;
+        bool healthy = false;
+        if (sqlite3_prepare_v2(m_db, "PRAGMA quick_check", -1, &checkStmt, nullptr) == SQLITE_OK && checkStmt)
+        {
+            if (sqlite3_step(checkStmt) == SQLITE_ROW)
+            {
+                const char* status = reinterpret_cast<const char*>(sqlite3_column_text(checkStmt, 0));
+                healthy = (status && std::strcmp(status, "ok") == 0);
+            }
+        }
+        if (checkStmt) sqlite3_finalize(checkStmt);
+
+        if (!healthy)
+        {
+            LOG_WARN("[Database] 检测到损坏数据库 {}，自动备份并重建干净库", m_path);
+            sqlite3_close(m_db);
+            m_db = nullptr;
+            std::error_code ec;
+            const std::filesystem::path dbFile(m_path);
+            if (std::filesystem::exists(dbFile, ec))
+            {
+                std::filesystem::copy_file(dbFile, m_path + ".corrupt.bak",
+                    std::filesystem::copy_options::overwrite_existing, ec);
+                std::filesystem::remove(dbFile, ec);
+            }
+            std::filesystem::remove(m_path + "-wal", ec);
+            std::filesystem::remove(m_path + "-shm", ec);
+            if (sqlite3_open(m_path.c_str(), &m_db) != SQLITE_OK)
+            {
+                if (m_db) sqlite3_close(m_db);
+                m_db = nullptr;
+                return false;
+            }
+        }
+    }
+
     // 启用 WAL 模式，提升并发写入性能
     ExecSQL("PRAGMA journal_mode=WAL;");
     // 外键约束

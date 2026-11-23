@@ -19,10 +19,10 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 SEMVER_PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
 
 
-def load_hook_config() -> tuple[Path, str]:
+def load_hook_config() -> tuple[Path, str | None]:
     config_path = REPO_ROOT / "VERSION_HOOKS.json"
     if not config_path.exists():
-        return DEFAULT_VERSION_FILE, ""
+        return DEFAULT_VERSION_FILE, None
 
     with config_path.open("r", encoding="utf-8") as file:
         config = json.load(file)
@@ -170,7 +170,7 @@ def stage_files(paths: list[Path]) -> None:
 def main() -> int:
     version_path, configured_tag = load_hook_config()
     core_version, current_channel, release_tag, version_data = load_version_info(version_path)
-    channel = configured_tag if configured_tag else current_channel
+    channel = configured_tag if configured_tag is not None else current_channel
     release_tag = f"v{core_version}-{channel}" if channel else f"v{core_version}"
 
     managed_paths = [
