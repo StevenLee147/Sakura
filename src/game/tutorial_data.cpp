@@ -80,7 +80,7 @@ std::vector<TutorialLesson> BuildTutorialLessons()
         TutorialLessonType::Mixed,
         "第 5 课 - 综合配合",
         "左侧 Tap 与右侧 Circle 交替出现，照着节奏切换注意力即可。",
-        "恭喜，五课全部完成。已经可以开始正式游玩了。",
+        "很好，交替配合也掌握了。进入最后一课学习组合技吧！",
         200,
         0.1f,
         true,
@@ -92,6 +92,24 @@ std::vector<TutorialLesson> BuildTutorialLessons()
             { NoteType::Circle, 4300, 0, 0, 0.72f, 0.38f },
             { NoteType::Tap,    5400, 1, 0, 0.0f, 0.0f },
             { NoteType::Circle, 6500, 0, 0, 0.52f, 0.68f },
+        }
+    });
+
+    lessons.push_back(TutorialLesson{
+        TutorialLessonType::Synergy,
+        "第 6 课 - 樱枝横梁与组合技",
+        "大拇指按空格敲击横跨全轨的鎏金樱枝横梁；金丝连携需左右同拍击打，樱绽圈需按住对应键再点击。",
+        "恭喜，六课全部完成！双域协同与组合技已就绪，开始正式演奏吧。",
+        220,
+        0.12f,
+        true,
+        true,
+        {
+            { NoteType::Tap,    1400, 4, 0, 0.0f,  0.0f,  {}, 0, -1 },
+            { NoteType::Tap,    2800, 4, 0, 0.0f,  0.0f,  {}, 0, -1 },
+            { NoteType::Tap,    4400, 1, 0, 0.0f,  0.0f,  {}, 1, -1 },
+            { NoteType::Circle, 4400, 0, 0, 0.45f, 0.42f, {}, 1, -1 },
+            { NoteType::Circle, 6200, 0, 0, 0.56f, 0.58f, {}, 0,  4 },
         }
     });
 

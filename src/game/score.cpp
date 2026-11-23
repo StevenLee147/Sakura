@@ -31,6 +31,13 @@ void ScoreCalculator::Initialize(int totalNoteCount)
     m_goodCount    = 0;
     m_badCount     = 0;
     m_missCount    = 0;
+    m_feverEnergy      = 0.0f;
+    m_feverActive      = false;
+    m_feverRemainingMs = 0;
+    m_feverCount       = 0;
+    m_feverBonus       = 0;
+    m_synergyCount     = 0;
+    m_thumbHitCount    = 0;
     m_hitErrors.clear();
     m_hitErrors.reserve(m_totalNoteCount);
 
@@ -38,9 +45,22 @@ void ScoreCalculator::Initialize(int totalNoteCount)
               m_totalNoteCount, m_baseScorePerNote);
 }
 
+void ScoreCalculator::AdvanceFeverMs(int deltaMs)
+{
+    if (!m_feverActive || deltaMs <= 0) return;
+    m_feverRemainingMs = std::max(0, m_feverRemainingMs - deltaMs);
+    m_feverEnergy = static_cast<float>(m_feverRemainingMs) / static_cast<float>(FEVER_DURATION_MS);
+    if (m_feverRemainingMs == 0)
+    {
+        m_feverActive = false;
+        m_feverEnergy = 0.0f;
+    }
+}
+
 // ── OnJudge ───────────────────────────────────────────────────────────────────
 
-void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTiming)
+void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTiming,
+                              bool isSynergy, bool isThumb)
 {
     if (GetJudgedCount() >= m_totalNoteCount) return;
     // 记录偏差（仅记录实际命中的音符，Miss 不记录）
@@ -85,6 +105,36 @@ void ScoreCalculator::OnJudge(JudgeResult result, int hitError, bool recordTimin
         break;
     default:
         return;  // None: 不计分
+    }
+
+    if (!breakCombo)
+    {
+        if (isSynergy) ++m_synergyCount;
+        if (isThumb)   ++m_thumbHitCount;
+    }
+
+    if (m_feverActive)
+    {
+        if (scoreRatio > 0.0f && scoreRatio < 1.0f)
+            scoreRatio = std::min(1.0f, scoreRatio * 1.06f);
+        if (!breakCombo)
+            m_feverBonus += isSynergy ? 300 : 120;
+    }
+    else
+    {
+        float gain = 0.0f;
+        if (result == JudgeResult::Perfect)      gain = isSynergy ? 0.075f : 0.025f;
+        else if (result == JudgeResult::Great)   gain = isSynergy ? 0.045f : 0.015f;
+        else if (result == JudgeResult::Good)    gain = 0.005f;
+        else                                     gain = -0.25f;
+        m_feverEnergy = std::clamp(m_feverEnergy + gain, 0.0f, 1.0f);
+        if (m_feverEnergy >= 1.0f - 1e-5f)
+        {
+            m_feverActive      = true;
+            m_feverRemainingMs = FEVER_DURATION_MS;
+            m_feverEnergy      = 1.0f;
+            ++m_feverCount;
+        }
     }
 
     // 更新连击
@@ -165,6 +215,10 @@ GameResult ScoreCalculator::GetResult(const std::string& chartId,
     result.missCount    = m_missCount;
 
     result.totalJudgments = m_totalNoteCount;
+    result.synergyCount   = m_synergyCount;
+    result.thumbHitCount  = m_thumbHitCount;
+    result.feverCount     = m_feverCount;
+    result.feverBonus     = m_feverBonus;
     const bool completed = m_totalNoteCount > 0 && GetJudgedCount() == m_totalNoteCount;
     result.isFullCombo  = completed && IsFullCombo();
     result.isAllPerfect = completed && IsAllPerfect();

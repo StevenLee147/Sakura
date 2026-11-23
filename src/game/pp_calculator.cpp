@@ -38,6 +38,8 @@ double PPCalculator::CalculatePP(const GameResult& result, float level)
         pp *= kAllPerfectBonus;
     if (accuracy >= kAccuracyThreshold)
         pp *= kHighAccuracyBonus;
+    if (result.synergyCount > 0)
+        pp *= (1.0 + std::min(0.03, static_cast<double>(result.synergyCount) * 0.0015));
 
     return pp;
 }

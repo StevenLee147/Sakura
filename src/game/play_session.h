@@ -23,7 +23,7 @@ struct PlayOptions
     std::string replayFile;
 };
 
-enum class InputKind { Tick, LaneDown, LaneUp, Pointer, MouseDown, MouseUp, Resume, PointerScale };
+enum class InputKind { Tick, LaneDown, LaneUp, Pointer, MouseDown, MouseUp, Resume, PointerScale, RightMouseDown, RightMouseUp };
 
 struct SessionInput
 {
@@ -43,6 +43,7 @@ struct JudgmentEvent
     float y = 0.0f;
     int error = 0;
     bool timed = false;
+    bool synergy = false;
 };
 
 // The same deterministic engine drives human play, demonstration, replay and tests.
@@ -61,14 +62,24 @@ public:
     const std::vector<SessionInput>& Recording() const { return m_recording; }
     bool Complete() const { return m_score.GetJudgedCount() == m_total; }
     int Total() const { return m_total; }
-    std::array<bool, 4> Lanes() const { return m_lanes; }
+    std::array<bool, kTotalKeyboardLanes> Lanes() const { return m_lanes; }
+    bool RightMouseDown() const { return m_rightMouseDown; }
     float MouseX() const { return m_x; }
     float MouseY() const { return m_y; }
 
 private:
+    struct LinkHitRecord
+    {
+        int linkId = 0;
+        int timeMs = -100000;
+        bool fromKeyboard = true;
+    };
+
     void Advance(int now);
     void PressLane(int lane, int now);
-    void PressMouse(int now);
+    void PressMouse(int now, bool rightButton = false);
+    bool IsModifierSatisfied(int requireLane, int now) const;
+    bool TryConsumeLinkSynergy(int linkId, int now, bool fromKeyboard);
     void Emit(JudgmentEvent event);
     void MissKeyboard(KeyboardNote& note);
     void MissMouse(MouseNote& note);
@@ -79,14 +90,18 @@ private:
     std::vector<HoldState> m_holds;
     std::vector<SliderState> m_sliders;
     std::vector<SessionInput> m_recording;
+    std::vector<LinkHitRecord> m_recentLinks;
     std::function<void(const JudgmentEvent&)> m_onJudge;
-    std::array<bool, 4> m_lanes{};
+    std::array<bool, kTotalKeyboardLanes> m_lanes{};
+    std::array<int, 6> m_modifierDownMs{-100000, -100000, -100000, -100000, -100000, -100000};
     float m_x = 0.5f;
     float m_y = 0.5f;
     float m_scaleX = 1, m_scaleY = 1;
     bool m_mouseDown = false;
+    bool m_rightMouseDown = false;
     bool m_autoPlay = false;
     int m_time = -10000;
+    int m_lastAdvanceMs = -100000;
     int m_total = 0;
     size_t m_keyboardCursor = 0;
     size_t m_mouseCursor = 0;

@@ -427,7 +427,11 @@ bool Database::SaveScore(const sakura::game::GameResult& result)
     // A failed insert must not increment play counts.
     if (ok)
     {
-        ok=IncrementStatistic("total_play_count", 1.0) && IncrementStatistic("total_play_time_seconds", result.playTimeSeconds);
+        ok=IncrementStatistic("total_play_count", 1.0)
+            && IncrementStatistic("total_play_time_seconds", result.playTimeSeconds)
+            && (result.synergyCount <= 0 || IncrementStatistic("total_synergy_hits", static_cast<double>(result.synergyCount)))
+            && (result.thumbHitCount <= 0 || IncrementStatistic("total_thumb_hits", static_cast<double>(result.thumbHitCount)))
+            && (result.feverCount <= 0 || IncrementStatistic("total_fever_triggers", static_cast<double>(result.feverCount)));
     }
 
     if(ok)ok=ExecSQL("COMMIT");

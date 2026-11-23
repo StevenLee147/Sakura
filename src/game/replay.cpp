@@ -29,12 +29,18 @@ std::string Replay::Hash(const ChartData& chart, int offsetMs)
     for (const auto& note : chart.keyboardNotes)
     {
         mix(note.time); mix(note.lane); mix(static_cast<uint32_t>(note.type)); mix(note.duration);
+        if (chart.version >= 3 || note.linkId != 0) mix(static_cast<uint32_t>(note.linkId));
     }
     mix(static_cast<uint32_t>(chart.mouseNotes.size()));
     for (const auto& note : chart.mouseNotes)
     {
         mix(note.time); mix(std::bit_cast<uint32_t>(note.x)); mix(std::bit_cast<uint32_t>(note.y));
         mix(static_cast<uint32_t>(note.type)); mix(note.sliderDuration);
+        if (chart.version >= 3 || note.linkId != 0 || note.requireLane >= 0)
+        {
+            mix(static_cast<uint32_t>(note.linkId));
+            mix(static_cast<uint32_t>(note.requireLane + 1));
+        }
         mix(static_cast<uint32_t>(note.sliderPath.size()));
         for (const auto& [x, y] : note.sliderPath) { mix(std::bit_cast<uint32_t>(x)); mix(std::bit_cast<uint32_t>(y)); }
     }
@@ -43,7 +49,16 @@ std::string Replay::Hash(const ChartData& chart, int offsetMs)
 
 bool Replay::Save(const std::string& path) const
 {
-    nlohmann::json data = {{"format", "sakura-replay"}, {"version", 1}, {"chart_id", chartId},
+    int version = 1;
+    for (const auto& input : inputs)
+    {
+        if (input.lane >= kStandardLaneCount || input.kind >= InputKind::RightMouseDown)
+        {
+            version = 2;
+            break;
+        }
+    }
+    nlohmann::json data = {{"format", "sakura-replay"}, {"version", version}, {"chart_id", chartId},
         {"chart_hash", chartHash}, {"difficulty", difficulty}, {"rate", rate}, {"start_ms", startMs},
         {"pointer_scale_x",pointerScaleX}, {"pointer_scale_y",pointerScaleY}};
     auto& events = data["inputs"] = nlohmann::json::array();
@@ -59,7 +74,8 @@ std::optional<Replay> Replay::Load(const std::string& path)
         if (std::filesystem::file_size(path) > 128 * 1024 * 1024) return std::nullopt;
         std::ifstream file(path);
         const auto data = nlohmann::json::parse(file);
-        if (data.at("format") != "sakura-replay" || data.at("version") != 1) return std::nullopt;
+        const int version = data.at("version").get<int>();
+        if (data.at("format") != "sakura-replay" || (version != 1 && version != 2)) return std::nullopt;
         Replay replay;
         replay.chartId = data.at("chart_id").get<std::string>();
         replay.chartHash = data.at("chart_hash").get<std::string>();
@@ -83,8 +99,8 @@ std::optional<Replay> Replay::Load(const std::string& path)
             input.lane = event[2].get<int>();
             input.x = event[3].get<float>();
             input.y = event[4].get<float>();
-            if (kind < 0 || kind > static_cast<int>(InputKind::PointerScale) || input.time < previous ||
-                input.time > 3600000 || input.lane < 0 || input.lane >= 4 ||
+            if (kind < 0 || kind > static_cast<int>(InputKind::RightMouseUp) || input.time < previous ||
+                input.time > 3600000 || input.lane < 0 || input.lane >= kTotalKeyboardLanes ||
                 !std::isfinite(input.x) || !std::isfinite(input.y) ||
                 std::abs(input.x) > 10 || std::abs(input.y) > 10) return std::nullopt;
             input.kind = static_cast<InputKind>(kind);

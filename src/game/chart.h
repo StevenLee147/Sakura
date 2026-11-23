@@ -39,6 +39,8 @@ struct DifficultyInfo
     int         noteCount      = 0;        // 键盘音符总数
     int         holdCount      = 0;        // Hold 音符总数
     int         mouseNoteCount = 0;        // 鼠标音符总数
+    int         thumbCount     = 0;        // 空格樱枝横梁音符数 (Chart v3)
+    int         synergyCount   = 0;        // 连携/组合技音符数 (Chart v3)
 };
 
 // ── 谱面元信息 ────────────────────────────────────────────────────────────────
@@ -106,6 +108,10 @@ struct GameResult
     long long playedAt   = 0;       // Unix 时间戳（秒）
     std::vector<int> hitErrors;     // 每个音符的判定偏差（毫秒）
     int totalJudgments = 0;
+    int synergyCount   = 0;        // 本局触发的跨区连携/樱绽组合技次数
+    int thumbHitCount  = 0;        // 本局命中的樱枝空格横梁次数
+    int feverCount     = 0;        // 本局触发的樱满开 Fever 次数
+    int feverBonus     = 0;        // Fever 附加表现分
     bool assisted = false;         // demonstration / practice / replay never enter personal records
     float playbackRate = 1.0f;
     std::string replayFile;

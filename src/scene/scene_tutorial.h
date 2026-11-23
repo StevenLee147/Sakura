@@ -62,11 +62,12 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnPromptYes;
     std::unique_ptr<sakura::ui::Button> m_btnPromptNo;
 
-    std::array<SDL_Scancode, 4> m_laneKeys = {
+    std::array<SDL_Scancode, 5> m_laneKeys = {
         SDL_SCANCODE_A,
         SDL_SCANCODE_S,
         SDL_SCANCODE_D,
         SDL_SCANCODE_F,
+        SDL_SCANCODE_SPACE,
     };
 
     static constexpr float TRACK_X      = 0.08f;

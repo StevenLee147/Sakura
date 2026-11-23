@@ -35,6 +35,7 @@ struct JudgeFlash
     float posY        = 0.0f;
     int   hitErrorMs  = 0;      // 正数=偏早，负数=偏晚
     bool  showHitError = false;
+    bool  isSynergy    = false; // 跨区连携 / 樱绽组合技触发
     static constexpr float FLASH_DURATION = 0.5f;
 };
 
@@ -71,7 +72,7 @@ private:
     struct CursorPoint { float x, y, age; };
     std::vector<CursorPoint> m_cursorTrail;
     float m_trailSample = 0;
-    std::array<float,4> m_lanePulse{};
+    std::array<float, sakura::game::kTotalKeyboardLanes> m_lanePulse{};
     float m_noteSpeed = 5.0f;
     int m_approachMs = 1000;
     void Pause();
@@ -90,11 +91,13 @@ private:
     sakura::core::FontHandle m_fontHUD   = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
 
-    // 按键 → 轨道 映射（默认 A/S/D/F）
+    // 按键 → 轨道 映射（默认 A/S/D/F + Space 樱枝横梁）
     static constexpr int LANE_COUNT = 4;
-    std::array<SDL_Scancode, LANE_COUNT> m_laneKeys = {
+    static constexpr int KEY_BIND_COUNT = sakura::game::kTotalKeyboardLanes;
+    std::array<SDL_Scancode, KEY_BIND_COUNT> m_laneKeys = {
         SDL_SCANCODE_A, SDL_SCANCODE_S,
-        SDL_SCANCODE_D, SDL_SCANCODE_F
+        SDL_SCANCODE_D, SDL_SCANCODE_F,
+        SDL_SCANCODE_SPACE
     };
 
     // ── 布局常量（归一化） ────────────────────────────────────────────────────
@@ -117,9 +120,10 @@ private:
     float m_chromaTimer     = 0.0f;               // 色差计时（>0=激活）
     float m_comboPopTimer   = 0.0f;               // 连击数字弹跳计时
     int   m_lastCheckedCombo = 0;                 // 上帧连击数（用于里程碑检测）
+    int   m_lastFeverCount   = 0;
 
     // 轨道按键状态（用于轨道按下发光效果）
-    std::array<bool, LANE_COUNT> m_lanePressed = {};
+    std::array<bool, KEY_BIND_COUNT> m_lanePressed = {};
 
     // ── 背景渲染 ─────────────────────────────────────────────────────────────
     sakura::effects::BackgroundRenderer m_bgRenderer;   // 图片背景
@@ -135,13 +139,14 @@ private:
     float CalcApproachScale(int noteTimeMs, int currentTimeMs) const;
 
     // 获取轨道 X 坐标（左边缘）
-    float GetLaneX(int lane) const { return TRACK_X + lane * LANE_W; }
+    float GetLaneX(int lane) const { return lane == sakura::game::kThumbLaneIndex ? TRACK_X : (TRACK_X + lane * LANE_W); }
+    const char* ModifierBadgeLabel(int requireLane) const;
 
     // 响应按键判定
     void HandleKeyPress(SDL_Scancode key);
 
     // 响应鼠标点击判定
-    void HandleMouseClick(float normX, float normY);
+    void HandleMouseClick(float normX, float normY, bool rightButton = false);
 
     // 事件阶段直接采样音频播放头，避免使用上一帧的游戏时钟
     int GetInputTimeMs() const;
@@ -149,7 +154,8 @@ private:
     // 添加判定闪现
     void AddJudgeFlash(sakura::game::JudgeResult r, bool isKb, int lane = 0,
                        float px = 0.f, float py = 0.f,
-                       int hitErrorMs = 0, bool showHitError = false);
+                       int hitErrorMs = 0, bool showHitError = false,
+                       bool isSynergy = false);
 
     // 渲染各部分
     void RenderBackground(sakura::core::Renderer& renderer);

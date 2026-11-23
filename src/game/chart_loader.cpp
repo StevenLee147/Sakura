@@ -87,7 +87,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
 
     // 版本检查
     int version = SafeGet<int>(j, "version", 1);
-    if (version < 1 || version > 2)
+    if (version < 1 || version > 3)
     {
         LOG_WARN("info.json 版本 {} 未知，尝试兼容加载", version);
     }
@@ -139,6 +139,8 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
             di.noteCount      = SafeGet<int>(diff, "note_count",      0);
             di.holdCount      = SafeGet<int>(diff, "hold_count",      0);
             di.mouseNoteCount = SafeGet<int>(diff, "mouse_note_count", 0);
+            di.thumbCount     = SafeGet<int>(diff, "thumb_count",     0);
+            di.synergyCount   = SafeGet<int>(diff, "synergy_count",   0);
             info.difficulties.push_back(std::move(di));
         }
     }
@@ -271,6 +273,7 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
             note.lane       = SafeGet<int>(n, "lane", 0);
             note.type       = ParseNoteType(rawType);
             note.duration   = SafeGet<int>(n, "duration", 0);
+            note.linkId     = SafeGet<int>(n, "link_id", 0);
             if (rawType == "drag")
             {
                 LOG_WARN("谱面 '{}' 在 time={} lane={} 仍使用已移除的 Drag 音符类型，将按 Hold 兼容加载",
@@ -292,6 +295,8 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
             note.y               = SafeGet<float>(n, "y", 0.5f);
             note.type            = ParseNoteType(SafeGet<std::string>(n, "type", "circle"));
             note.sliderDuration  = SafeGet<int>(n, "slider_duration", 0);
+            note.linkId          = SafeGet<int>(n, "link_id", 0);
+            note.requireLane     = SafeGet<int>(n, "require_lane", -1);
 
             // Slider 路径
             if (n.contains("slider_path") && n["slider_path"].is_array())
@@ -380,7 +385,8 @@ bool ChartLoader::ValidateChartData(const ChartData& data) const
     int previous = -1;
     for (const auto& note : data.keyboardNotes)
     {
-        if (note.time < previous || note.time < 0 || note.time > maxTime || note.lane < 0 || note.lane > 3 ||
+        if (note.time < previous || note.time < 0 || note.time > maxTime ||
+            note.lane < 0 || note.lane > kThumbLaneIndex || note.linkId < 0 ||
             (note.type != NoteType::Tap && note.type != NoteType::Hold) || note.duration < 0 ||
             note.duration > maxTime - note.time || (note.type == NoteType::Hold && note.duration == 0)) return false;
         previous = note.time;
@@ -389,6 +395,7 @@ bool ChartLoader::ValidateChartData(const ChartData& data) const
     for (const auto& note : data.mouseNotes)
     {
         if (note.time < previous || note.time < 0 || note.time > maxTime || !position(note.x) || !position(note.y) ||
+            note.linkId < 0 || note.requireLane < -1 || note.requireLane > kSynergyRightClick ||
             (note.type != NoteType::Circle && note.type != NoteType::Slider) || note.sliderDuration < 0 ||
             note.sliderDuration > maxTime - note.time || note.sliderPath.size() > 1024) return false;
         if (note.type == NoteType::Slider && (note.sliderDuration <= 0 || note.sliderPath.empty())) return false;

@@ -30,8 +30,8 @@ namespace
 {
 const char* titles[] = {"游玩", "声音", "操作", "显示", "视觉", "数据"};
 const char* subtitles[] = {"找到属于你的节奏", "让每一次击打准确回应", "左手节奏，右手旋律", "让画面跟上你的反应", "樱花与光，恰到好处", "每一次进步，都值得保留"};
-const char* keyNames[] = {"input.key_lane_0", "input.key_lane_1", "input.key_lane_2", "input.key_lane_3", "input.key_pause", "input.key_retry"};
-constexpr int defaultKeys[] = {4, 22, 7, 9, 41, 21};
+const char* keyNames[] = {"input.key_lane_0", "input.key_lane_1", "input.key_lane_2", "input.key_lane_3", "input.key_thumb", "input.key_pause", "input.key_retry"};
+constexpr int defaultKeys[] = {4, 22, 7, 9, 44, 41, 21};
 NormRect ControlBounds(size_t row) { return {0.685f, 0.235f + static_cast<float>(row) * 0.079f, 0.235f, 0.042f}; }
 std::unique_ptr<Button> MakeButton(NormRect bounds, const std::string& text, FontHandle font, std::function<void()> action)
 {
@@ -156,16 +156,20 @@ void SceneSettings::BuildPages()
     AddChoice(1, "打击音色", "选择后播放试听", "audio.hitsound", {"清脆 / Default", "轻柔 / Soft", "鼓点 / Drum"}, {"default", "soft", "drum"});
     AddToggle(1, "判定提示音", "额外播放 Perfect / Great 等判定音色", "audio.judgment_sounds");
 
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 7; ++i)
     {
         m_keys[i] = cfg.Get<int>(keyNames[i], defaultKeys[i]);
-        AddAction(2, i < 4 ? "轨道 " + std::to_string(i + 1) : (i == 4 ? "暂停 / 继续" : "快速重试"),
-            i < 4 ? "左手操作，默认 A / S / D / F" : (i == 4 ? "Esc 始终可用；失去焦点时自动暂停" : "重新进入同一歌曲、难度和模式"),
+        const std::string rowTitle = i < 4 ? ("轨道 " + std::to_string(i + 1))
+            : (i == 4 ? "樱枝横梁" : (i == 5 ? "暂停 / 继续" : "快速重试"));
+        const std::string rowHint = i < 4 ? "左手操作，默认 A / S / D / F"
+            : (i == 4 ? "左手大拇指，默认 Space；用于横梁与组合技"
+            : (i == 5 ? "Esc 始终可用；失去焦点时自动暂停" : "重新进入同一歌曲、难度和模式"));
+        AddAction(2, rowTitle, rowHint,
             SDL_GetScancodeName(static_cast<SDL_Scancode>(m_keys[i])), [this, i] { m_listening = i; m_listenTime = 0; });
     }
-    AddAction(2, "恢复默认键位", "A / S / D / F · Esc 暂停 · R 重试", "重置键位", [this]
+    AddAction(2, "恢复默认键位", "A / S / D / F / Space · Esc 暂停 · R 重试", "重置键位", [this]
     {
-        for (int i = 0; i < 6; ++i) { m_keys[i] = defaultKeys[i]; Config::GetInstance().Set(keyNames[i], defaultKeys[i]); }
+        for (int i = 0; i < 7; ++i) { m_keys[i] = defaultKeys[i]; Config::GetInstance().Set(keyNames[i], defaultKeys[i]); }
         m_dirty = true;
     });
 
@@ -361,7 +365,7 @@ void SceneSettings::OnUpdate(float dt)
     static_cast<Toggle*>(m_pages[3][0].control.get())->SetOn(Config::GetInstance().Get<bool>("display.fullscreen",false));
     for (auto& row : m_pages[m_page]) row.control->Update(dt);
     if (m_page == 2)
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < 7; ++i)
             static_cast<Button*>(m_pages[2][i].control.get())->SetText(m_listening == i ? "请按键…" : SDL_GetScancodeName(static_cast<SDL_Scancode>(m_keys[i])));
     for (auto& button : m_footer) button->Update(dt);
     for (auto& button : m_modalButtons) button->Update(dt);
@@ -380,9 +384,9 @@ void SceneSettings::OnEvent(const SDL_Event& event)
         const int code = event.key.scancode;
         if (m_listening >= 0)
         {
-            if(code==SDL_SCANCODE_ESCAPE && m_listening!=4){m_listening=-1;return;}
+            if(code==SDL_SCANCODE_ESCAPE && m_listening!=5){m_listening=-1;return;}
             const bool conflict = code == SDL_SCANCODE_F11 || code == SDL_SCANCODE_UNKNOWN ||
-                (code == SDL_SCANCODE_ESCAPE && m_listening != 4) ||
+                (code == SDL_SCANCODE_ESCAPE && m_listening != 5) ||
                 std::any_of(m_keys.begin(), m_keys.end(), [this, code](int value) { return value == code && value != m_keys[m_listening]; });
             if (conflict) ToastManager::Instance().Show("此按键已使用或为系统保留，请换一个", ToastType::Warning);
             else { m_keys[m_listening] = code; Config::GetInstance().Set(keyNames[m_listening], code); m_dirty = true; m_listening = -1; }

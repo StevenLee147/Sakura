@@ -44,7 +44,7 @@ private:
     bool m_closeRequested = false;
     int m_modal = 0; // unsaved / reset / restore
     std::string m_restoreDirectory, m_lastBackupDirectory;
-    std::array<int, 6> m_keys{};
+    std::array<int, 7> m_keys{};
     void BuildPages();
     void AddSlider(int page, const std::string& title, const std::string& hint, const std::string& key,
                    float low, float high, float step, bool integral = false);

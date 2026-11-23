@@ -14,12 +14,16 @@ void PlaySession::Initialize(ChartData& chart, bool autoPlay, int startMs, int e
     m_autoPlay = autoPlay;
     m_total = JudgmentCount(chart);
     m_time = startMs - 10000;
+    m_lastAdvanceMs = -100000;
     m_holds.clear();
     m_sliders.clear();
     m_recording.clear();
     m_recording.reserve(30000);
+    m_recentLinks.clear();
     m_lanes.fill(false);
+    m_modifierDownMs.fill(-100000);
     m_mouseDown = false;
+    m_rightMouseDown = false;
     m_keyboardCursor = m_mouseCursor = 0;
     for (auto& note : chart.keyboardNotes)
     {
@@ -41,8 +45,36 @@ void PlaySession::Initialize(ChartData& chart, bool autoPlay, int startMs, int e
 
 void PlaySession::Emit(JudgmentEvent event)
 {
-    m_score.OnJudge(event.result, event.error, event.timed);
+    const bool isThumb = event.keyboard && event.lane == kThumbLaneIndex;
+    m_score.OnJudge(event.result, event.error, event.timed, event.synergy, isThumb);
     if (m_onJudge) m_onJudge(event);
+}
+
+bool PlaySession::IsModifierSatisfied(int requireLane, int now) const
+{
+    if (requireLane < 0) return true;
+    if (m_autoPlay) return true;
+    if (requireLane >= 0 && requireLane < kTotalKeyboardLanes)
+        return m_lanes[requireLane] || (now - m_modifierDownMs[requireLane] <= 110);
+    if (requireLane == kSynergyRightClick)
+        return m_rightMouseDown || (now - m_modifierDownMs[kSynergyRightClick] <= 110);
+    return false;
+}
+
+bool PlaySession::TryConsumeLinkSynergy(int linkId, int now, bool fromKeyboard)
+{
+    if (linkId <= 0) return false;
+    std::erase_if(m_recentLinks, [now](const LinkHitRecord& rec) { return now - rec.timeMs > 160; });
+    for (auto it = m_recentLinks.begin(); it != m_recentLinks.end(); ++it)
+    {
+        if (it->linkId == linkId && it->fromKeyboard != fromKeyboard && std::abs(now - it->timeMs) <= 85)
+        {
+            m_recentLinks.erase(it);
+            return true;
+        }
+    }
+    m_recentLinks.push_back({linkId, now, fromKeyboard});
+    return false;
 }
 
 void PlaySession::Submit(SessionInput input)
@@ -57,14 +89,15 @@ void PlaySession::Submit(SessionInput input)
     switch (input.kind)
     {
     case InputKind::LaneDown:
-        if (input.lane >= 0 && input.lane < 4 && !m_lanes[input.lane])
+        if (input.lane >= 0 && input.lane < kTotalKeyboardLanes && !m_lanes[input.lane])
         {
             m_lanes[input.lane] = true;
+            m_modifierDownMs[input.lane] = input.time;
             PressLane(input.lane, input.time);
         }
         break;
     case InputKind::LaneUp:
-        if (input.lane >= 0 && input.lane < 4)
+        if (input.lane >= 0 && input.lane < kTotalKeyboardLanes)
         {
             m_lanes[input.lane] = false;
             for (auto& hold : m_holds)
@@ -85,11 +118,21 @@ void PlaySession::Submit(SessionInput input)
     case InputKind::MouseDown:
         m_x = input.x;
         m_y = input.y;
-        if (!m_mouseDown) PressMouse(input.time);
+        if (!m_mouseDown) PressMouse(input.time, false);
         m_mouseDown = true;
         break;
     case InputKind::MouseUp:
         m_mouseDown = false;
+        break;
+    case InputKind::RightMouseDown:
+        m_x = input.x;
+        m_y = input.y;
+        m_modifierDownMs[kSynergyRightClick] = input.time;
+        if (!m_rightMouseDown) PressMouse(input.time, true);
+        m_rightMouseDown = true;
+        break;
+    case InputKind::RightMouseUp:
+        m_rightMouseDown = false;
         break;
     case InputKind::Resume:
         for (auto& hold : m_holds)
@@ -117,7 +160,9 @@ void PlaySession::PressLane(int lane, int now)
         if (note.time < now - m_judge.GetWindows().miss) { MissKeyboard(note); continue; }
         const auto result = m_judge.JudgeKeyboardNote(note, now);
         if (result == JudgeResult::None) return;
-        Emit({result, true, lane, 0, 0, note.time - now, true});
+        const bool linkSyn = (result != JudgeResult::Miss && result != JudgeResult::Bad)
+            && TryConsumeLinkSynergy(note.linkId, now, true);
+        Emit({result, true, lane, 0, 0, note.time - now, true, linkSyn});
         note.isJudged = true;
         if (note.type == NoteType::Hold)
         {
@@ -138,7 +183,7 @@ void PlaySession::PressLane(int lane, int now)
     }
 }
 
-void PlaySession::PressMouse(int now)
+void PlaySession::PressMouse(int now, bool rightButton)
 {
     auto& notes = m_chart->mouseNotes;
     int best = -1;
@@ -148,6 +193,7 @@ void PlaySession::PressMouse(int now)
         auto& note = notes[i];
         if (note.time > now + m_judge.GetWindows().bad) break;
         if (note.isJudged || std::abs(now - note.time) > m_judge.GetWindows().bad) continue;
+        if (rightButton && note.requireLane != kSynergyRightClick) continue;
         const float dx = (m_x - note.x)*m_scaleX, dy = (m_y - note.y)*m_scaleY;
         const float distance = dx * dx + dy * dy;
         const float radius = Judge::GetMouseHitTolerance(note);
@@ -159,10 +205,27 @@ void PlaySession::PressMouse(int now)
     }
     if (best < 0) return;
     auto& note = notes[best];
-    const auto result = m_judge.JudgeMouseNote(note, now, m_x, m_y);
+    auto result = m_judge.JudgeMouseNote(note, now, m_x, m_y);
     if (result == JudgeResult::None) return;
+    bool synergy = false;
+    if (note.requireLane >= 0)
+    {
+        if (rightButton && note.requireLane == kSynergyRightClick)
+            synergy = (result != JudgeResult::Miss && result != JudgeResult::Bad);
+        else if (IsModifierSatisfied(note.requireLane, now))
+            synergy = (result != JudgeResult::Miss && result != JudgeResult::Bad);
+        else
+        {
+            if (result == JudgeResult::Perfect)      result = JudgeResult::Great;
+            else if (result == JudgeResult::Great)   result = JudgeResult::Good;
+            else if (result == JudgeResult::Good)    result = JudgeResult::Bad;
+            note.result = result;
+        }
+    }
+    if (result != JudgeResult::Miss && result != JudgeResult::Bad && TryConsumeLinkSynergy(note.linkId, now, false))
+        synergy = true;
     note.isJudged = true;
-    Emit({result, false, 0, note.x, note.y, note.time - now, true});
+    Emit({result, false, 0, note.x, note.y, note.time - now, true, synergy});
     if (note.type == NoteType::Slider)
     {
         note.result = JudgeResult::None;
@@ -195,6 +258,9 @@ void PlaySession::MissMouse(MouseNote& note)
 
 void PlaySession::Advance(int now)
 {
+    if (m_lastAdvanceMs > -90000 && now > m_lastAdvanceMs)
+        m_score.AdvanceFeverMs(now - m_lastAdvanceMs);
+    m_lastAdvanceMs = now;
     const int cutoff = now - m_judge.GetWindows().miss;
     auto& keyboard = m_chart->keyboardNotes;
     auto& mouse = m_chart->mouseNotes;

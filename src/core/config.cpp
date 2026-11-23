@@ -62,6 +62,7 @@ void Config::ApplyDefaults()
     setDefault("input.key_lane_1", 22);
     setDefault("input.key_lane_2", 7);
     setDefault("input.key_lane_3", 9);
+    setDefault(ConfigKeys::kKeyThumb, 44);
     setDefault("audio.hitsound", std::string("default"));
     setDefault("audio.hitsounds_enabled", true);
     setDefault("audio.judgment_sounds", false);
@@ -99,17 +100,17 @@ void Config::ApplyDefaults()
     boundFloat("gameplay.lane_opacity", 0.9f, 0.2f, 1);
     boundFloat("graphics.effect_intensity", 0.7f, 0, 1);
     // Scancodes outside SDL's table or duplicate lane bindings make charts unplayable.
-    constexpr int defaults[] = {4, 22, 7, 9, 41, 21};
+    constexpr int defaults[] = {4, 22, 7, 9, 44, 41, 21};
     const std::string keys[] = {"input.key_lane_0", "input.key_lane_1", "input.key_lane_2",
-        "input.key_lane_3", "input.key_pause", "input.key_retry"};
+        "input.key_lane_3", "input.key_thumb", "input.key_pause", "input.key_retry"};
     bool invalid = false;
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 7; ++i)
     {
         const int value = Get<int>(keys[i], defaults[i]);
         invalid |= value <= 0 || value >= 512 || value == 68;
         for (int j = 0; j < i; ++j) invalid |= value == Get<int>(keys[j], defaults[j]);
     }
-    if (invalid) for (int i = 0; i < 6; ++i) Set(keys[i], defaults[i]);
+    if (invalid) for (int i = 0; i < 7; ++i) Set(keys[i], defaults[i]);
 
     m_dirty = false;  // 默认值不算脏
 }

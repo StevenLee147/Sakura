@@ -34,6 +34,7 @@ namespace ConfigKeys
     inline constexpr std::string_view kScrollDir      = "gameplay.scroll_dir";      // string "down"/"up"
 
     // ── 输入绑定 ──────────────────────────────────────────────────────────────
+    inline constexpr std::string_view kKeyThumb       = "input.key_thumb";         // int (SDL_Scancode, default SPACE=44)
     inline constexpr std::string_view kKeyPause       = "input.key_pause";         // int (SDL_Scancode)
     inline constexpr std::string_view kKeyRetry       = "input.key_retry";         // int
     inline constexpr std::string_view kKeyBack        = "input.key_back";          // int

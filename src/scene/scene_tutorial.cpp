@@ -50,6 +50,7 @@ void SceneTutorial::OnEnter()
 
     m_lessons = sakura::game::BuildTutorialLessons();
     for(int i=0;i<4;++i)m_laneKeys[i]=static_cast<SDL_Scancode>(sakura::core::Config::GetInstance().Get<int>("input.key_lane_"+std::to_string(i),m_laneKeys[i]));
+    m_laneKeys[4]=static_cast<SDL_Scancode>(sakura::core::Config::GetInstance().Get<int>("input.key_thumb",SDL_SCANCODE_SPACE));
     SetupPromptButtons();
 
     if (m_showFirstRunPrompt
@@ -203,7 +204,7 @@ int SceneTutorial::LaneFromScancode(SDL_Scancode scancode) const
 
 const char* SceneTutorial::LaneLabel(int lane) const
 {
-    if (lane < 0 || lane >= 4) return "?";
+    if (lane < 0 || lane >= 5) return "?";
     return SDL_GetScancodeName(m_laneKeys[lane]);
 }
 
@@ -436,6 +437,12 @@ void SceneTutorial::HandleMouseInput(float screenX, float screenY)
         if (timeDistance > lesson.judgeWindowMs)
             continue;
 
+        if (note.requireLane >= 0 && note.requireLane < 5
+            && !sakura::core::Input::IsKeyHeld(m_laneKeys[note.requireLane]))
+        {
+            continue;
+        }
+
         float dx = localX - note.x;
         float dy = localY - note.y;
         float distance = std::sqrt(dx * dx + dy * dy);
@@ -652,10 +659,15 @@ void SceneTutorial::RenderKeyboardArea(sakura::core::Renderer& renderer) const
             && note.type != sakura::game::NoteType::Hold)
             continue;
 
-        const float laneX = TRACK_X + laneWidth * static_cast<float>(note.lane) + laneWidth * 0.10f;
-        const float noteW = laneWidth * 0.80f;
+        const bool isThumb = (note.lane == sakura::game::kThumbLaneIndex);
+        const float laneX = isThumb
+            ? (TRACK_X + 0.014f)
+            : (TRACK_X + laneWidth * static_cast<float>(note.lane) + laneWidth * 0.10f);
+        const float noteW = isThumb ? (TRACK_W - 0.028f) : (laneWidth * 0.80f);
         const float noteY = CalcKeyboardY(note.timeMs, displayTimeMs);
-        const sakura::core::Color laneCol = palette.laneColors[std::clamp(note.lane, 0, 3)];
+        const sakura::core::Color laneCol = isThumb
+            ? sakura::core::Color{ 252, 222, 156, 255 }
+            : palette.laneColors[std::clamp(note.lane, 0, 3)];
 
         if (note.type == sakura::game::NoteType::Hold)
         {
@@ -697,8 +709,14 @@ void SceneTutorial::RenderKeyboardArea(sakura::core::Renderer& renderer) const
             { 24, 16, 36, 255 }, sakura::core::TextAlign::Center);
     }
 
-    renderer.DrawText(m_fontSmall, "左侧 4K 键盘轨道 (A / S / D / F)",
-        TRACK_X, TRACK_Y + TRACK_H + 0.074f, 0.0165f, palette.textMuted, sakura::core::TextAlign::Left);
+    const sakura::core::NormRect thumbBar{ TRACK_X + 0.02f, JUDGE_LINE_Y + 0.070f, TRACK_W - 0.04f, 0.024f };
+    renderer.DrawRoundedGradientRect(thumbBar, 0.006f,
+        { 46, 36, 62, 215 }, { 36, 30, 54, 215 }, { 26, 22, 42, 230 }, { 26, 22, 42, 230 });
+    renderer.DrawRoundedRectOutlineGradient(thumbBar, 0.006f,
+        { 252, 222, 156, 200 }, palette.surfaceBorder, 0.0012f);
+    renderer.DrawText(m_fontSmall, std::string("樱枝横梁 [") + LaneLabel(4) + "]",
+        TRACK_X + TRACK_W * 0.5f, JUDGE_LINE_Y + 0.073f, 0.0155f,
+        { 252, 226, 168, 240 }, sakura::core::TextAlign::Center);
 }
 
 void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
@@ -720,15 +738,42 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
     }
 
     const float displayTimeMs = (m_phase == Phase::Playing) ? m_lessonTimerMs : 0.0f;
+    const float laneWidth = TRACK_W / 4.0f;
     for (const auto& runtimeNote : m_runtimeNotes)
     {
         const auto& note = runtimeNote.note;
         if (runtimeNote.completed)
             continue;
+        if (note.type != sakura::game::NoteType::Circle
+            && note.type != sakura::game::NoteType::Slider)
+            continue;
 
         const float cx = MOUSE_X + note.x * MOUSE_W;
         const float cy = MOUSE_Y + note.y * MOUSE_H;
         const float approachR = 0.021f * CalcCircleScale(note.timeMs, displayTimeMs);
+
+        if (note.linkId > 0)
+        {
+            for (const auto& partner : m_runtimeNotes)
+            {
+                if (partner.completed || partner.note.linkId != note.linkId) continue;
+                if (partner.note.type != sakura::game::NoteType::Tap
+                    && partner.note.type != sakura::game::NoteType::Hold) continue;
+                const float kx = (partner.note.lane == sakura::game::kThumbLaneIndex)
+                    ? (TRACK_X + TRACK_W * 0.5f)
+                    : (TRACK_X + (static_cast<float>(partner.note.lane) + 0.5f) * laneWidth);
+                const float ky = CalcKeyboardY(partner.note.timeMs, displayTimeMs);
+                const std::array<sakura::core::NormPoint, 3> tether = {
+                    sakura::core::NormPoint{ kx, ky },
+                    sakura::core::NormPoint{ (kx + cx) * 0.5f, std::min(ky, cy) - 0.03f },
+                    sakura::core::NormPoint{ cx, cy }
+                };
+                renderer.DrawCatmullRomRibbon(tether.data(), 3, 0.004f, 0.004f,
+                    { 252, 224, 162, 210 }, { 246, 178, 206, 210 },
+                    { 252, 224, 162, 65 }, { 246, 178, 206, 65 }, 6, true);
+                break;
+            }
+        }
 
         if (note.type == sakura::game::NoteType::Circle)
         {
@@ -742,7 +787,16 @@ void SceneTutorial::RenderMouseArea(sakura::core::Renderer& renderer) const
                 palette.accent, { palette.primary.r, palette.primary.g, palette.primary.b, 35 }, 48);
             renderer.DrawCircleFilled(cx, cy, 0.021f, palette.circleColor, 36);
             renderer.DrawCircleFilled(cx, cy, 0.010f, { 255, 245, 250, 225 }, 24);
-            renderer.DrawCircleOutline(cx, cy, 0.021f, { 255, 250, 252, 240 }, 0.0022f, 40);
+            renderer.DrawCircleOutline(cx, cy, 0.021f,
+                note.requireLane >= 0 ? sakura::core::Color{ 252, 224, 158, 255 } : sakura::core::Color{ 255, 250, 252, 240 },
+                0.0024f, 40);
+            if (note.requireLane >= 0)
+            {
+                sakura::ui::VisualStyle::DrawBadgePill(renderer,
+                    { cx - 0.048f, cy - 0.052f, 0.096f, 0.022f },
+                    std::string("按住 ") + LaneLabel(note.requireLane),
+                    m_fontSmall, 0.013f, { 48, 36, 68, 225 }, { 252, 224, 158, 220 }, { 252, 228, 174, 255 });
+            }
         }
         else if (note.type == sakura::game::NoteType::Slider)
         {

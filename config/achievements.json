@@ -78,6 +78,24 @@
             "title": "极樱分数线",
             "description": "任意一局分数达到 999000",
             "target": 999000
+        },
+        {
+            "id": "first_synergy",
+            "title": "双域同心",
+            "description": "首次成功触发跨区连携或樱绽组合技",
+            "target": 1
+        },
+        {
+            "id": "fever_mankai",
+            "title": "千本满开",
+            "description": "累计触发 5 次樱满开 Fever 状态",
+            "target": 5
+        },
+        {
+            "id": "thumb_master",
+            "title": "樱枝行者",
+            "description": "累计命中 100 次樱枝空格横梁音符",
+            "target": 100
         }
     ]
 }

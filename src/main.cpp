@@ -78,9 +78,9 @@ private:
     void Fixture() {
         using namespace sakura::game;
         const auto folder=m_directory/"fixture";std::filesystem::create_directories(folder);
-        const nlohmann::json data={{"version",2},{"timing_points",{{{"time",0},{"bpm",120}}}},
-            {"keyboard_notes",{{{"time",500},{"lane",0},{"type","tap"}},{{"time",1000},{"lane",1},{"type","hold"},{"duration",1000}},{{"time",2100},{"lane",2},{"type","tap"}}}},
-            {"mouse_notes",{{{"time",800},{"x",0.5},{"y",0.5},{"type","circle"}},{{"time",1400},{"x",0.35},{"y",0.5},{"type","slider"},{"slider_duration",800},{"slider_path",{{0.65,0.5}}}}}}};
+        const nlohmann::json data={{"version",3},{"timing_points",{{{"time",0},{"bpm",120}}}},
+            {"keyboard_notes",{{{"time",500},{"lane",0},{"type","tap"}},{{"time",1000},{"lane",1},{"type","hold"},{"duration",1000}},{{"time",2100},{"lane",2},{"type","tap"}},{{"time",2450},{"lane",4},{"type","tap"},{"link_id",1}}}},
+            {"mouse_notes",{{{"time",800},{"x",0.5},{"y",0.5},{"type","circle"}},{{"time",1400},{"x",0.35},{"y",0.5},{"type","slider"},{"slider_duration",800},{"slider_path",{{0.65,0.5}}}},{{"time",2450},{"x",0.5},{"y",0.5},{"type","circle"},{"link_id",1},{"require_lane",4}}}}};
         sakura::utils::AtomicWrite(folder/"normal.json",data.dump());
         constexpr int samples=44100*3;std::ofstream wav(folder/"music.wav",std::ios::binary);
         auto u16=[&](uint16_t v){wav.put(static_cast<char>(v));wav.put(static_cast<char>(v>>8));};
@@ -91,11 +91,12 @@ private:
         DifficultyInfo diff;diff.name="Normal";diff.chartFile="normal.json";m_fixture.difficulties={diff};
         m_events={{500,InputKind::LaneDown,0},{540,InputKind::LaneUp,0},{800,InputKind::MouseDown,0,0.5f,0.5f},{840,InputKind::MouseUp},
             {1000,InputKind::LaneDown,1},{1400,InputKind::MouseDown,0,0.35f,0.5f},{2010,InputKind::LaneUp,1},
-            {2100,InputKind::LaneDown,2},{2150,InputKind::LaneUp,2},{2185,InputKind::Pointer,0,0.65f,0.5f},{2260,InputKind::MouseUp}};
+            {2100,InputKind::LaneDown,2},{2150,InputKind::LaneUp,2},{2185,InputKind::Pointer,0,0.65f,0.5f},{2260,InputKind::MouseUp},
+            {2450,InputKind::LaneDown,4},{2452,InputKind::MouseDown,0,0.5f,0.5f},{2490,InputKind::MouseUp},{2495,InputKind::LaneUp,4}};
     }
     void Input(const sakura::game::SessionInput& input) {
         using namespace sakura::game;SDL_Event event{};event.common.timestamp=SDL_GetTicksNS();
-        constexpr SDL_Scancode keys[]={SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_F};
+        constexpr SDL_Scancode keys[]={SDL_SCANCODE_A,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_F,SDL_SCANCODE_SPACE};
         if(input.kind==InputKind::LaneDown||input.kind==InputKind::LaneUp){event.type=input.kind==InputKind::LaneDown?SDL_EVENT_KEY_DOWN:SDL_EVENT_KEY_UP;event.key.scancode=keys[input.lane];}
         else {
             int w=0,h=0;SDL_GetWindowSize(GetWindow().GetSDLWindow(),&w,&h);
@@ -219,7 +220,7 @@ private:
                 m_resultWait+=dt;
                 if(m_resultWait>1.6f){
                     const auto& r=result->Result();
-                    if(name=="verify_live"){m_liveResult=r;m_semantic=r.score==1000000&&r.totalJudgments==7&&!r.replayFile.empty()&&m_reheld;}
+                    if(name=="verify_live"){m_liveResult=r;m_semantic=r.score==1000000&&r.totalJudgments==9&&r.synergyCount>=1&&r.thumbHitCount>=1&&!r.replayFile.empty()&&m_reheld;}
                     if(name=="verify_replay")m_semantic=r.score==m_liveResult.score&&r.hitErrors==m_liveResult.hitErrors&&r.assisted;
                     if(name=="verify_practice")m_semantic=r.totalJudgments==2&&r.assisted; // only complete hold in this range
                     if(name=="verify_album")m_semantic=r.score==1000000&&r.missCount==0&&r.assisted;

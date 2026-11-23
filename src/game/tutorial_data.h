@@ -15,6 +15,7 @@ enum class TutorialLessonType
     MouseCircle,
     MouseSlide,
     Mixed,
+    Synergy,
 };
 
 struct TutorialLessonNote
@@ -26,6 +27,8 @@ struct TutorialLessonNote
     float    x          = 0.5f;
     float    y          = 0.5f;
     std::vector<std::pair<float, float>> sliderPath;
+    int      linkId      = 0;
+    int      requireLane = -1;
 };
 
 struct TutorialLesson

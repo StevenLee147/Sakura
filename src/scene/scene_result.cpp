@@ -328,6 +328,13 @@ void SceneResult::OnRender(sakura::core::Renderer& r)
     VisualStyle::DrawGlassCard(r,{0.47f,0.185f,0.49f,0.375f},
         {24,30,56,220},{14,18,36,234},{250,216,157,168},{168,158,214,68},0.018f,0.52f);
     r.DrawText(m_fontUI,"JUDGMENTS / 判定明细",0.495f,0.206f,0.021f,white);
+    if (m_result.synergyCount > 0 || m_result.feverCount > 0 || m_result.thumbHitCount > 0)
+    {
+        const std::string synSummary = "连携 " + std::to_string(m_result.synergyCount)
+            + "  ·  横梁 " + std::to_string(m_result.thumbHitCount)
+            + "  ·  满开 " + std::to_string(m_result.feverCount);
+        r.DrawText(m_fontUI, synSummary, 0.935f, 0.210f, 0.0155f, gold, TextAlign::Right);
+    }
     VisualStyle::DrawGildedDivider(r, 0.495f, 0.935f, 0.246f, 0.58f);
 
     const char* labels[]={"PERFECT","GREAT","GOOD","BAD","MISS"};

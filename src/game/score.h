@@ -28,7 +28,9 @@ public:
     // 每次产生判定时调用
     // result: 判定结果
     // hitError: 偏差（毫秒，可选，用于偏差图）
-    void OnJudge(JudgeResult result, int hitError = 0, bool recordTiming = true);
+    void OnJudge(JudgeResult result, int hitError = 0, bool recordTiming = true,
+                 bool isSynergy = false, bool isThumb = false);
+    void AdvanceFeverMs(int deltaMs);
 
     // ── 查询 ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,13 @@ public:
     float GetAccuracy()    const;    // 0.0~100.0%
     int   GetCombo()       const { return m_combo; }
     int   GetMaxCombo()    const { return m_maxCombo; }
+    float GetFeverEnergy() const { return m_feverEnergy; }
+    bool  IsFeverActive()  const { return m_feverActive; }
+    int   GetFeverRemainingMs() const { return m_feverRemainingMs; }
+    int   GetFeverCount()  const { return m_feverCount; }
+    int   GetFeverBonus()  const { return m_feverBonus; }
+    int   GetSynergyCount() const { return m_synergyCount; }
+    int   GetThumbHitCount() const { return m_thumbHitCount; }
 
     int   GetPerfectCount() const { return m_perfectCount; }
     int   GetGreatCount()   const { return m_greatCount; }
@@ -81,7 +90,17 @@ private:
     int   m_badCount       = 0;
     int   m_missCount      = 0;
 
+    float m_feverEnergy      = 0.0f;
+    bool  m_feverActive      = false;
+    int   m_feverRemainingMs = 0;
+    int   m_feverCount       = 0;
+    int   m_feverBonus       = 0;
+    int   m_synergyCount     = 0;
+    int   m_thumbHitCount    = 0;
+
     std::vector<int> m_hitErrors;  // 每次判定的偏差记录
+
+    static constexpr int FEVER_DURATION_MS = 8000;
 
     // 各判定的准确率权重（用于均值计算）
     static constexpr float WEIGHT_PERFECT = 1.00f;

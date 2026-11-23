@@ -234,3 +234,4 @@ resources/charts/{chart_id}/
 |------|------|
 | v1 | 初始版本，chart.json + mousechart.json + info.json 分离 |
 | v2 | 合并键盘/鼠标音符到单文件，新增 timing_points / sv_points / 多难度支持 |
+| v3 | 向后兼容扩展：新增 `lane = 4` 空格樱枝横梁、`link_id` 跨区连携同押、`require_lane` 樱绽键鼠组合技 |

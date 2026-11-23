@@ -236,6 +236,18 @@ AchievementProgress AchievementManager::BuildProgress(const AchievementDefinitio
     {
         progress.current = database.GetHighestScore();
     }
+    else if (definition.id == "first_synergy")
+    {
+        progress.current = static_cast<int>(std::lround(database.GetStatistic("total_synergy_hits")));
+    }
+    else if (definition.id == "fever_mankai")
+    {
+        progress.current = static_cast<int>(std::lround(database.GetStatistic("total_fever_triggers")));
+    }
+    else if (definition.id == "thumb_master")
+    {
+        progress.current = static_cast<int>(std::lround(database.GetStatistic("total_thumb_hits")));
+    }
 
     if (progress.unlocked)
         progress.current = std::max(progress.current, progress.target);

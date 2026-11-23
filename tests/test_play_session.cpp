@@ -192,7 +192,7 @@ TEST_CASE("Starter charts have no overlapping holds or simultaneous mouse requir
         if(info.source.find("Sakura Originals")==std::string::npos)continue;
         for(const auto& difficulty:info.difficulties) {
             auto chart=loader.LoadChartData(info.folderPath+"/"+difficulty.chartFile);REQUIRE(chart.has_value());
-            std::array<int,4> ends{-1,-1,-1,-1};
+            std::array<int,kTotalKeyboardLanes> ends{-1,-1,-1,-1,-1};
             for(const auto& note:chart->keyboardNotes){REQUIRE(note.time>ends[note.lane]);ends[note.lane]=note.time+note.duration;}
             int end=-1;for(const auto& note:chart->mouseNotes){REQUIRE(note.time>end);end=note.time+note.sliderDuration;}
             REQUIRE(ChartEndTime(*chart)>45000);
