@@ -166,8 +166,11 @@ public:
 
     // 获取当前活跃粒子数
     int GetActiveCount() const { return m_activeCount; }
+    static void ResetFrameRenderedCount() { s_frameRenderedCount = 0; }
+    static int  GetFrameRenderedCount()   { return s_frameRenderedCount; }
 
 private:
+    inline static int s_frameRenderedCount = 0;
     std::array<Particle, MAX_PARTICLES>         m_pool;
     std::array<ContinuousEmitter, MAX_EMITTERS> m_emitters;
     int m_activeCount = 0;

@@ -16,6 +16,7 @@
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
 #include "effects/background.h"
+#include "effects/video_renderer.h"
 
 #include <array>
 #include <memory>
@@ -126,6 +127,7 @@ private:
     std::array<bool, KEY_BIND_COUNT> m_lanePressed = {};
 
     // ── 背景渲染 ─────────────────────────────────────────────────────────────
+    sakura::effects::VideoRenderer      m_videoRenderer; // 原生硬件解码动态视频舞台
     sakura::effects::BackgroundRenderer m_bgRenderer;   // 图片背景
     sakura::effects::DefaultBackground  m_defaultBg;    // 默认渐变背景
     bool m_useDefaultBg = true;                         // 是否使用默认背景

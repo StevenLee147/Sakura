@@ -117,6 +117,13 @@ enum class BlendMode
     Multiply
 };
 
+struct RenderFrameStats
+{
+    uint32_t batchCount  = 0;
+    uint32_t vertexCount = 0;
+    uint32_t indexCount  = 0;
+};
+
 // ============================================================================
 // Renderer — SDL3 GPU 加速的 2D 渲染器
 // ============================================================================
@@ -143,6 +150,8 @@ public:
 
     // 结束帧，提交渲染
     void EndFrame();
+    RenderFrameStats GetLastFrameStats() const { return m_lastFrameStats; }
+    RenderFrameStats GetCurrentFrameStats() const { return m_currFrameStats; }
 
     // 设置清屏颜色并清屏
     void Clear(Color color = Color::DarkBlue);
@@ -334,6 +343,8 @@ private:
     // 屏幕震动用 viewport 偏移（像素）
     int m_shakeOffsetX = 0;
     int m_shakeOffsetY = 0;
+    mutable RenderFrameStats m_currFrameStats{};
+    RenderFrameStats         m_lastFrameStats{};
 };
 
 } // namespace sakura::core

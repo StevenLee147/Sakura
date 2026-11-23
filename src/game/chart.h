@@ -58,6 +58,7 @@ struct ChartInfo
     std::string musicFile;                 // 音乐文件名
     std::string coverFile;                 // 封面图片文件名
     std::string backgroundFile;            // 背景图片文件名
+    std::string videoFile;                 // 背景视频文件名（可选 MP4/WebM）
     int         previewTime      = 0;      // 预览起始时间（毫秒）
 
     float       bpm              = 120.0f; // 基础 BPM

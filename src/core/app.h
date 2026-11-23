@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <array>
 #include "timer.h"
 #include "window.h"
 #include "renderer.h"
@@ -46,6 +47,8 @@ public:
     const Renderer& GetRenderer() const { return m_renderer; }
     const Timer&   GetTimer()     const { return m_timer; }
     double GetCpuFrameMs() const { return m_updateCpuMs+m_renderCpuMs; }
+    void SetDiagnosticsOverlayVisible(bool visible) { m_showDiagnostics = visible; }
+    bool IsDiagnosticsOverlayVisible() const { return m_showDiagnostics; }
     sakura::scene::SceneManager& GetSceneManager() { return m_sceneManager; }
 
 protected:
@@ -63,13 +66,19 @@ private:
     void ProcessEvents();
     void Update(float dt);
     void Render();
+    void RenderDiagnosticsOverlay();
+    double CalcCpuP95Ms() const;
 
     Window   m_window;
     Renderer m_renderer;
     Timer    m_timer;
     bool     m_running = false;
     bool m_shutdown = false;
+    bool m_showDiagnostics = false;
     double m_updateCpuMs=0,m_renderCpuMs=0;
+    std::array<double, 120> m_cpuHistory{};
+    size_t m_cpuHistoryWrite = 0;
+    size_t m_cpuHistoryCount = 0;
     int m_appliedVSync = -1;
     int m_appliedWidth = 0, m_appliedHeight = 0;
     float m_fixedTimestep = 0.0f;

@@ -114,6 +114,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
     info.musicFile       = SafeGet<std::string>(j, "music_file",       "music.ogg");
     info.coverFile       = SafeGet<std::string>(j, "cover_file",       "cover.png");
     info.backgroundFile  = SafeGet<std::string>(j, "background_file",  "bg.png");
+    info.videoFile       = SafeGet<std::string>(j, "video_file",       "");
     info.previewTime     = SafeGet<int>   (j, "preview_time", 0);
 
     // 音乐属性
@@ -154,6 +155,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
         return true;
     };
     if (!safeFile(info.musicFile) || !safeFile(info.coverFile) || !safeFile(info.backgroundFile) ||
+        !safeFile(info.videoFile) ||
         !std::isfinite(info.bpm) || info.bpm <= 0 || info.bpm > 1000 || std::abs(static_cast<long long>(info.offset)) > 60000)
         return std::nullopt;
     for (const auto& difficulty : info.difficulties)

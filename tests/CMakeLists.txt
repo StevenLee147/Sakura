@@ -18,6 +18,7 @@ add_executable(SakuraTests
     test_synergy_v3.cpp
     test_time_stretch.cpp
     test_sakura_archive.cpp
+    test_video_and_clock.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

@@ -72,7 +72,7 @@ void SceneSettings::AddSlider(int page, const std::string& title, const std::str
         cfg.Get<float>(key, low), step, m_font, 0.020f);
     slider->SetValueFormatter([high, integral](float value)
     {
-        if (high == 1.0f) return std::to_string(static_cast<int>(std::round(value * 100))) + "%";
+        if (high <= 1.0f && !integral) return std::to_string(static_cast<int>(std::round(value * 100))) + "%";
         if (integral) return std::to_string(static_cast<int>(value));
         std::ostringstream text; text << std::fixed << std::setprecision(1) << value;
         return text.str();
@@ -191,6 +191,8 @@ void SceneSettings::BuildPages()
     AddSlider(4, "特效强度", "降低亮度和粒子数量，保持节奏清晰", "graphics.effect_intensity", 0, 1, 0.05f);
     AddToggle(4, "鼠标轨迹", "在鼠标区域显示短暂的光点轨迹", "gameplay.cursor_trail");
     AddToggle(4, "背景柔化", "柔化自定义歌曲背景，让音符更清晰", "graphics.background_blur");
+    AddToggle(4, "背景视频舞台", "启用谱面原生硬件加速 MP4 / WebM 动态舞台", "visual.bga_enabled");
+    AddSlider(4, "舞台暗化度", "动态视频与夜樱舞台压暗比例 (20% ~ 90%)", "visual.bg_dim", 0.20f, 0.90f, 0.05f);
 
     AddToggle(5, "保存回放", "正常模式结束后保留输入记录，可在结算观看", "gameplay.save_replays");
     AddAction(5, "用户数据", "设置、成绩、自制谱面和回放均保存在这里", "打开数据目录", []
@@ -211,6 +213,19 @@ void SceneSettings::BuildPages()
         std::filesystem::create_directories(Paths::User("backups"));
         SDL_OpenURL(("file:///" + Paths::User("backups")).c_str());
     });
+
+    for (auto& page : m_pages)
+    {
+        if (page.size() <= 8) continue;
+        const float rowStep = 0.630f / static_cast<float>(page.size());
+        for (size_t r = 0; r < page.size(); ++r)
+        {
+            NormRect b = page[r].control->GetBounds();
+            b.y = 0.232f + static_cast<float>(r) * rowStep + 0.004f;
+            b.height = std::min(b.height, rowStep - 0.016f);
+            page[r].control->SetBounds(b);
+        }
+    }
 }
 
 void SceneSettings::SyncAudio()
@@ -442,11 +457,20 @@ void SceneSettings::OnRender(Renderer& renderer)
     renderer.DrawText(m_font, subtitles[m_page], 0.927f, 0.183f, 0.018f, palette.accent, TextAlign::Right);
     VisualStyle::DrawGildedDivider(renderer, 0.248f, 0.932f, 0.218f, 0.78f);
 
+    const size_t pageRows = m_pages[m_page].size();
+    const bool compactRows = pageRows > 8;
+    const float rowStep = compactRows ? (0.630f / static_cast<float>(pageRows)) : 0.079f;
+    const float rowStartY = compactRows ? 0.232f : 0.234f;
+    const float cardH = compactRows ? (rowStep - 0.007f) : 0.068f;
+    const float titleSz = compactRows ? 0.0205f : 0.023f;
+    const float hintSz  = compactRows ? 0.0148f : 0.0165f;
+    const float hintOff = compactRows ? 0.027f : 0.033f;
+
     size_t i = 0;
     for (auto& row : m_pages[m_page])
     {
         const size_t rowIdx = i++;
-        const float y = 0.234f + static_cast<float>(rowIdx) * 0.079f;
+        const float y = rowStartY + static_cast<float>(rowIdx) * rowStep;
         const bool isListeningRow = (m_page == 2 && m_listening >= 0 && static_cast<size_t>(m_listening) == rowIdx);
         const Color rowTop = isListeningRow
             ? Color{64, 38, 72, 135}
@@ -454,17 +478,17 @@ void SceneSettings::OnRender(Renderer& renderer)
         const Color rowBot = isListeningRow
             ? Color{46, 28, 56, 115}
             : ((rowIdx % 2 == 0) ? Color{22, 26, 46, 58} : Color{16, 20, 36, 28});
-        renderer.DrawRoundedGradientRect({0.242f, y - 0.006f, 0.696f, 0.068f}, 0.009f, rowTop, rowTop, rowBot, rowBot);
+        renderer.DrawRoundedGradientRect({0.242f, y - 0.005f, 0.696f, cardH}, 0.009f, rowTop, rowTop, rowBot, rowBot);
         if (isListeningRow)
         {
-            renderer.DrawRoundedRectOutlineGradient({0.242f, y - 0.006f, 0.696f, 0.068f}, 0.009f,
+            renderer.DrawRoundedRectOutlineGradient({0.242f, y - 0.005f, 0.696f, cardH}, 0.009f,
                 palette.accent, palette.primary, 0.0014f);
         }
 
-        renderer.DrawText(m_font, row.title, 0.256f, y, 0.023f, palette.text);
-        renderer.DrawText(m_font, row.hint, 0.256f, y + 0.033f, 0.0165f, palette.textDim);
-        if (i < m_pages[m_page].size())
-            renderer.DrawLine(0.256f, y + 0.068f, 0.924f, y + 0.068f, {160, 152, 196, 28}, 0.001f);
+        renderer.DrawText(m_font, row.title, 0.256f, y, titleSz, palette.text);
+        renderer.DrawText(m_font, row.hint, 0.256f, y + hintOff, hintSz, palette.textDim);
+        if (i < pageRows)
+            renderer.DrawLine(0.256f, y + cardH, 0.924f, y + cardH, {160, 152, 196, 28}, 0.001f);
         if (auto* dropdown = dynamic_cast<Dropdown*>(row.control.get()); !dropdown || !dropdown->IsOpen())
             row.control->Render(renderer);
     }

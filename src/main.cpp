@@ -51,7 +51,7 @@ public:
 private:
     std::filesystem::path m_directory;
     std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
-        "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "result", "result_detail"};
+        "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "game_bga_f3", "result", "result_detail"};
     size_t m_stage = 0;
     bool m_started = false;
     bool m_capture = false;
@@ -142,6 +142,16 @@ private:
                 options.mode = sakura::game::PlayMode::AutoPlay;
                 scene = std::make_unique<SceneGame>(manager, m_chart, 0, options);
             }
+            if (name == "game_bga_f3")
+            {
+                sakura::game::ChartLoader loader;
+                auto charts = loader.ScanCharts("resources/charts");
+                sakura::game::ChartInfo bgaChart = m_chart;
+                for (const auto& c : charts) if (c.id == "sakura_breath" || !c.videoFile.empty()) { bgaChart = c; break; }
+                sakura::game::PlayOptions options;
+                options.mode = sakura::game::PlayMode::AutoPlay;
+                scene = std::make_unique<SceneGame>(manager, bgaChart, 0, options);
+            }
             if (name == "pause")
             {
                 SDL_Event event{};
@@ -197,6 +207,7 @@ private:
             if(name=="editor_properties")Click(0.585f,0.852f);
             if(name=="editor_preview")Key(SDL_SCANCODE_F5);
             if(name=="result_detail")Key(SDL_SCANCODE_TAB);
+            if(name=="game_bga_f3"){SDL_Event f3{};f3.type=SDL_EVENT_KEY_DOWN;f3.key.scancode=SDL_SCANCODE_F3;SDL_PushEvent(&f3);}
             if(name=="editor_return" || name=="first_run_skip")Key(SDL_SCANCODE_ESCAPE);
             if(name=="create_complete"){
                 const std::array<std::string,9> fields={"新建验证","Sakura QA","123","25","普通",
@@ -238,7 +249,7 @@ private:
             if(name=="verify_missing_audio" && m_time>2.0f){m_semantic=dynamic_cast<SceneSelect*>(manager.GetCurrentScene())!=nullptr;m_capture=true;}
             if(m_time>110){m_semantic=false;m_capture=true;}
         } else {
-            const float duration = name=="game" ? 9.6f : name=="first_run"?6.5f:name=="result"?1.8f:1.3f;
+            const float duration = name=="game" ? 9.6f : name=="game_bga_f3" ? 4.6f : name=="first_run"?6.5f:name=="result"?1.8f:1.3f;
             if(m_time>duration&&!manager.IsTransitioning())m_capture=true;
         }
     }
@@ -260,6 +271,7 @@ private:
         if(name.starts_with("select")) {const auto* select=dynamic_cast<SceneSelect*>(current);m_semantic=select && (name!="select_practice" || select->CurrentMode()==sakura::game::PlayMode::Practice);}
         if(name.starts_with("settings")){const auto* settings=dynamic_cast<SceneSettings*>(current);int page=name=="settings"?0:name=="settings_audio"?1:name=="settings_controls"?2:name=="settings_display"?3:name=="settings_visual"?4:5;m_semantic=settings&&settings->CurrentPage()==page;}
         if(name=="game"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&game->Session().Score().GetJudgedCount()>0;}
+        if(name=="game_bga_f3"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&IsDiagnosticsOverlayVisible();SetDiagnosticsOverlayVisible(false);}
         if(name=="pause")m_semantic=dynamic_cast<ScenePause*>(current)!=nullptr;
         if(name=="editor_properties"){const auto* editor=dynamic_cast<SceneEditor*>(current);m_semantic=editor&&editor->PropertyDialogOpen();}
         if(name=="editor_preview"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().GetOptions().returnToEditor;}

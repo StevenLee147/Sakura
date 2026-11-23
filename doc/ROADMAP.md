@@ -91,6 +91,6 @@ v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工
 
 ## 当前状态
 
-- **当前版本：** v0.9.0-beta
+- **当前版本：** v0.9.1-beta
 - **当前交付：** 完整离线流程、六页设置、练习/回放、工房试玩、存档备份恢复、月夜墨樱琉璃视觉、4K60 离线录制与 Windows x64 发行包。
 - **下一目标版本：** 按 [roadmap/AUTOPILOT_PLAYBOOK.md](roadmap/AUTOPILOT_PLAYBOOK.md) 自动推进 `v0.8.0-alpha` 直至 `v1.2.0`。

@@ -64,6 +64,8 @@ bool GameState::Start(const ChartInfo& chartInfo, int difficultyIndex, PlayOptio
     m_kbActiveBegin = m_kbActiveEnd = m_msActiveBegin = m_msActiveEnd = 0;
     m_forcedMissCount = 0;
     m_tailTimeMs = 0.0;
+    m_clockSync.Reset(static_cast<double>(m_playbackStartMs));
+    sakura::audio::AudioClockSync::PublishGlobalDiagnostics(0.0, sakura::audio::ClockSyncMode::Idle);
     UpdateActiveWindows();
     return true;
 }
@@ -82,7 +84,10 @@ void GameState::Update(float dt)
             m_phase = GamePhase::Playing;
             m_resumed = m_resumeCountdown;
             m_resumeCountdown = false;
-            m_currentTimeMs = static_cast<int>(audio.GetMusicPosition() * 1000.0) - m_chartInfo.offset - m_globalOffset;
+            const double rawMs = audio.GetMusicPosition() * 1000.0 - m_chartInfo.offset - m_globalOffset;
+            m_clockSync.Reset(rawMs);
+            m_currentTimeMs = static_cast<int>(std::lround(m_clockSync.Update(0.0, rawMs, m_options.rate, true)));
+            sakura::audio::AudioClockSync::PublishGlobalDiagnostics(m_clockSync.GetLastDriftMs(), m_clockSync.GetMode());
         }
         UpdateActiveWindows();
     }
@@ -90,14 +95,18 @@ void GameState::Update(float dt)
     {
         if (audio.IsPlaying())
         {
-            m_currentTimeMs = static_cast<int>(audio.GetMusicPosition() * 1000.0) - m_chartInfo.offset - m_globalOffset;
-            m_tailTimeMs = m_currentTimeMs;
+            const double rawMs = audio.GetMusicPosition() * 1000.0 - m_chartInfo.offset - m_globalOffset;
+            const double syncedMs = m_clockSync.Update(dt, rawMs, m_options.rate, true);
+            sakura::audio::AudioClockSync::PublishGlobalDiagnostics(m_clockSync.GetLastDriftMs(), m_clockSync.GetMode());
+            m_currentTimeMs = static_cast<int>(std::lround(syncedMs));
+            m_tailTimeMs = syncedMs;
         }
         else
         {
             // Let late windows and sustain tails resolve after the last audio sample.
             // Keep fractional milliseconds: truncating dt on every frame drifts at high FPS.
             m_tailTimeMs += static_cast<double>(dt) * 1000.0 * m_options.rate;
+            sakura::audio::AudioClockSync::PublishGlobalDiagnostics(0.0, sakura::audio::ClockSyncMode::Idle);
             m_currentTimeMs = static_cast<int>(m_tailTimeMs);
         }
         UpdateActiveWindows();
@@ -110,6 +119,7 @@ void GameState::Pause()
     if (m_phase != GamePhase::Playing && m_phase != GamePhase::Countdown) return;
     m_pausedInitialCountdown = m_phase == GamePhase::Countdown && !m_resumeCountdown;
     m_phase = GamePhase::Paused;
+    sakura::audio::AudioClockSync::PublishGlobalDiagnostics(0.0, sakura::audio::ClockSyncMode::Idle);
     sakura::audio::AudioManager::GetInstance().PauseMusic();
 }
 

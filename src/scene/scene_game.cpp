@@ -85,6 +85,17 @@ void SceneGame::OnEnter()
         {
             m_defaultBg.Initialize(bgDim * 0.5f);
         }
+        const bool bgaEnabled = cfg.Get<bool>("visual.bga_enabled", true);
+        if (!m_chartInfo.videoFile.empty() && bgaEnabled)
+        {
+            m_videoRenderer.Open(m_chartInfo.folderPath + "/" + m_chartInfo.videoFile, true);
+        }
+        else
+        {
+            m_videoRenderer.Close();
+            sakura::effects::VideoDecoder::PublishGlobalStageMode(
+                bgaEnabled ? sakura::effects::VideoStageMode::Fallback : sakura::effects::VideoStageMode::Disabled);
+        }
     }
 
     // 从 Config 读取键位绑定（含第 5 键樱枝横梁）
@@ -170,7 +181,9 @@ void SceneGame::OnExit()
     sakura::audio::AudioManager::GetInstance().StopMusic();
     m_judgeFlashes.clear();
     m_particles.Clear();
+    m_videoRenderer.Close();
     m_bgRenderer.UnloadImage();
+    sakura::audio::AudioClockSync::PublishGlobalDiagnostics(0.0, sakura::audio::ClockSyncMode::Idle);
     sakura::audio::AudioManager::GetInstance().SetPlaybackSpeed(1.0f);
 }
 
@@ -381,7 +394,10 @@ void SceneGame::OnUpdate(float dt)
             ++it;
     }
 
-    // ── 粒子 + 特效更新 ───────────────────────────────────────────────────────
+    // ── 背景视频 + 粒子 + 特效更新 ────────────────────────────────────────────
+    m_videoRenderer.Update(
+        std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0),
+        sakura::core::Config::GetInstance().Get<bool>("visual.bga_enabled", true));
     if (m_useDefaultBg)
         m_defaultBg.Update(dt);
     else
@@ -544,28 +560,33 @@ sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 {
     const auto& cfg = sakura::core::Config::GetInstance();
-    const float dimRatio = std::clamp(cfg.Get<float>("gameplay.background_dim", 0.75f), 0.0f, 1.0f);
+    const float gameplayDim = std::clamp(cfg.Get<float>("gameplay.background_dim", 0.75f), 0.0f, 1.0f);
+    const float visualStageDim = std::clamp(cfg.Get<float>("visual.bg_dim", 0.65f), 0.20f, 0.90f);
+    const float dimRatio = std::clamp((gameplayDim + visualStageDim) * 0.5f, 0.20f, 0.92f);
 
     sakura::ui::VisualStyle::DrawSceneBackground(renderer);
-    if (!m_useDefaultBg)
+    if (!m_videoRenderer.Render(renderer, visualStageDim))
     {
-        m_bgRenderer.Render(renderer);
-        sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_judgePulsePhase * 0.42f, 0.22f);
-    }
-    else
-    {
-        m_defaultBg.Render(renderer);
-        sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_judgePulsePhase * 0.42f, 0.34f);
-    }
+        if (!m_useDefaultBg)
+        {
+            m_bgRenderer.Render(renderer);
+            sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_judgePulsePhase * 0.42f, 0.22f);
+        }
+        else
+        {
+            m_defaultBg.Render(renderer);
+            sakura::ui::VisualStyle::DrawSakuraLandscape(renderer, m_judgePulsePhase * 0.42f, 0.34f);
+        }
 
-    const uint8_t scrimA = static_cast<uint8_t>(dimRatio * 210.0f);
-    const uint8_t scrimBot = static_cast<uint8_t>(std::min(246.0f, dimRatio * 210.0f + 22.0f));
-    renderer.DrawGradientRect(
-        { 0.0f, 0.0f, 1.0f, 1.0f },
-        { 6, 9, 20, scrimA },
-        { 10, 14, 28, static_cast<uint8_t>(scrimA * 0.92f) },
-        { 6, 8, 18, scrimBot },
-        { 8, 11, 24, scrimBot });
+        const uint8_t scrimA = static_cast<uint8_t>(dimRatio * 210.0f);
+        const uint8_t scrimBot = static_cast<uint8_t>(std::min(246.0f, dimRatio * 210.0f + 22.0f));
+        renderer.DrawGradientRect(
+            { 0.0f, 0.0f, 1.0f, 1.0f },
+            { 6, 9, 20, scrimA },
+            { 10, 14, 28, static_cast<uint8_t>(scrimA * 0.92f) },
+            { 6, 8, 18, scrimBot },
+            { 8, 11, 24, scrimBot });
+    }
 
     if (!cfg.Get<bool>("graphics.reduced_motion", false))
     {

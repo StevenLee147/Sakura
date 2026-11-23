@@ -115,6 +115,8 @@ void Renderer::DrawPetal(float cx, float cy, float size, float rotation, Color c
 
 void Renderer::BeginFrame()
 {
+    m_lastFrameStats = m_currFrameStats;
+    m_currFrameStats = {};
     int width = 0, height = 0;
     SDL_GetCurrentRenderOutputSize(m_renderer, &width, &height);
     if (width != m_width || height != m_height)
@@ -262,8 +264,13 @@ int Renderer::GetScreenHeight() const { return m_height; }
 void Renderer::Flush() const
 {
     if (m_renderer && !m_vertices.empty())
+    {
+        ++m_currFrameStats.batchCount;
+        m_currFrameStats.vertexCount += static_cast<uint32_t>(m_vertices.size());
+        m_currFrameStats.indexCount  += static_cast<uint32_t>(m_indices.size());
         SDL_RenderGeometry(m_renderer, nullptr, m_vertices.data(), static_cast<int>(m_vertices.size()),
             m_indices.data(), static_cast<int>(m_indices.size()));
+    }
     m_vertices.clear();
     m_indices.clear();
 }
@@ -325,6 +332,9 @@ void Renderer::DrawText(FontHandle fontHandle,
     SDL_SetTextureColorMod(entry->texture, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(entry->texture, color.a);
     Flush();
+    ++m_currFrameStats.batchCount;
+    m_currFrameStats.vertexCount += 4;
+    m_currFrameStats.indexCount  += 6;
     SDL_RenderTexture(m_renderer, entry->texture, nullptr, &dest);
     SDL_SetTextureColorMod(entry->texture, 255, 255, 255);
     SDL_SetTextureAlphaMod(entry->texture, 255);

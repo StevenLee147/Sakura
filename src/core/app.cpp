@@ -10,14 +10,21 @@
 #include "scene/scene_splash.h"
 #include "audio/audio_manager.h"
 #include "audio/audio_visualizer.h"
+#include "audio/clock_sync.h"
 #include "game/chart_loader.h"
 #include "game/achievement_manager.h"
 #include "data/database.h"
+#include "effects/particle_system.h"
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
+#include "effects/video_decoder.h"
 #include "ui/button.h"
+#include "ui/visual_style.h"
 
+#include <cmath>
 #include <cstdlib>
+#include <iomanip>
+#include <sstream>
 #include <string>
 
 namespace
@@ -255,6 +262,11 @@ void App::ProcessEvents()
         SDL_GetWindowSize(m_window.GetSDLWindow(), &inputW, &inputH);
         Input::SetScreenSize(inputW, inputH);
 
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F3)
+        {
+            m_showDiagnostics = !m_showDiagnostics;
+        }
+
         // 输入系统处理
         Input::ProcessEvent(event);
 
@@ -355,9 +367,91 @@ void App::Update(float dt)
     Input::Update();
 }
 
+double App::CalcCpuP95Ms() const
+{
+    if (m_cpuHistoryCount == 0) return m_updateCpuMs + m_renderCpuMs;
+    std::array<double, 120> sorted{};
+    for (size_t i = 0; i < m_cpuHistoryCount; ++i) sorted[i] = m_cpuHistory[i];
+    std::sort(sorted.begin(), sorted.begin() + m_cpuHistoryCount);
+    const size_t idx = static_cast<size_t>((m_cpuHistoryCount - 1) * 0.95);
+    return sorted[idx];
+}
+
+void App::RenderDiagnosticsOverlay()
+{
+    const FontHandle font = ResourceManager::GetInstance().GetDefaultFontHandle();
+    if (font == INVALID_HANDLE) return;
+
+    m_renderer.Flush();
+    const auto sceneStats = m_renderer.GetCurrentFrameStats();
+    const auto dispStats = (sceneStats.vertexCount > 0) ? sceneStats : m_renderer.GetLastFrameStats();
+    const int particles = sakura::effects::ParticleSystem::GetFrameRenderedCount();
+    const float fps = m_timer.GetFPS();
+    const float dtMs = m_timer.GetDeltaTime() * 1000.0f;
+    const double cpuP95 = CalcCpuP95Ms();
+    const double driftMs = sakura::audio::AudioClockSync::GetGlobalDriftMs();
+    const auto syncMode = sakura::audio::AudioClockSync::GetGlobalMode();
+    const auto bgaMode  = sakura::effects::VideoDecoder::GetGlobalStageMode();
+
+    const NormRect card{ 0.712f, 0.072f, 0.272f, 0.218f };
+    sakura::ui::VisualStyle::DrawGlassCard(
+        m_renderer, card,
+        { 14, 18, 34, 216 }, { 8, 11, 24, 232 },
+        { 246, 188, 212, 135 }, { 128, 198, 248, 52 }, 0.012f, 0.42f);
+
+    sakura::ui::VisualStyle::DrawBadgePill(
+        m_renderer, { card.x + 0.012f, card.y + 0.012f, 0.118f, 0.026f },
+        "DIAGNOSTICS / F3", font, 0.0125f,
+        { 42, 28, 62, 215 }, { 248, 198, 152, 165 }, { 252, 224, 178, 255 });
+
+    std::ostringstream fpsSs;
+    fpsSs << std::fixed << std::setprecision(0) << fps << " FPS";
+    m_renderer.DrawText(font, fpsSs.str(), card.x + card.width - 0.014f, card.y + 0.014f, 0.019f,
+        { 152, 238, 198, 255 }, TextAlign::Right);
+    m_renderer.DrawLine(card.x + 0.012f, card.y + 0.046f, card.x + card.width - 0.012f, card.y + 0.046f,
+        { 216, 188, 228, 54 }, 0.001f);
+
+    auto drawRow = [&](int row, std::string_view label, const std::string& val, Color valCol) {
+        const float ry = card.y + 0.055f + static_cast<float>(row) * 0.032f;
+        m_renderer.DrawText(font, label, card.x + 0.014f, ry, 0.0145f, { 182, 190, 216, 235 });
+        m_renderer.DrawText(font, val, card.x + card.width - 0.014f, ry, 0.0145f, valCol, TextAlign::Right);
+    };
+
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2) << dtMs << "ms (P95 " << cpuP95 << "ms)";
+        drawRow(0, "帧间隔 / CPU", ss.str(), { 236, 240, 252, 255 });
+    }
+    {
+        std::ostringstream ss;
+        ss << "B:" << dispStats.batchCount << "  V:" << dispStats.vertexCount << "  I:" << dispStats.indexCount;
+        drawRow(1, "批处理提交", ss.str(), { 148, 216, 252, 255 });
+    }
+    {
+        std::ostringstream ss;
+        ss << particles << "  |  " << sakura::effects::VideoDecoder::StageModeLabel(bgaMode);
+        const Color stageCol = (bgaMode == sakura::effects::VideoStageMode::HardwareDecode)
+            ? Color{ 152, 238, 198, 255 } : Color{ 246, 196, 222, 245 };
+        drawRow(2, "活跃粒子 / 舞台", ss.str(), stageCol);
+    }
+    {
+        std::ostringstream ss;
+        ss << std::showpos << std::fixed << std::setprecision(2) << driftMs << std::noshowpos
+           << " ms [" << sakura::audio::AudioClockSync::ModeLabel(syncMode) << "]";
+        Color driftCol{ 152, 238, 198, 255 };
+        if (syncMode == sakura::audio::ClockSyncMode::SoftSync) driftCol = { 252, 212, 138, 255 };
+        else if (syncMode == sakura::audio::ClockSyncMode::HardSnap) driftCol = { 244, 126, 148, 255 };
+        else if (syncMode == sakura::audio::ClockSyncMode::Idle) driftCol = { 176, 184, 208, 220 };
+        drawRow(3, "音画时钟偏差", ss.str(), driftCol);
+    }
+    m_renderer.DrawText(font, "SDL3 GPU | WSOLA | Media Foundation BGA",
+        card.x + 0.014f, card.y + card.height - 0.025f, 0.0125f, { 214, 184, 212, 185 });
+}
+
 void App::Render()
 {
     const Uint64 renderStart=SDL_GetTicksNS();
+    sakura::effects::ParticleSystem::ResetFrameRenderedCount();
     OnFrameBegin();
     m_renderer.BeginFrame();
     m_renderer.Clear(Color::DarkBlue);
@@ -369,16 +463,27 @@ void App::Render()
     m_renderer.Flush();
     sakura::effects::ShaderManager::GetInstance().ApplyPostProcess();
 
-    // 子类可覆盖附加渲染
-    OnRender();
-
     sakura::ui::ToastManager::Instance().Render(m_renderer, ResourceManager::GetInstance().GetDefaultFontHandle());
-    if (Config::GetInstance().Get<bool>("graphics.show_fps", false))
+    if (m_showDiagnostics)
+    {
+        RenderDiagnosticsOverlay();
+    }
+    else if (Config::GetInstance().Get<bool>("graphics.show_fps", false))
+    {
         m_renderer.DrawText(ResourceManager::GetInstance().GetDefaultFontHandle(),
             std::to_string(static_cast<int>(m_timer.GetFPS())) + " FPS", 0.985f, 0.008f, 0.016f,
             Color{180, 225, 210, 255}, TextAlign::Right);
+    }
     m_renderer.Flush();
+
+    // 子类可覆盖附加渲染（含自动化巡检帧截取，确保捕获叠层）
+    OnRender();
+    m_renderer.Flush();
+
     m_renderCpuMs=(SDL_GetTicksNS()-renderStart)/1000000.0;
+    m_cpuHistory[m_cpuHistoryWrite] = m_updateCpuMs + m_renderCpuMs;
+    m_cpuHistoryWrite = (m_cpuHistoryWrite + 1) % m_cpuHistory.size();
+    if (m_cpuHistoryCount < m_cpuHistory.size()) ++m_cpuHistoryCount;
     OnFrameEnd();
     m_renderer.EndFrame(); // Present / VSync wait is excluded from CPU submission time.
 }

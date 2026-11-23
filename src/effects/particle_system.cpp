@@ -546,6 +546,7 @@ void ParticleSystem::Render(sakura::core::Renderer& renderer)
         sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false))
         return;
 
+    s_frameRenderedCount += m_activeCount;
     const auto& sprites = GetParticleSprites();
 
     // Pass 1: Alpha-blended physical sakura petals & blossoms for silky pastel translucency

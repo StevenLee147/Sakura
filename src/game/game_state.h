@@ -6,6 +6,7 @@
 #include "chart.h"
 #include "note.h"
 #include "play_session.h"
+#include "audio/clock_sync.h"
 #include <span>
 #include <string>
 
@@ -140,6 +141,7 @@ private:
     bool m_pausedInitialCountdown = false;
     int m_chartEndMs = 0;
     double m_tailTimeMs = 0.0;
+    sakura::audio::AudioClockSync m_clockSync;
 
     // ── 活跃音符窗口索引 ──────────────────────────────────────────────────────
     // 使用首端/尾端索引，避免每帧遍历全部音符

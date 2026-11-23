@@ -74,6 +74,8 @@ void Config::ApplyDefaults()
     setDefault("graphics.reduced_motion", false);
     setDefault("graphics.effect_intensity", 0.7f);
     setDefault("graphics.show_fps", false);
+    setDefault("visual.bga_enabled", true);
+    setDefault("visual.bg_dim", 0.65f);
     setDefault("gameplay.mouse_approach_ms", 1000);
     setDefault("gameplay.show_hit_error", true);
     setDefault("gameplay.background_dim", 0.75f);
@@ -98,6 +100,7 @@ void Config::ApplyDefaults()
     boundFloat(ConfigKeys::kMusicVolume, 0.8f, 0, 1);
     boundFloat(ConfigKeys::kSfxVolume, 0.7f, 0, 1);
     boundFloat("gameplay.background_dim", 0.75f, 0, 1);
+    boundFloat("visual.bg_dim", 0.65f, 0.20f, 0.90f);
     boundFloat("gameplay.lane_opacity", 0.9f, 0.2f, 1);
     boundFloat("graphics.effect_intensity", 0.7f, 0, 1);
     // Scancodes outside SDL's table or duplicate lane bindings make charts unplayable.
