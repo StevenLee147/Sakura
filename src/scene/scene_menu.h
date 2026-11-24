@@ -6,6 +6,7 @@
 #include "scene_manager.h"
 #include "core/renderer.h"
 #include "core/resource_manager.h"
+#include "game/chart.h"
 #include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/text_input.h"
@@ -95,16 +96,27 @@ private:
 
     // 编辑器谱面扫描根目录（与选歌场景保持一致）
     static constexpr const char* CUSTOM_CHARTS_PATH = "resources/charts/";
+    static constexpr int EDITOR_VISIBLE_ROWS = 5;
 
-    // 自制谱列表（打开面板时扫描）
+    // 可编辑谱面列表（打开面板时扫描，自制谱优先）
     struct ChartEntry
     {
+        std::string id;
         std::string folderPath;
         std::string title;
-        std::string diffFile;
+        std::string artist;
+        std::string charter;
+        float       bpm         = 120.0f;
+        bool        isUserChart = false;
+        std::vector<sakura::game::DifficultyInfo> difficulties;
     };
     std::vector<ChartEntry> m_customCharts;
-    int m_selectedChartIdx = -1;  // 选中的谱面索引
+    int   m_selectedChartIdx      = -1;   // 选中的谱面索引
+    int   m_selectedEditorDiffIdx = 0;    // 当前选中谱面的难度索引
+    int   m_editorScrollRow       = 0;    // 列表顶部起始行
+    int   m_hoveredEditorRow      = -1;   // 鼠标悬停的谱面索引
+    float m_editorWheelAccum      = 0.0f; // 滚轮/触控板增量累计
+    bool  m_draggingEditorScroll  = false;
 
     // ── 在线账号胶囊与登录弹层 ───────────────────────────────────────────────────
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
@@ -132,6 +144,9 @@ private:
     void SetupAccountModal();
     void RefreshAccountCapsuleText();
     void ScanCustomCharts();
+    void SelectEditorChart(int idx, bool ensureVisible = true);
+    void ScrollEditorListBy(int deltaRows);
+    void UpdateEditorScrollFromMouseY(float normY);
     void OpenEditorForChart(int idx);
     void UpdateEnterAnimation(float dt);
 
