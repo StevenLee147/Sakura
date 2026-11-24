@@ -1,0 +1,71 @@
+{
+    "audio": {
+        "global_offset_ms": 0,
+        "hitsound": "default",
+        "hitsounds_enabled": true,
+        "judgment_sounds": false,
+        "master_volume": 0.0,
+        "music_volume": 0.800000011920929,
+        "pitch_lock": true,
+        "sfx_volume": 1.0
+    },
+    "data": {
+        "database_path": "data/sakura.db"
+    },
+    "display": {
+        "fps_limit": 240,
+        "fullscreen": false,
+        "vsync": false,
+        "window_height": 720,
+        "window_width": 1280
+    },
+    "editor": {
+        "max_history": 200
+    },
+    "gameplay": {
+        "auto_play": false,
+        "background_dim": 0.75,
+        "cursor_trail": true,
+        "lane_opacity": 0.8999999761581421,
+        "mouse_approach_ms": 1000,
+        "note_speed": 5.0,
+        "save_replays": true,
+        "scroll_dir": "down",
+        "show_combo": true,
+        "show_hit_error": true
+    },
+    "graphics": {
+        "background_blur": true,
+        "bloom": false,
+        "effect_intensity": 0.699999988079071,
+        "glow": true,
+        "particles": true,
+        "reduced_motion": false,
+        "shake": true,
+        "show_fps": false,
+        "skin_path": "resources/skins/default",
+        "vignette": true
+    },
+    "input": {
+        "key_back": 41,
+        "key_lane_0": 4,
+        "key_lane_1": 22,
+        "key_lane_2": 7,
+        "key_lane_3": 9,
+        "key_pause": 41,
+        "key_retry": 21,
+        "key_thumb": 44
+    },
+    "online": {
+        "auto_check_updates": true,
+        "server_url": "https://steven-lee.tech:233"
+    },
+    "tutorial": {
+        "completed": true,
+        "prompt_shown": true
+    },
+    "visual": {
+        "bg_dim": 0.6499999761581421,
+        "bga_enabled": true
+    }
+}

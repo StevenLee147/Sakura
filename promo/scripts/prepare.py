@@ -24,7 +24,8 @@ PROMO = Path(__file__).resolve().parents[1]
 REPO = PROMO.parent
 PUBLIC = PROMO / "public"
 EDIT = json.loads((PROMO / "edit.json").read_text(encoding="utf-8"))
-DEFAULT_MUSIC = REPO / "resources/charts/sakura_breath/music.ogg"
+MASTER_MP3 = REPO / "download/songs/樱花落下的呼吸 (2).mp3"
+DEFAULT_MUSIC = MASTER_MP3 if MASTER_MP3.exists() else (REPO / "resources/charts/sakura_breath/music.ogg")
 
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
@@ -53,7 +54,34 @@ def cmd_assets(_: argparse.Namespace) -> None:
     for name in ("NotoSansSC-Regular.ttf", "NotoSansSC-Bold.ttf", "OFL.txt"):
         copy(REPO / "resources/fonts" / name, PUBLIC / "fonts" / name)
     copy(REPO / "resources/images/app_icon.png", PUBLIC / "img/app_icon.png")
+    copy(REPO / "resources/images/ui/sakura_crest.png", PUBLIC / "img/sakura_crest.png")
+    copy(REPO / "resources/images/backgrounds/moonlit_sakura_bg.png", PUBLIC / "img/moonlit_sakura_bg.png")
     copy(REPO / "resources/charts/sakura_breath/cover.png", PUBLIC / "img/sakura_breath_cover.png")
+    bga = REPO / "resources/charts/sakura_breath/bg.mp4"
+    if bga.exists():
+        copy(bga, PUBLIC / "footage/sakura_breath_bga.mp4", link=True)
+    covers_manifest = []
+    for info_path in sorted((REPO / "resources/charts").glob("*/info.json")):
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+        cid = info["id"]
+        if cid in ("test-song", "tutorial_song"):
+            continue
+        cover_src = info_path.parent / info.get("cover_file", "cover.png")
+        if cover_src.exists():
+            copy(cover_src, PUBLIC / "img/covers" / f"{cid}.png")
+            max_lvl = max((float(d["level"]) for d in info.get("difficulties", [])), default=0.0)
+            covers_manifest.append({
+                "id": cid,
+                "title": info["title"],
+                "artist": info.get("artist", "Sakura Soundworks"),
+                "bpm": float(info.get("bpm", 120.0)),
+                "maxLevel": max_lvl,
+                "version": int(info.get("version", 2)),
+                "cover": f"img/covers/{cid}.png",
+            })
+    (PUBLIC / "img/covers/manifest.json").write_text(
+        json.dumps(covers_manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def decode(path: Path, rate: int) -> np.ndarray:
@@ -124,6 +152,46 @@ def cmd_soundtrack(args: argparse.Namespace) -> None:
     lufs2, peak2 = measure(dst)
     print(f"  edit loudness {lufs:.1f} LUFS / {peak:.1f} dBTP -> gain {gain_db:+.2f} dB")
     print(f"  wrote {dst.relative_to(PROMO)}: {len(out) / rate:.3f} s, {lufs2:.1f} LUFS, true peak {peak2:.1f} dBTP")
+
+    mono = out.mean(axis=1)
+    n_frames = EDIT["durationInFrames"]
+    win_len = 2048
+    window = np.hanning(win_len)
+    freqs = np.fft.rfftfreq(win_len, 1.0 / rate)
+    edges = np.geomspace(45.0, 12000.0, 25)
+    bands_out = np.zeros((n_frames, 24), dtype=np.float32)
+    bass_out = np.zeros(n_frames, dtype=np.float32)
+    rms_out = np.zeros(n_frames, dtype=np.float32)
+    bass_mask = (freqs >= 45.0) & (freqs <= 165.0)
+    for f_idx in range(n_frames):
+        center = f_idx * spf + spf // 2
+        lo_i = max(0, center - win_len // 2)
+        hi_i = min(len(mono), lo_i + win_len)
+        buf = np.zeros(win_len, dtype=np.float64)
+        buf[: hi_i - lo_i] = mono[lo_i:hi_i]
+        rms_out[f_idx] = float(np.sqrt(np.mean(buf * buf)))
+        mag = np.abs(np.fft.rfft(buf * window))
+        bass_out[f_idx] = float(np.mean(mag[bass_mask]))
+        for b_idx in range(24):
+            m = (freqs >= edges[b_idx]) & (freqs < edges[b_idx + 1])
+            bands_out[f_idx, b_idx] = float(np.mean(mag[m])) if np.any(m) else 0.0
+    bands_db = np.log1p(bands_out * 18.0)
+    p99 = float(np.percentile(bands_db, 99.2)) or 1.0
+    bands_norm = np.clip(bands_db / p99, 0.0, 1.0)
+    for f_idx in range(1, n_frames):
+        bands_norm[f_idx] = np.maximum(bands_norm[f_idx], bands_norm[f_idx - 1] * 0.80)
+    bass_p99 = float(np.percentile(bass_out, 99.0)) or 1.0
+    rms_p99 = float(np.percentile(rms_out, 99.0)) or 1.0
+    spec_payload = {
+        "fps": fps,
+        "frames": n_frames,
+        "bass": [round(float(min(1.0, v / bass_p99)), 3) for v in bass_out],
+        "rms": [round(float(min(1.0, v / rms_p99)), 3) for v in rms_out],
+        "bands": [[round(float(x), 3) for x in row] for row in bands_norm],
+    }
+    spec_path = PUBLIC / "audio/spectrum.json"
+    spec_path.write_text(json.dumps(spec_payload, separators=(",", ":")), encoding="utf-8")
+    print(f"  wrote {spec_path.relative_to(PROMO)} ({n_frames} frames x 24 bands)")
 
 
 def cmd_footage(args: argparse.Namespace) -> None:

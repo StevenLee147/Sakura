@@ -96,6 +96,50 @@ jobs:
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
 
+      - name: Setup Node.js for Online Server E2E
+        if: matrix.config.artifact_suffix == 'release'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run Online Server Tests & WinHTTP E2E (--verify-online)
+        if: matrix.config.artifact_suffix == 'release'
+        shell: pwsh
+        run: |
+          Push-Location server
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+          $port = 18787
+          $env:PORT = "$port"
+          $env:SAKURA_SERVER_DATA_DIR = "$PWD/build/e2e-server-data"
+          $env:SAKURA_USER_DIR = "$PWD/build/e2e-client-user"
+          $env:SAKURA_JWT_SECRET = "ci-e2e-jwt-secret"
+          New-Item -ItemType Directory -Force -Path $env:SAKURA_SERVER_DATA_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:SAKURA_USER_DIR | Out-Null
+
+          $srv = Start-Process -FilePath "node" -ArgumentList "server/dist/index.js" -PassThru -NoNewWindow
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 40; $i++) {
+              try {
+                $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/v1/health" -UseBasicParsing -TimeoutSec 2
+                if ($resp.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 300
+            }
+            if (-not $ready) { throw "Online server failed to start on port $port" }
+            & "build/release/Release/Sakura.exe" --verify-online "http://127.0.0.1:$port"
+            if ($LASTEXITCODE -ne 0) { throw "Sakura.exe --verify-online failed with exit code $LASTEXITCODE" }
+          } finally {
+            if ($srv -and -not $srv.HasExited) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
+          }
+
       - name: Gather artifacts
         shell: pwsh
         run: |

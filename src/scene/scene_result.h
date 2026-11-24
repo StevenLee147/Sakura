@@ -6,6 +6,7 @@
 #include "scene_manager.h"
 #include "core/renderer.h"
 #include "core/resource_manager.h"
+#include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/toast.h"
 #include "game/chart.h"
@@ -46,6 +47,9 @@ private:
     sakura::game::PlayOptions m_options;
     bool m_newBest = false, m_savedScore = false;
     int m_scoreDelta = 0;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    std::string m_onlineStatusText;
+    bool m_onlineRankReady = false;
     std::array<int,41> m_histogram{};
     double m_meanError = 0, m_deviation = 0;
     std::unique_ptr<sakura::ui::Button> m_btnReplay;

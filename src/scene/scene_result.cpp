@@ -183,6 +183,40 @@ void SceneResult::OnEnter()
             sakura::audio::UISFXType::Toast);
     }
 
+    // ── 在线排行榜成绩自动异步上报 ─────────────────────────────────────────────
+    *m_alive = true;
+    m_onlineRankReady = false;
+    if (m_result.assisted)
+    {
+        m_onlineStatusText = "ONLINE · 辅助模式不参与全球排名";
+    }
+    else
+    {
+        auto& api = sakura::net::APIClient::GetInstance();
+        m_onlineStatusText = api.IsAuthenticated() ? "ONLINE · 正在同步全球排行榜..." : "ONLINE · 未登录（成绩已缓存待同步）";
+        auto alive = m_alive;
+        api.SubmitScoreAsync(m_result, [this, alive](sakura::net::ScoreSubmitResult sub)
+        {
+            if (!*alive) return;
+            if (sub.ok)
+            {
+                m_onlineRankReady = true;
+                std::ostringstream oss;
+                oss << "✦ 全球排行 #" << sub.rank << "  ·  " << std::fixed << std::setprecision(1) << sub.pp << " PP";
+                if (sub.newBest) oss << " (PB)";
+                m_onlineStatusText = oss.str();
+            }
+            else if (sub.queuedOffline)
+            {
+                m_onlineStatusText = "○ 离线已缓存 · 联网登录后自动补传";
+            }
+            else
+            {
+                m_onlineStatusText = "○ 未计入全球榜：" + sub.error;
+            }
+        });
+    }
+
     // ── 樱花飘落持续发射器 ────────────────────────────────────────────────────
     m_particles.Clear();
     auto petalCfg = sakura::effects::ParticlePresets::SakuraPetal();
@@ -193,6 +227,7 @@ void SceneResult::OnEnter()
 
 void SceneResult::OnExit()
 {
+    *m_alive = false;
     LOG_INFO("[SceneResult] 退出结算场景");
     if (m_sakuraPetalEmitter >= 0)
         m_particles.StopEmitter(m_sakuraPetalEmitter);
@@ -381,10 +416,15 @@ void SceneResult::OnRender(sakura::core::Renderer& r)
         : !m_savedScore ? "保存失败 · 请检查存储空间"
         : m_newBest ? "✦  NEW BEST  /  新纪录  +" + std::to_string(m_scoreDelta)
         : "成绩已保存  ·  " + number(m_resultPP, 2) + " PP";
-    VisualStyle::DrawBadgePill(r, {0.068f, 0.794f, 0.344f, 0.038f}, status, m_fontUI, 0.017f,
+    VisualStyle::DrawBadgePill(r, {0.068f, 0.780f, 0.344f, 0.036f}, status, m_fontUI, 0.0165f,
         m_newBest ? Color{78, 52, 86, 225} : Color{28, 34, 62, 200},
         m_newBest ? gold : Color{186, 174, 218, 110},
         m_newBest ? gold : pink);
+    if (!m_onlineStatusText.empty())
+    {
+        VisualStyle::DrawTextFit(r, m_fontUI, m_onlineStatusText, 0.074f, 0.825f, 0.0155f, 0.332f,
+            m_onlineRankReady ? gold : dim);
+    }
 
     // ── 右上判定明细琉璃卡片 ─────────────────────────────────────────────────
     VisualStyle::DrawGlassCard(r,{0.47f,0.185f,0.49f,0.375f},

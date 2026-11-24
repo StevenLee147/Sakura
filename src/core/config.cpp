@@ -83,6 +83,8 @@ void Config::ApplyDefaults()
     setDefault("gameplay.cursor_trail", true);
     setDefault("gameplay.save_replays", true);
     setDefault("gameplay.show_combo", true);
+    setDefault("online.server_url", std::string("https://steven-lee.tech:233"));
+    setDefault("online.auto_check_updates", true);
     auto boundInt = [this](std::string_view key, int fallback, int low, int high)
     { Set(key, std::clamp(Get<int>(key, fallback), low, high)); };
     auto boundFloat = [this](std::string_view key, float fallback, float low, float high)

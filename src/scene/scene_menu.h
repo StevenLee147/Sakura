@@ -6,7 +6,10 @@
 #include "scene_manager.h"
 #include "core/renderer.h"
 #include "core/resource_manager.h"
+#include "net/api_client.h"
 #include "ui/button.h"
+#include "ui/text_input.h"
+#include "ui/toast.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 
@@ -103,6 +106,20 @@ private:
     std::vector<ChartEntry> m_customCharts;
     int m_selectedChartIdx = -1;  // 选中的谱面索引
 
+    // ── 在线账号胶囊与登录弹层 ───────────────────────────────────────────────────
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    std::unique_ptr<sakura::ui::Button> m_btnAccountCapsule;
+    bool m_showAccountModal = false;
+    std::unique_ptr<sakura::ui::TextInput> m_inputServerUrl;
+    std::unique_ptr<sakura::ui::TextInput> m_inputUsername;
+    std::unique_ptr<sakura::ui::TextInput> m_inputPassword;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthGuest;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthLogin;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthRegister;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthLogout;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthClose;
+    std::string m_authMessage;
+
     // ── 退出确认对话框 ─────────────────────────────────────────────────────────
     bool m_showExitConfirm = false;
     std::unique_ptr<sakura::ui::Button> m_btnConfirmYes;
@@ -112,6 +129,8 @@ private:
     void SetupButtons();
     void SetupConfirmButtons();
     void SetupEditorMenuButtons();
+    void SetupAccountModal();
+    void RefreshAccountCapsuleText();
     void ScanCustomCharts();
     void OpenEditorForChart(int idx);
     void UpdateEnterAnimation(float dt);

@@ -117,6 +117,7 @@ void SceneSelect::Select(int index,int difficulty) {
     ChartLoader loader; auto chart=loader.LoadChartData(c.folderPath+"/"+c.difficulties[m_difficulty].chartFile);
     m_best=chart?sakura::data::Database::GetInstance().GetBestScore(c.id,c.difficulties[m_difficulty].name,Replay::Hash(*chart,c.offset)):std::nullopt;
     m_noteCount=chart?JudgmentCount(*chart):0; m_chartEnd=chart?ChartEndTime(*chart):0;
+    if(m_showGlobalLeaderboard) FetchGlobalLeaderboard();
     m_rebuild=true;
     const auto it=std::find(m_visible.begin(),m_visible.end(),index);
     if(it!=m_visible.end()) {const int row=static_cast<int>(it-m_visible.begin());if(row<m_scroll)m_scroll=row;if(row>=m_scroll+6)m_scroll=row-5;}
@@ -131,10 +132,58 @@ bool SceneSelect::SelectChart(const std::string& id,int difficulty) {
     for(int i:m_visible) if(m_charts[i].id==id) {Select(i,difficulty);return true;}
     return false;
 }
+void SceneSelect::FetchGlobalLeaderboard() {
+    if(m_selected<0) return;
+    const auto& c=m_charts[m_selected];
+    const std::string chartId=c.id;
+    const std::string diffName=c.difficulties[m_difficulty].name;
+    m_leaderboardLoading=true;
+    m_leaderboardStatus="正在加载全球排行榜...";
+    m_globalEntries.clear();
+    m_globalMyRank.reset();
+    auto alive=m_alive;
+    sakura::net::APIClient::GetInstance().FetchLeaderboardAsync(chartId,diffName,6,[this,alive,chartId,diffName](sakura::net::LeaderboardResult res){
+        if(!*alive) return;
+        if(m_selected<0 || m_charts[m_selected].id!=chartId || m_charts[m_selected].difficulties[m_difficulty].name!=diffName) return;
+        m_leaderboardLoading=false;
+        if(!res.ok) {
+            m_leaderboardStatus="离线或暂不可用："+res.error;
+            m_rebuild=true;
+            return;
+        }
+        m_globalMyRank=res.myRank;
+        m_globalEntries=std::move(res.entries);
+        m_leaderboardStatus=m_globalEntries.empty()?"暂无上榜记录 · 完成正式演奏抢占榜首":"";
+        m_rebuild=true;
+    });
+}
+void SceneSelect::WatchOnlineReplay(const sakura::net::LeaderboardRow& row) {
+    if(m_selected<0 || !row.hasReplay || row.scoreId.empty()) return;
+    const std::string dest=Paths::User("replays/online_"+row.scoreId+".skr");
+    ToastManager::Instance().Show("正在下载 "+row.username+" 的线上回放...",ToastType::Info,2.0f);
+    auto alive=m_alive;
+    const int selIdx=m_selected, diffIdx=m_difficulty;
+    sakura::net::APIClient::GetInstance().DownloadReplayAsync(row.scoreId,dest,[this,alive,selIdx,diffIdx](bool ok,std::string localPath){
+        if(!*alive) return;
+        if(!ok || selIdx<0 || selIdx>=static_cast<int>(m_charts.size())) {
+            ToastManager::Instance().Show("下载线上回放失败",ToastType::Error,3.0f);
+            return;
+        }
+        PlayOptions opts;
+        opts.mode=PlayMode::Replay;
+        opts.replayFile=localPath;
+        m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[selIdx],diffIdx,opts),TransitionType::SakuraSweep,0.42f);
+    });
+}
 void SceneSelect::BuildDetail() {
     m_rebuild=false; m_detailButtons.clear(); if(m_selected<0) return;
-    if(m_options.mode!=PlayMode::Practice){m_startInput->SetFocused(false);m_endInput->SetFocused(false);}
+    if(m_options.mode!=PlayMode::Practice || m_showGlobalLeaderboard){m_startInput->SetFocused(false);m_endInput->SetFocused(false);}
     const auto& c=m_charts[m_selected];
+    m_detailButtons.push_back(Button({0.785f,0.185f,0.090f,0.037f},m_showGlobalLeaderboard?"本地面板":"全球排行",[this]{
+        m_showGlobalLeaderboard=!m_showGlobalLeaderboard;
+        if(m_showGlobalLeaderboard) FetchGlobalLeaderboard();
+        m_rebuild=true;
+    },m_showGlobalLeaderboard));
     m_detailButtons.push_back(Button({0.883f,0.185f,0.059f,0.037f},m_favorites.contains(c.id)?"已收藏":"收藏",[this]{Favorite();}));
     const int count=static_cast<int>(c.difficulties.size());
     const int first=(m_difficulty/4)*4;
@@ -147,14 +196,25 @@ void SceneSelect::BuildDetail() {
         m_detailButtons.push_back(Button({0.817f,0.429f,0.055f,0.032f},"‹",[this,count]{Select(m_selected,(m_difficulty+count-1)%count);}));
         m_detailButtons.push_back(Button({0.884f,0.429f,0.055f,0.032f},"›",[this,count]{Select(m_selected,(m_difficulty+1)%count);}));
     }
-    const char* modes[]={"正式演奏","自由练习","自动演示"};
-    for(int i=0;i<3;++i) m_detailButtons.push_back(Button({0.515f+i*0.145f,0.595f,0.135f,0.042f},modes[i],
-        [this,i]{m_options.mode=static_cast<PlayMode>(i);if(i==0)m_options.rate=1;m_rebuild=true;},static_cast<int>(m_options.mode)==i));
-    if(m_options.mode!=PlayMode::Standard) {
-        m_detailButtons.push_back(Button({0.815f,0.677f,0.057f,0.037f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
-        m_detailButtons.push_back(Button({0.883f,0.677f,0.057f,0.037f},"+",[this]{m_options.rate=std::min(2.0f,m_options.rate+0.1f);}));
+    if(m_showGlobalLeaderboard) {
+        m_detailButtons.push_back(Button({0.848f,0.528f,0.090f,0.034f},"刷新榜单",[this]{FetchGlobalLeaderboard();}));
+        const int rows=std::min(5,static_cast<int>(m_globalEntries.size()));
+        for(int i=0;i<rows;++i) {
+            if(m_globalEntries[i].hasReplay) {
+                const auto rowCopy=m_globalEntries[i];
+                m_detailButtons.push_back(Button({0.872f,0.574f+i*0.046f,0.066f,0.036f},"回放",[this,rowCopy]{WatchOnlineReplay(rowCopy);}));
+            }
+        }
+    } else {
+        const char* modes[]={"正式演奏","自由练习","自动演示"};
+        for(int i=0;i<3;++i) m_detailButtons.push_back(Button({0.515f+i*0.145f,0.595f,0.135f,0.042f},modes[i],
+            [this,i]{m_options.mode=static_cast<PlayMode>(i);if(i==0)m_options.rate=1;m_rebuild=true;},static_cast<int>(m_options.mode)==i));
+        if(m_options.mode!=PlayMode::Standard) {
+            m_detailButtons.push_back(Button({0.815f,0.677f,0.057f,0.037f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
+            m_detailButtons.push_back(Button({0.883f,0.677f,0.057f,0.037f},"+",[this]{m_options.rate=std::min(2.0f,m_options.rate+0.1f);}));
+        }
+        if(m_options.mode==PlayMode::Practice) m_detailButtons.push_back(Button({0.825f,0.762f,0.116f,0.040f},m_options.loop?"循环：开":"循环：关",[this]{m_options.loop=!m_options.loop;m_rebuild=true;}));
     }
-    if(m_options.mode==PlayMode::Practice) m_detailButtons.push_back(Button({0.825f,0.762f,0.116f,0.040f},m_options.loop?"循环：开":"循环：关",[this]{m_options.loop=!m_options.loop;m_rebuild=true;}));
     m_detailButtons.push_back(Button({0.515f,0.827f,0.18f,0.040f},"播放最近回放",[this]{Start(PlayMode::Replay);}));
     m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile),TransitionType::SilkShutter,0.38f);}));
 }
@@ -223,6 +283,7 @@ void SceneSelect::AcceptImport(const std::string& path) {
 }
 void SceneSelect::Back(){m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SilkShutter,0.36f);}
 void SceneSelect::OnExit(){
+    *m_alive=false;
     if(m_petalEmitter>=0)m_particles.StopEmitter(m_petalEmitter);
     m_particles.Clear();
     m_bgCover.UnloadImage();
@@ -343,20 +404,38 @@ void SceneSelect::OnRender(Renderer& r) {
         VisualStyle::DrawGildedDivider(r,0.515f,0.938f,0.416f,0.68f);
         r.DrawText(m_font,"DIFFICULTY / 难度选择",0.515f,0.430f,0.016f,dim);
 
-        r.DrawRoundedGradientRect({0.515f,0.525f,0.425f,0.052f},0.009f,{34,40,70,185},{24,30,54,185},{28,34,60,195},{20,24,46,195},8,true);
-        r.DrawRoundedRectOutlineGradient({0.515f,0.525f,0.425f,0.052f},0.009f,{250,216,157,110},{164,174,214,45},0.0012f,8);
-        if(m_best) {
-            r.DrawText(m_font,"个人最佳  "+std::to_string(m_best->score)+"   ·   "+Number(m_best->accuracy,2)+"%",0.530f,0.538f,0.021f,gold);
-            const char* gStr=(m_best->grade==Grade::SS?"SS":m_best->grade==Grade::S?"S":m_best->grade==Grade::A?"A":m_best->grade==Grade::B?"B":m_best->grade==Grade::C?"C":"D");
-            VisualStyle::DrawBadgePill(r,{0.872f,0.535f,0.056f,0.032f},gStr,m_font,0.017f,{72,48,84,225},gold,gold);
+        if(m_showGlobalLeaderboard) {
+            const std::string hdr=m_globalMyRank.has_value()?("全球高分榜  ·  我的名次 #"+std::to_string(*m_globalMyRank)):"全球高分榜  ·  GLOBAL TOP";
+            r.DrawText(m_font,hdr,0.515f,0.533f,0.019f,gold);
+            const int rows=std::min(5,static_cast<int>(m_globalEntries.size()));
+            for(int i=0;i<rows;++i) {
+                const auto& row=m_globalEntries[i];
+                const float ry=0.572f+i*0.046f;
+                r.DrawRoundedRect({0.515f,ry,0.350f,0.039f},0.007f,i==0?Color{66,44,76,195}:Color{26,32,58,185},true,6);
+                r.DrawText(m_font,"#"+std::to_string(row.rank),0.524f,ry+0.008f,0.017f,i==0?gold:pink);
+                VisualStyle::DrawTextFit(r,m_font,row.username,0.562f,ry+0.008f,0.017f,0.135f,white);
+                r.DrawText(m_font,std::to_string(row.score)+"  "+Number(row.accuracy,1)+"%",0.855f,ry+0.008f,0.016f,gold,TextAlign::Right);
+            }
+            if(m_globalEntries.empty()) {
+                r.DrawRoundedRect({0.515f,0.590f,0.425f,0.120f},0.010f,{22,28,52,185},true,8);
+                VisualStyle::DrawTextFit(r,m_font,m_leaderboardStatus.empty()?"暂无全球排行数据":m_leaderboardStatus,0.535f,0.638f,0.018f,0.385f,dim);
+            }
         } else {
-            r.DrawText(m_font,"个人最佳  —  等待第一次演奏",0.530f,0.538f,0.020f,pink);
-        }
+            r.DrawRoundedGradientRect({0.515f,0.525f,0.425f,0.052f},0.009f,{34,40,70,185},{24,30,54,185},{28,34,60,195},{20,24,46,195},8,true);
+            r.DrawRoundedRectOutlineGradient({0.515f,0.525f,0.425f,0.052f},0.009f,{250,216,157,110},{164,174,214,45},0.0012f,8);
+            if(m_best) {
+                r.DrawText(m_font,"个人最佳  "+std::to_string(m_best->score)+"   ·   "+Number(m_best->accuracy,2)+"%",0.530f,0.538f,0.021f,gold);
+                const char* gStr=(m_best->grade==Grade::SS?"SS":m_best->grade==Grade::S?"S":m_best->grade==Grade::A?"A":m_best->grade==Grade::B?"B":m_best->grade==Grade::C?"C":"D");
+                VisualStyle::DrawBadgePill(r,{0.872f,0.535f,0.056f,0.032f},gStr,m_font,0.017f,{72,48,84,225},gold,gold);
+            } else {
+                r.DrawText(m_font,"个人最佳  —  等待第一次演奏",0.530f,0.538f,0.020f,pink);
+            }
 
-        r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
-        if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
-        if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}
-        else r.DrawText(m_font,"A / S / D / F  +  鼠标左键    ·    Esc 暂停",0.515f,0.760f,0.019f,dim);
+            r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
+            if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
+            if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}
+            else r.DrawText(m_font,"A / S / D / F / Space  +  鼠标    ·    Esc 暂停",0.515f,0.760f,0.019f,dim);
+        }
 
         if(m_previewPlaying) {
             sakura::audio::AudioVisualizer::GetInstance().RenderWave(r,{0.515f,0.792f,0.425f,0.024f},{246,178,206,150},0.65f);

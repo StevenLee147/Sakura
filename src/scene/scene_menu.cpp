@@ -64,8 +64,11 @@ void SceneMenu::OnEnter()
     }
 
     // 重置状态
+    *m_alive = true;
     m_showExitConfirm  = false;
     m_showEditorMenu   = false;
+    m_showAccountModal = false;
+    m_authMessage.clear();
     m_selectedChartIdx = -1;
     m_customCharts.clear();
 
@@ -92,6 +95,8 @@ void SceneMenu::OnEnter()
     SetupButtons();
     SetupConfirmButtons();
     SetupEditorMenuButtons();
+    SetupAccountModal();
+    RefreshAccountCapsuleText();
 }
 
 // ── SetupButtons ──────────────────────────────────────────────────────────────
@@ -295,8 +300,133 @@ void SceneMenu::SetupConfirmButtons()
 
 // ── OnExit ────────────────────────────────────────────────────────────────────
 
+void SceneMenu::RefreshAccountCapsuleText()
+{
+    if (!m_btnAccountCapsule) return;
+    auto& api = sakura::net::APIClient::GetInstance();
+    if (api.IsAuthenticated())
+    {
+        const auto user = api.GetCurrentUser();
+        const int ppInt = static_cast<int>(std::round(user.totalPP));
+        const std::string tag = (api.GetStatus() == sakura::net::OnlineStatus::Offline ? "○ " : "● ")
+            + user.username + "  ·  " + std::to_string(ppInt) + " PP";
+        m_btnAccountCapsule->SetText(tag);
+    }
+    else
+    {
+        const auto pending = api.GetPendingScoreCount();
+        m_btnAccountCapsule->SetText(pending > 0
+            ? ("○ 在线账号 / 待传 " + std::to_string(pending))
+            : "○ 在线账号 / 登录排行榜");
+    }
+}
+
+void SceneMenu::SetupAccountModal()
+{
+    auto& api = sakura::net::APIClient::GetInstance();
+    m_btnAccountCapsule = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.695f, 0.036f, 0.253f, 0.044f },
+        "○ 在线账号 / 登录排行榜", m_fontButton, 0.019f, 0.014f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAccountCapsule.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnAccountCapsule->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAccountCapsule->SetOnClick([this]()
+    {
+        m_showAccountModal = true;
+        m_authMessage.clear();
+        if (m_inputServerUrl) m_inputServerUrl->SetText(sakura::net::APIClient::GetInstance().GetServerUrl());
+        if (sakura::net::APIClient::GetInstance().IsAuthenticated() && m_inputUsername)
+            m_inputUsername->SetText(sakura::net::APIClient::GetInstance().GetCurrentUser().username);
+    });
+
+    m_inputServerUrl = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.315f, 0.310f, 0.044f }, m_fontButton, 0.020f, 128);
+    m_inputServerUrl->SetText(api.GetServerUrl());
+    m_inputServerUrl->SetPlaceholder("服务器地址，默认 https://steven-lee.tech:233");
+
+    m_inputUsername = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.395f, 0.310f, 0.044f }, m_fontButton, 0.020f, 32);
+    m_inputUsername->SetPlaceholder("昵称 / 用户名 (2~24 字符)");
+
+    m_inputPassword = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.475f, 0.310f, 0.044f }, m_fontButton, 0.020f, 64);
+    m_inputPassword->SetPlaceholder("密码 (至少 6 位，访客免填)");
+
+    auto handleAuthResult = [this](const sakura::net::AuthResult& res)
+    {
+        RefreshAccountCapsuleText();
+        if (res.ok)
+        {
+            m_authMessage = "已登录：" + res.user.username;
+            sakura::ui::ToastManager::Instance().Show("欢迎回来，" + res.user.username, sakura::ui::ToastType::Success, 3.0f);
+            m_showAccountModal = false;
+        }
+        else
+        {
+            m_authMessage = res.error;
+        }
+    };
+
+    m_btnAuthGuest = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.345f, 0.545f, 0.310f, 0.046f }, "一键访客登录", m_fontButton, 0.022f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAuthGuest.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnAuthGuest->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAuthGuest->SetOnClick([this, handleAuthResult]()
+    {
+        auto& client = sakura::net::APIClient::GetInstance();
+        client.SetServerUrl(m_inputServerUrl->GetText());
+        m_authMessage = "正在创建访客通行证...";
+        auto alive = m_alive;
+        client.LoginGuestAsync(m_inputUsername->GetText(), [alive, handleAuthResult](sakura::net::AuthResult r)
+        { if (*alive) handleAuthResult(r); });
+    });
+
+    m_btnAuthLogin = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.345f, 0.604f, 0.148f, 0.046f }, "登录账号", m_fontButton, 0.022f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAuthLogin.get(), sakura::ui::ButtonVariant::Primary);
+    m_btnAuthLogin->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAuthLogin->SetOnClick([this, handleAuthResult]()
+    {
+        auto& client = sakura::net::APIClient::GetInstance();
+        client.SetServerUrl(m_inputServerUrl->GetText());
+        m_authMessage = "正在登录...";
+        auto alive = m_alive;
+        client.LoginAsync(m_inputUsername->GetText(), m_inputPassword->GetText(), [alive, handleAuthResult](sakura::net::AuthResult r)
+        { if (*alive) handleAuthResult(r); });
+    });
+
+    m_btnAuthRegister = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.507f, 0.604f, 0.148f, 0.046f }, "注册账号", m_fontButton, 0.022f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAuthRegister.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnAuthRegister->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAuthRegister->SetOnClick([this, handleAuthResult]()
+    {
+        auto& client = sakura::net::APIClient::GetInstance();
+        client.SetServerUrl(m_inputServerUrl->GetText());
+        m_authMessage = "正在注册...";
+        auto alive = m_alive;
+        client.RegisterAsync(m_inputUsername->GetText(), m_inputPassword->GetText(), [alive, handleAuthResult](sakura::net::AuthResult r)
+        { if (*alive) handleAuthResult(r); });
+    });
+
+    m_btnAuthLogout = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.345f, 0.664f, 0.148f, 0.044f }, "退出登录", m_fontButton, 0.020f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAuthLogout.get(), sakura::ui::ButtonVariant::Danger);
+    m_btnAuthLogout->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAuthLogout->SetOnClick([this]()
+    {
+        sakura::net::APIClient::GetInstance().Logout();
+        RefreshAccountCapsuleText();
+        m_authMessage = "已退出在线账号";
+    });
+
+    m_btnAuthClose = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.507f, 0.664f, 0.148f, 0.044f }, "关 闭", m_fontButton, 0.020f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAuthClose.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnAuthClose->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAuthClose->SetOnClick([this]()
+    {
+        m_inputServerUrl->SetFocused(false);
+        m_inputUsername->SetFocused(false);
+        m_inputPassword->SetFocused(false);
+        m_showAccountModal = false;
+    });
+}
+
 void SceneMenu::OnExit()
 {
+    *m_alive = false;
     LOG_INFO("[SceneMenu] 退出主菜单");
     m_particles.StopEmitter(m_sakuraPetalEmitterFG);
     m_particles.StopEmitter(m_sakuraPetalEmitterMG);
@@ -308,6 +438,15 @@ void SceneMenu::OnExit()
     m_bgFloatEmitter     = -1;
     m_particles.Clear();
     for (auto& btn : m_buttons) btn.reset();
+    m_btnAccountCapsule.reset();
+    m_inputServerUrl.reset();
+    m_inputUsername.reset();
+    m_inputPassword.reset();
+    m_btnAuthGuest.reset();
+    m_btnAuthLogin.reset();
+    m_btnAuthRegister.reset();
+    m_btnAuthLogout.reset();
+    m_btnAuthClose.reset();
     m_btnConfirmYes.reset();
     m_btnConfirmNo.reset();
     m_btnEditorOpen.reset();
@@ -389,6 +528,21 @@ void SceneMenu::OnUpdate(float dt)
             // 恢复原始 bounds
             m_buttons[i]->SetBounds(origBounds);
         }
+    }
+
+    RefreshAccountCapsuleText();
+    if (m_btnAccountCapsule) m_btnAccountCapsule->Update(dt);
+
+    if (m_showAccountModal)
+    {
+        if (m_inputServerUrl)  m_inputServerUrl->Update(dt);
+        if (m_inputUsername)   m_inputUsername->Update(dt);
+        if (m_inputPassword)   m_inputPassword->Update(dt);
+        if (m_btnAuthGuest)    m_btnAuthGuest->Update(dt);
+        if (m_btnAuthLogin)    m_btnAuthLogin->Update(dt);
+        if (m_btnAuthRegister) m_btnAuthRegister->Update(dt);
+        if (m_btnAuthLogout)   m_btnAuthLogout->Update(dt);
+        if (m_btnAuthClose)    m_btnAuthClose->Update(dt);
     }
 
     // 编辑器子菜单按钮更新
@@ -524,11 +678,53 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         renderer.DrawRingGradient(ring.x, ring.y, rad * 0.78f, rad, { 250, 216, 157, ra }, { 246, 172, 200, 0 }, 40);
     }
 
-    // ── 版本号 ────────────────────────────────────────────────────────────────
+    // ── 版本号与右上在线账号胶囊 ───────────────────────────────────────────────
     renderer.DrawText(m_fontSub, "v" SAKURA_VERSION_STRING "  ·  LUMINOUS GLASS EDITION",
         0.075f, 0.948f, 0.015f,
         sakura::core::Color{ 208, 212, 232, 168 },
         sakura::core::TextAlign::Left);
+    if (m_btnAccountCapsule) m_btnAccountCapsule->Render(renderer);
+
+    // ── 在线账号登录/访客弹层 ─────────────────────────────────────────────────
+    if (m_showAccountModal)
+    {
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.70f);
+        sakura::ui::VisualStyle::DrawGlassCard(
+            renderer, { 0.305f, 0.195f, 0.390f, 0.565f },
+            { 26, 32, 58, 240 }, { 14, 18, 36, 246 },
+            { 250, 216, 157, 195 }, { 246, 172, 200, 96 },
+            0.018f, 0.62f);
+        sakura::ui::VisualStyle::DrawBadgePill(
+            renderer, { 0.425f, 0.215f, 0.150f, 0.026f },
+            "SAKURA ONLINE", m_fontSub, 0.0125f,
+            { 54, 38, 74, 215 }, { 250, 216, 157, 155 }, gold);
+        renderer.DrawText(m_fontSub, "在线通行证与排行榜服务器", 0.50f, 0.248f, 0.028f,
+            sakura::core::Color{ 248, 242, 248, 250 }, sakura::core::TextAlign::Center);
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.340f, 0.660f, 0.292f, 0.74f);
+
+        renderer.DrawText(m_fontSub, "服务器地址", 0.345f, 0.296f, 0.014f, dim);
+        renderer.DrawText(m_fontSub, "账号 / 昵称", 0.345f, 0.376f, 0.014f, dim);
+        renderer.DrawText(m_fontSub, "登录密码", 0.345f, 0.456f, 0.014f, dim);
+
+        if (m_inputServerUrl)  m_inputServerUrl->Render(renderer);
+        if (m_inputUsername)   m_inputUsername->Render(renderer);
+        if (m_inputPassword)   m_inputPassword->Render(renderer);
+        if (m_btnAuthGuest)    m_btnAuthGuest->Render(renderer);
+        if (m_btnAuthLogin)    m_btnAuthLogin->Render(renderer);
+        if (m_btnAuthRegister) m_btnAuthRegister->Render(renderer);
+        if (m_btnAuthLogout)
+        {
+            m_btnAuthLogout->SetEnabled(sakura::net::APIClient::GetInstance().IsAuthenticated());
+            m_btnAuthLogout->Render(renderer);
+        }
+        if (m_btnAuthClose)    m_btnAuthClose->Render(renderer);
+
+        if (!m_authMessage.empty())
+        {
+            sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontSub, m_authMessage,
+                0.345f, 0.720f, 0.016f, 0.310f, pink);
+        }
+    }
 
     // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
     if (m_showEditorMenu)
@@ -631,6 +827,31 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         m_particles.Emit(mx, my, 5, cfg);
     }
 
+    // 在线账号弹层优先
+    if (m_showAccountModal)
+    {
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)
+        {
+            if (m_inputServerUrl) m_inputServerUrl->SetFocused(false);
+            if (m_inputUsername)  m_inputUsername->SetFocused(false);
+            if (m_inputPassword)  m_inputPassword->SetFocused(false);
+            m_showAccountModal = false;
+            return;
+        }
+        bool consumed = false;
+        if (m_inputServerUrl) consumed = m_inputServerUrl->HandleEvent(event) || consumed;
+        if (m_inputUsername)  consumed = m_inputUsername->HandleEvent(event)  || consumed;
+        if (m_inputPassword)  consumed = m_inputPassword->HandleEvent(event)  || consumed;
+        if (consumed && (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_TEXT_INPUT))
+            return;
+        if (m_btnAuthGuest    && m_btnAuthGuest->HandleEvent(event))    return;
+        if (m_btnAuthLogin    && m_btnAuthLogin->HandleEvent(event))    return;
+        if (m_btnAuthRegister && m_btnAuthRegister->HandleEvent(event)) return;
+        if (m_btnAuthLogout   && m_btnAuthLogout->HandleEvent(event))   return;
+        if (m_btnAuthClose    && m_btnAuthClose->HandleEvent(event))    return;
+        return;
+    }
+
     // 编辑器子菜单优先
     if (m_showEditorMenu)
     {
@@ -697,6 +918,9 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         m_showExitConfirm = true;
         return;
     }
+
+    if (m_btnAccountCapsule && m_btnAccountCapsule->HandleEvent(event))
+        return;
 
     // 分发给按钮（带当前 X 偏移做命中测试）
     for (int i = 0; i < BUTTON_COUNT; ++i)

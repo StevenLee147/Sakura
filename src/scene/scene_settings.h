@@ -2,8 +2,15 @@
 
 #include "scene.h"
 #include "scene_manager.h"
+#include "core/updater.h"
 #include "ui/button.h"
 #include "ui/ui_base.h"
+
+#if __has_include("version.h")
+#  include "version.h"
+#else
+#  define SAKURA_VERSION_STRING "0.0.0"
+#endif
 #include <array>
 #include <memory>
 #include <mutex>

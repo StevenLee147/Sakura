@@ -213,6 +213,28 @@ void SceneSettings::BuildPages()
         std::filesystem::create_directories(Paths::User("backups"));
         SDL_OpenURL(("file:///" + Paths::User("backups")).c_str());
     });
+    AddToggle(5, "自动检查更新", "启动时后台静默检测 GitHub Releases 新版本", "online.auto_check_updates");
+    AddAction(5, "版本更新", std::string("当前版本 v") + SAKURA_VERSION_STRING + " · 检测并前往最新发布页", "检查更新", []
+    {
+        ToastManager::Instance().Show("正在后台检查最新版本...", ToastType::Info, 2.2f);
+        Updater::GetInstance().CheckAsync(SAKURA_VERSION_STRING, [](const UpdateCheckResult& res)
+        {
+            if (!res.ok)
+            {
+                ToastManager::Instance().Show("检查更新不可用：" + res.error, ToastType::Warning, 3.8f);
+                return;
+            }
+            if (res.hasUpdate)
+            {
+                ToastManager::Instance().Show("发现新版本 " + res.latestVer + "，正在打开发布页", ToastType::Success, 4.5f);
+                SDL_OpenURL(res.releaseUrl.c_str());
+            }
+            else
+            {
+                ToastManager::Instance().Show(std::string("当前已是最新版本 (v") + SAKURA_VERSION_STRING + ")", ToastType::Success, 3.2f);
+            }
+        });
+    });
 
     for (auto& page : m_pages)
     {

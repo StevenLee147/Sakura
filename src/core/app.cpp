@@ -18,8 +18,16 @@
 #include "effects/screen_shake.h"
 #include "effects/shader_manager.h"
 #include "effects/video_decoder.h"
+#include "net/api_client.h"
+#include "core/updater.h"
 #include "ui/button.h"
 #include "ui/visual_style.h"
+
+#if __has_include("version.h")
+#  include "version.h"
+#else
+#  define SAKURA_VERSION_STRING "0.0.0"
+#endif
 
 #include <cmath>
 #include <cstdlib>
@@ -81,6 +89,23 @@ bool App::Initialize()
     // ── 配置系统 ────────────────────────────────────────────────────────────────
     Config::GetInstance().Load(Paths::User("config/settings.json"));
     Theme::GetInstance().Initialize();
+    sakura::net::APIClient::GetInstance().LoadFromConfig();
+    if (sakura::net::APIClient::GetInstance().IsAuthenticated())
+    {
+        sakura::net::APIClient::GetInstance().RefreshProfileAsync();
+    }
+    if (Config::GetInstance().Get<bool>("online.auto_check_updates", true))
+    {
+        Updater::GetInstance().CheckAsync(SAKURA_VERSION_STRING, [](const UpdateCheckResult& res)
+        {
+            if (res.ok && res.hasUpdate)
+            {
+                sakura::ui::ToastManager::Instance().Show(
+                    "发现新版本 " + res.latestVer + " · 可前往设置「数据」页更新",
+                    sakura::ui::ToastType::Info, 4.5f);
+            }
+        });
+    }
 
     // ── 数据库 ───────────────────────────────────────────────────────────────────
     if (!sakura::data::Database::GetInstance().Initialize(ResolveDatabasePath()))
@@ -224,6 +249,8 @@ void App::Shutdown()
     sakura::ui::Button::SetGlobalHoverSFX({});
     sakura::ui::Button::SetGlobalClickSFX({});
 
+    sakura::net::APIClient::GetInstance().Shutdown();
+
     // 先关闭音频（避免资源释放竞争）
     sakura::audio::AudioManager::GetInstance().Shutdown();
 
@@ -340,6 +367,9 @@ void App::Update(float dt)
             if(!cfgFullscreen)SDL_SetWindowSize(m_window.GetSDLWindow(),width,height);
         }
     }
+
+    // 主线程消费后台网络回调队列
+    sakura::net::APIClient::GetInstance().PumpCallbacks();
 
     // 场景更新
     m_sceneManager.Update(dt);

@@ -100,9 +100,12 @@ def verify_online_if_present(exe_path: Path, qa_root: Path) -> None:
     if not server_pkg.is_file():
         return
     npm_exe = "npm.cmd" if os.name == "nt" else "npm"
+    if not (REPO / "server" / "node_modules").is_dir():
+        run([npm_exe, "--prefix", "server", "install", "--no-audit", "--no-fund"])
+    run([npm_exe, "--prefix", "server", "run", "build"])
     run([npm_exe, "--prefix", "server", "test"])
 
-    server_entry = REPO / "server" / "src" / "index.ts"
+    server_entry = REPO / "server" / "dist" / "index.js"
     if not server_entry.is_file():
         return
     port = pick_free_port()
@@ -114,9 +117,8 @@ def verify_online_if_present(exe_path: Path, qa_root: Path) -> None:
         "SAKURA_JWT_SECRET": "autopilot-e2e-secret-key",
         "SAKURA_USER_DIR": str(qa_root / "online-client-user"),
     })
-    npx_exe = "npx.cmd" if os.name == "nt" else "npx"
     proc = subprocess.Popen(
-        [npx_exe, "--prefix", "server", "tsx", "server/src/index.ts"],
+        ["node", str(server_entry)],
         cwd=REPO,
         env=env,
         stdout=subprocess.PIPE,

@@ -20,6 +20,7 @@ add_executable(SakuraTests
     test_sakura_archive.cpp
     test_video_and_clock.cpp
     test_v1_stress.cpp
+    test_online_v110.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

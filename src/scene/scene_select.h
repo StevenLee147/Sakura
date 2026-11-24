@@ -3,6 +3,7 @@
 #include "scene_manager.h"
 #include "game/chart.h"
 #include "game/play_session.h"
+#include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/text_input.h"
 #include "effects/background.h"
@@ -46,6 +47,14 @@ private:
     std::vector<std::unique_ptr<sakura::ui::Button>> m_buttons, m_detailButtons;
     struct DialogState { std::mutex mutex; bool ready = false; std::string path; };
     std::shared_ptr<DialogState> m_dialog = std::make_shared<DialogState>();
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    bool m_showGlobalLeaderboard = false;
+    bool m_leaderboardLoading = false;
+    std::string m_leaderboardStatus;
+    std::optional<int> m_globalMyRank;
+    std::vector<sakura::net::LeaderboardRow> m_globalEntries;
+    void FetchGlobalLeaderboard();
+    void WatchOnlineReplay(const sakura::net::LeaderboardRow& row);
     void Scan();
     void Filter();
     void Select(int index, int difficulty = -1);

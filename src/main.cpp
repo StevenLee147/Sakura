@@ -305,6 +305,149 @@ private:
 }
 
 #include "utils/archive.h"
+#include "net/api_client.h"
+#include "core/updater.h"
+#include "game/replay.h"
+
+namespace
+{
+bool RunVerifyOnline(const std::string& baseUrl)
+{
+    using namespace sakura::game;
+    namespace fs = std::filesystem;
+
+    std::error_code tmpEc;
+    const fs::path e2eDir = fs::temp_directory_path(tmpEc) / "sakura_e2e_v110";
+    fs::create_directories(e2eDir, tmpEc);
+    sakura::core::Config::GetInstance().Load((e2eDir / "settings.json").string());
+    sakura::net::APIClient api(nullptr, (e2eDir / "queue.json").string());
+    api.LoadFromConfig();
+    api.SetServerUrl(baseUrl);
+
+    if (!api.CheckHealth()) return false;
+
+    const auto upd = sakura::core::Updater::GetInstance().CheckNow("v0.9.1-beta", nullptr, baseUrl + "/api/v1/version");
+    if (!upd.ok || !upd.hasUpdate) return false;
+
+    const auto guest = api.LoginGuest("SakuraGuest");
+    if (!guest.ok) return false;
+
+    const std::string uname = "E2E_" + std::to_string(SDL_GetTicksNS() % 100000000ULL);
+    const auto reg = api.Register(uname, "SakuraPass123!");
+    if (!reg.ok) return false;
+    const auto login = api.Login(uname, "SakuraPass123!");
+    if (!login.ok || !api.IsAuthenticated()) return false;
+    const auto me = api.RefreshProfile();
+    if (!me.ok || me.user.username != uname) return false;
+
+    // Construct deterministic Chart v3 fixture and drive PlaySession with real human inputs
+    ChartData chart;
+    chart.version = 3;
+    chart.timingPoints = { { 0, 120.0f, 4, 4 } };
+    KeyboardNote k0; k0.time = 500;  k0.lane = 0; k0.type = NoteType::Tap;
+    KeyboardNote k1; k1.time = 1000; k1.lane = 1; k1.type = NoteType::Hold; k1.duration = 1000;
+    KeyboardNote k2; k2.time = 2100; k2.lane = 2; k2.type = NoteType::Tap;
+    KeyboardNote k3; k3.time = 2450; k3.lane = 4; k3.type = NoteType::Tap; k3.linkId = 1;
+    chart.keyboardNotes = { k0, k1, k2, k3 };
+
+    MouseNote m0; m0.time = 800;  m0.x = 0.5f;  m0.y = 0.5f; m0.type = NoteType::Circle;
+    MouseNote m1; m1.time = 1400; m1.x = 0.35f; m1.y = 0.5f; m1.type = NoteType::Slider;
+    m1.sliderDuration = 800; m1.sliderPath = { { 0.65f, 0.5f } };
+    MouseNote m2; m2.time = 2450; m2.x = 0.5f;  m2.y = 0.5f; m2.type = NoteType::Circle;
+    m2.linkId = 1; m2.requireLane = 4;
+    chart.mouseNotes = { m0, m1, m2 };
+
+    const std::string chartHash = Replay::Hash(chart, 0);
+    const std::vector<SessionInput> script = {
+        { 500, InputKind::LaneDown, 0 }, { 540, InputKind::LaneUp, 0 },
+        { 800, InputKind::MouseDown, 0, 0.5f, 0.5f }, { 840, InputKind::MouseUp },
+        { 1000, InputKind::LaneDown, 1 }, { 1400, InputKind::MouseDown, 0, 0.35f, 0.5f },
+        { 2010, InputKind::LaneUp, 1 }, { 2100, InputKind::LaneDown, 2 },
+        { 2150, InputKind::LaneUp, 2 }, { 2185, InputKind::Pointer, 0, 0.65f, 0.5f },
+        { 2260, InputKind::MouseUp }, { 2450, InputKind::LaneDown, 4 },
+        { 2452, InputKind::MouseDown, 0, 0.5f, 0.5f }, { 2490, InputKind::MouseUp },
+        { 2495, InputKind::LaneUp, 4 }
+    };
+
+    ChartData liveChart = chart;
+    PlaySession liveSession;
+    liveSession.Initialize(liveChart, false, 0, 0);
+    for (const auto& ev : script) liveSession.Submit(ev);
+    liveSession.Finish();
+
+    GameResult liveResult = liveSession.Score().GetResult("sakura_breath", "Sakura Breath", "Expert", 2, 10.5f, 3.0);
+    liveResult.chartHash      = chartHash;
+    liveResult.totalJudgments = liveSession.Score().GetJudgedCount();
+    liveResult.assisted       = false;
+
+    const fs::path replayOut = fs::path(sakura::core::Paths::User("replays")) / "e2e_live.skr";
+    std::error_code ec;
+    fs::create_directories(replayOut.parent_path(), ec);
+    Replay recorded;
+    recorded.chartId   = "sakura_breath";
+    recorded.chartHash = chartHash;
+    recorded.difficulty = 2;
+    recorded.rate      = 1.0f;
+    recorded.startMs   = 0;
+    recorded.inputs    = liveSession.Recording();
+    if (!recorded.Save(replayOut.string())) return false;
+    liveResult.replayFile = replayOut.string();
+
+    // Assisted score must be rejected by server
+    GameResult assistedResult = liveResult;
+    assistedResult.assisted = true;
+    // Direct server check via unassisted vs tampered
+    GameResult tampered = liveResult;
+    tampered.score = 1200000;
+    if (api.SubmitScore(tampered).ok) return false;
+
+    // Valid unassisted score + .skr upload
+    const auto submitted = api.SubmitScore(liveResult);
+    if (!submitted.ok || submitted.rank != 1 || submitted.pp <= 0.0 || submitted.scoreId.empty())
+        return false;
+
+    // Fetch leaderboard and verify #1 entry & myRank
+    const auto lb = api.FetchLeaderboard("sakura_breath", "Expert", 10);
+    if (!lb.ok || !lb.myRank.has_value() || *lb.myRank != 1 || lb.entries.empty())
+        return false;
+    if (lb.entries[0].username != uname || lb.entries[0].score != liveResult.score || !lb.entries[0].hasReplay)
+        return false;
+
+    // Download replay and verify deterministic frame-accurate playback parity
+    const fs::path dlPath = fs::path(sakura::core::Paths::User("replays")) / "e2e_downloaded.skr";
+    if (!api.DownloadReplay(submitted.scoreId, dlPath.string()))
+        return false;
+    const auto dlReplay = Replay::Load(dlPath.string());
+    if (!dlReplay || dlReplay->chartHash != chartHash)
+        return false;
+
+    ChartData replayChart = chart;
+    PlaySession replaySession;
+    replaySession.Initialize(replayChart, false, 0, 0);
+    for (const auto& ev : dlReplay->inputs) replaySession.Submit(ev);
+    replaySession.Finish();
+
+    if (replaySession.Score().GetScore() != liveResult.score ||
+        replaySession.Score().GetMaxCombo() != liveResult.maxCombo ||
+        replaySession.Score().GetHitErrors() != liveResult.hitErrors)
+    {
+        return false;
+    }
+
+    const nlohmann::json report = {
+        { "verified", true },
+        { "username", uname },
+        { "score_id", submitted.scoreId },
+        { "score", liveResult.score },
+        { "rank", submitted.rank },
+        { "pp", submitted.pp },
+        { "replay_events", dlReplay->inputs.size() }
+    };
+    sakura::utils::AtomicWrite(fs::path(sakura::core::Paths::User("verify-online.json")), report.dump(2));
+    api.Shutdown();
+    return true;
+}
+}
 
 int main(int argc, char* argv[])
 {
@@ -315,12 +458,14 @@ int main(int argc, char* argv[])
         fs::path verifyAudio;
         fs::path recordScript, recordOutput;
         fs::path openPackage;
+        std::string verifyOnlineUrl;
         int width = 1600, height = 900;bool verify=false,verifyImages=false;
         for (int i = 1; i < argc; ++i)
         {
             const std::string arg = argv[i];
             if (arg == "--smoke-test" && i + 1 < argc) capture = fs::absolute(argv[++i]);
             else if (arg == "--verify-play") verify=true;
+            else if (arg == "--verify-online" && i + 1 < argc) verifyOnlineUrl = argv[++i];
             else if (arg == "--verify-audio" && i+1<argc)verifyAudio=fs::absolute(argv[++i]);
             else if (arg == "--verify-media" && i+1<argc){verifyAudio=fs::absolute(argv[++i]);verifyImages=true;}
             else if (arg == "--size" && i + 2 < argc) { width = std::stoi(argv[++i]); height = std::stoi(argv[++i]); }
@@ -350,6 +495,8 @@ int main(int argc, char* argv[])
         }
         fs::create_directories(userRoot);
         sakura::core::Paths::SetUserRoot(userRoot);
+        if (!verifyOnlineUrl.empty())
+            return RunVerifyOnline(verifyOnlineUrl) ? 0 : 1;
         if (!openPackage.empty() && capture.empty())
         {
             std::error_code pkgEc;
@@ -393,6 +540,7 @@ int main(int argc, char* argv[])
             config.Set("display.window_height", std::clamp(height, 540, 4320));
             config.Set("audio.master_volume", 0.0f);
             config.Set("display.fullscreen", false);
+            config.Set("online.auto_check_updates", false);
             config.Save();
             if(!verifyAudio.empty()){
                 sakura::core::App app;if(!app.Initialize())return 1;

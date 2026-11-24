@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 1.0.0
+    VERSION 1.1.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
@@ -212,7 +212,7 @@ if(SAKURA_BUILD_APP)
         unofficial::sqlite3::sqlite3
     )
     if(WIN32)
-        target_link_libraries(${PROJECT_NAME} PRIVATE mfplat mfreadwrite mfuuid ole32)
+        target_link_libraries(${PROJECT_NAME} PRIVATE mfplat mfreadwrite mfuuid ole32 winhttp)
     endif()
     if(TARGET spdlog::spdlog)
         target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
@@ -284,7 +284,10 @@ if(SAKURA_BUILD_TESTS)
         src/audio/time_stretcher.cpp
         src/core/config.cpp
         src/core/record_script.cpp
+        src/core/updater.cpp
         src/data/database.cpp
+        src/net/api_client.cpp
+        src/net/http_client.cpp
         src/effects/video_decoder.cpp
         src/game/approach_visuals.cpp
         src/game/achievement_manager.cpp
@@ -301,7 +304,7 @@ if(SAKURA_BUILD_TESTS)
         src/utils/logger.cpp
     )
     if(WIN32)
-        target_link_libraries(sakura-game-logic PUBLIC mfplat mfreadwrite mfuuid ole32)
+        target_link_libraries(sakura-game-logic PUBLIC mfplat mfreadwrite mfuuid ole32 winhttp)
     endif()
     target_include_directories(sakura-game-logic PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
