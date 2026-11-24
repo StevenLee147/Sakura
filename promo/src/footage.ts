@@ -12,9 +12,13 @@ export const SHOTS = {
   editor: { file: "footage/editor.mp4" },
   settings: { file: "footage/settings.mp4" },
   tutorial: { file: "footage/tutorial.mp4" },
+  stats: { file: "footage/stats.mp4" },
   calibration: { file: "footage/calibration.mp4" },
-  playExpert: { file: "footage/play_expert.mp4", musicZeroFrame: 181, resultFrame: 11856 },
+  playSynergy: { file: "footage/play_synergy.mp4", musicZeroFrame: -10379 },
+  playTelemetry: { file: "footage/play_telemetry.mp4", resultFrame: 166, telemetryFrame: 336 },
+  playExpert: { file: "footage/play_expert.mp4", musicZeroFrame: 181, resultFrame: 11846 },
   playHard: { file: "footage/play_hard.mp4", musicZeroFrame: 181 },
+  bga: { file: "footage/sakura_breath_bga.mp4" },
 } as const;
 
 /** trimBefore for a gameplay clip that starts at `editFrame`, so notes stay locked to the soundtrack. */

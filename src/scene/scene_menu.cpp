@@ -2,11 +2,13 @@
 
 #include "scene_menu.h"
 #include "scene_select.h"
+#include "scene_market.h"
 #include "scene_stats.h"
 #include "scene_tutorial.h"
 #include "scene_settings.h"
 #include "scene_editor.h"
 #include "scene_chart_wizard.h"
+#include "audio/audio_manager.h"
 #include "audio/audio_visualizer.h"
 #include "core/input.h"
 #include "core/config.h"
@@ -27,11 +29,49 @@
 
 #include <algorithm>
 #include <cmath>
-#include <memory>
 #include <filesystem>
+#include <iomanip>
+#include <memory>
+#include <sstream>
 
 namespace sakura::scene
 {
+
+namespace
+{
+constexpr sakura::core::NormRect EDITOR_MODAL_RECT { 0.240f, 0.140f, 0.520f, 0.700f };
+constexpr sakura::core::NormRect EDITOR_LIST_RECT  { 0.268f, 0.270f, 0.464f, 0.408f };
+constexpr float EDITOR_ROW_X          = 0.276f;
+constexpr float EDITOR_ROW_Y0         = 0.278f;
+constexpr float EDITOR_ROW_H          = 0.072f;
+constexpr float EDITOR_ROW_STRIDE     = 0.080f;
+constexpr float EDITOR_ROW_W_SCROLL   = 0.434f;
+constexpr float EDITOR_ROW_W_FULL     = 0.448f;
+constexpr float EDITOR_SCROLL_TRACK_X = 0.718f;
+constexpr float EDITOR_SCROLL_TRACK_Y = 0.278f;
+constexpr float EDITOR_SCROLL_TRACK_W = 0.006f;
+constexpr float EDITOR_SCROLL_TRACK_H = 0.392f;
+constexpr float EDITOR_DIFF_LABEL_X   = 0.268f;
+constexpr float EDITOR_DIFF_X0        = 0.340f;
+constexpr float EDITOR_DIFF_Y         = 0.690f;
+constexpr float EDITOR_DIFF_W         = 0.392f;
+constexpr float EDITOR_DIFF_H         = 0.032f;
+
+std::string FormatEditorNumber(float value, int precision = 0)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(precision) << value;
+    return oss.str();
+}
+
+std::string FormatEditorLevel(float level)
+{
+    const float rounded = std::round(level);
+    if (std::abs(level - rounded) < 0.05f)
+        return FormatEditorNumber(rounded, 0);
+    return FormatEditorNumber(level, 1);
+}
+} // namespace
 
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
@@ -65,11 +105,16 @@ void SceneMenu::OnEnter()
 
     // 重置状态
     *m_alive = true;
-    m_showExitConfirm  = false;
-    m_showEditorMenu   = false;
-    m_showAccountModal = false;
+    m_showExitConfirm       = false;
+    m_showEditorMenu        = false;
+    m_showAccountModal      = false;
     m_authMessage.clear();
-    m_selectedChartIdx = -1;
+    m_selectedChartIdx      = -1;
+    m_selectedEditorDiffIdx = 0;
+    m_editorScrollRow       = 0;
+    m_hoveredEditorRow      = -1;
+    m_editorWheelAccum      = 0.0f;
+    m_draggingEditorScroll  = false;
     m_customCharts.clear();
 
     // ── 特效初始化 ────────────────────────────────────────────────────────────
@@ -178,46 +223,51 @@ void SceneMenu::SetupButtons()
 
 void SceneMenu::SetupEditorMenuButtons()
 {
-    // 面板区域：x=0.30, y=0.28, w=0.40, h=0.44；按钮居中布局
+    // 面板区域：x=0.24, y=0.14, w=0.52, h=0.70；底部操作按钮横排
     m_btnEditorOpen = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.355f, 0.455f, 0.29f, 0.055f },
-        "打开已有谱面", m_fontButton, 0.026f, 0.010f);
+        sakura::core::NormRect{ 0.268f, 0.738f, 0.205f, 0.054f },
+        "打开选中谱面", m_fontButton, 0.023f, 0.010f);
     sakura::ui::VisualStyle::ApplyButton(m_btnEditorOpen.get(), sakura::ui::ButtonVariant::Primary);
+    m_btnEditorOpen->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnEditorOpen->SetOnClick([this]()
     {
         if (m_customCharts.empty())
         {
-            LOG_INFO("[SceneMenu] 暂无自制谱面，无法打开");
+            LOG_INFO("[SceneMenu] 暂无可编辑谱面，无法打开");
         }
         else
         {
-            int idx = (m_selectedChartIdx >= 0 &&
-                       m_selectedChartIdx < static_cast<int>(m_customCharts.size()))
-                      ? m_selectedChartIdx : 0;
+            const int idx = (m_selectedChartIdx >= 0 &&
+                             m_selectedChartIdx < static_cast<int>(m_customCharts.size()))
+                            ? m_selectedChartIdx : 0;
             OpenEditorForChart(idx);
         }
     });
 
     m_btnEditorNew = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.355f, 0.525f, 0.29f, 0.055f },
-        "新建谱面", m_fontButton, 0.026f, 0.010f);
+        sakura::core::NormRect{ 0.485f, 0.738f, 0.135f, 0.054f },
+        "新建谱面", m_fontButton, 0.023f, 0.010f);
     sakura::ui::VisualStyle::ApplyButton(m_btnEditorNew.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnEditorNew->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnEditorNew->SetOnClick([this]()
     {
         LOG_INFO("[SceneMenu] 点击：新建谱面向导");
-        m_showEditorMenu = false;
+        m_showEditorMenu       = false;
+        m_draggingEditorScroll = false;
         m_manager.SwitchScene(
             std::make_unique<SceneChartWizard>(m_manager),
             TransitionType::SlideLeft, 0.4f);
     });
 
     m_btnEditorCancel = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.355f, 0.600f, 0.29f, 0.050f },
-        "关 闭", m_fontButton, 0.024f, 0.010f);
+        sakura::core::NormRect{ 0.632f, 0.738f, 0.100f, 0.054f },
+        "关 闭", m_fontButton, 0.022f, 0.010f);
     sakura::ui::VisualStyle::ApplyButton(m_btnEditorCancel.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnEditorCancel->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnEditorCancel->SetOnClick([this]()
     {
-        m_showEditorMenu = false;
+        m_showEditorMenu       = false;
+        m_draggingEditorScroll = false;
     });
 }
 
@@ -226,31 +276,152 @@ void SceneMenu::SetupEditorMenuButtons()
 void SceneMenu::ScanCustomCharts()
 {
     m_customCharts.clear();
-    m_selectedChartIdx = -1;
+    m_selectedChartIdx      = -1;
+    m_selectedEditorDiffIdx = 0;
+    m_editorScrollRow       = 0;
+    m_hoveredEditorRow      = -1;
+    m_editorWheelAccum      = 0.0f;
+    m_draggingEditorScroll  = false;
 
     // 确保谱面目录存在
     std::error_code ec;
     std::filesystem::create_directories(sakura::core::Paths::User("charts"), ec);
 
     sakura::game::ChartLoader loader;
-    auto charts = loader.ScanCharts(sakura::core::Paths::User("charts"));
-    auto builtin = loader.ScanCharts(CUSTOM_CHARTS_PATH);
-    for(auto& chart:builtin)if(std::none_of(charts.begin(),charts.end(),[&](const auto& other){return other.id==chart.id;}))charts.push_back(std::move(chart));
-    for (auto& ci : charts)
+    auto userCharts    = loader.ScanCharts(sakura::core::Paths::User("charts"));
+    auto builtinCharts = loader.ScanCharts(CUSTOM_CHARTS_PATH);
+
+    auto sortByTitle = [](const sakura::game::ChartInfo& a, const sakura::game::ChartInfo& b)
+    {
+        const std::string& ta = a.title.empty() ? a.id : a.title;
+        const std::string& tb = b.title.empty() ? b.id : b.title;
+        if (ta != tb) return ta < tb;
+        return a.id < b.id;
+    };
+    std::stable_sort(userCharts.begin(), userCharts.end(), sortByTitle);
+    std::stable_sort(builtinCharts.begin(), builtinCharts.end(), sortByTitle);
+
+    auto appendChart = [this](sakura::game::ChartInfo& ci, bool isUser)
     {
         ChartEntry entry;
-        entry.folderPath = ci.folderPath;
-        entry.title      = ci.title.empty() ? ci.id : ci.title;
-        entry.diffFile   = !ci.difficulties.empty() && !ci.difficulties.front().chartFile.empty()
-                         ? ci.difficulties.front().chartFile
-                         : "normal.json";
+        entry.id           = ci.id;
+        entry.folderPath   = ci.folderPath;
+        entry.title        = ci.title.empty() ? ci.id : ci.title;
+        entry.artist       = ci.artist.empty() ? "Unknown Artist" : ci.artist;
+        entry.charter      = ci.charter;
+        entry.bpm          = ci.bpm;
+        entry.isUserChart  = isUser;
+        entry.difficulties = std::move(ci.difficulties);
+        if (entry.difficulties.empty())
+        {
+            sakura::game::DifficultyInfo fallback;
+            fallback.name      = "Normal";
+            fallback.level     = 1.0f;
+            fallback.chartFile = "normal.json";
+            entry.difficulties.push_back(std::move(fallback));
+        }
         m_customCharts.push_back(std::move(entry));
+    };
+
+    for (auto& ci : userCharts)
+        appendChart(ci, true);
+
+    for (auto& ci : builtinCharts)
+    {
+        const bool existsInUser = std::any_of(
+            m_customCharts.begin(), m_customCharts.end(),
+            [&](const ChartEntry& other) { return !ci.id.empty() && other.id == ci.id; });
+        if (!existsInUser)
+            appendChart(ci, false);
     }
 
     if (!m_customCharts.empty())
-        m_selectedChartIdx = 0;
+    {
+        int initialIdx = 0;
+        const std::string lastChart = sakura::core::Config::GetInstance().Get<std::string>("library.last_chart", "");
+        if (!lastChart.empty())
+        {
+            for (int i = 0; i < static_cast<int>(m_customCharts.size()); ++i)
+            {
+                if (m_customCharts[i].id == lastChart)
+                {
+                    initialIdx = i;
+                    break;
+                }
+            }
+        }
+        SelectEditorChart(initialIdx, true);
+        if (!lastChart.empty() && m_customCharts[initialIdx].id == lastChart)
+        {
+            const int lastDiff = sakura::core::Config::GetInstance().Get<int>("library.last_difficulty", 0);
+            m_selectedEditorDiffIdx = std::clamp(
+                lastDiff, 0, static_cast<int>(m_customCharts[initialIdx].difficulties.size()) - 1);
+        }
+    }
 
-    LOG_INFO("[SceneMenu] 扫描自制谱: {} 首", m_customCharts.size());
+    LOG_INFO("[SceneMenu] 扫描可编辑谱面: {} 首", m_customCharts.size());
+}
+
+void SceneMenu::SelectEditorChart(int idx, bool ensureVisible)
+{
+    if (m_customCharts.empty())
+    {
+        m_selectedChartIdx      = -1;
+        m_selectedEditorDiffIdx = 0;
+        m_editorScrollRow       = 0;
+        return;
+    }
+
+    const int total   = static_cast<int>(m_customCharts.size());
+    const int clamped = std::clamp(idx, 0, total - 1);
+    if (clamped != m_selectedChartIdx)
+    {
+        m_selectedChartIdx      = clamped;
+        m_selectedEditorDiffIdx = 0;
+    }
+    else
+    {
+        m_selectedEditorDiffIdx = std::clamp(
+            m_selectedEditorDiffIdx, 0,
+            static_cast<int>(m_customCharts[m_selectedChartIdx].difficulties.size()) - 1);
+    }
+
+    if (ensureVisible)
+    {
+        if (m_selectedChartIdx < m_editorScrollRow)
+            m_editorScrollRow = m_selectedChartIdx;
+        else if (m_selectedChartIdx >= m_editorScrollRow + EDITOR_VISIBLE_ROWS)
+            m_editorScrollRow = m_selectedChartIdx - EDITOR_VISIBLE_ROWS + 1;
+    }
+
+    const int maxScroll = std::max(0, total - EDITOR_VISIBLE_ROWS);
+    m_editorScrollRow = std::clamp(m_editorScrollRow, 0, maxScroll);
+}
+
+void SceneMenu::ScrollEditorListBy(int deltaRows)
+{
+    const int total     = static_cast<int>(m_customCharts.size());
+    const int maxScroll = std::max(0, total - EDITOR_VISIBLE_ROWS);
+    m_editorScrollRow   = std::clamp(m_editorScrollRow + deltaRows, 0, maxScroll);
+}
+
+void SceneMenu::UpdateEditorScrollFromMouseY(float normY)
+{
+    const int total     = static_cast<int>(m_customCharts.size());
+    const int maxScroll = std::max(0, total - EDITOR_VISIBLE_ROWS);
+    if (maxScroll <= 0)
+    {
+        m_editorScrollRow = 0;
+        return;
+    }
+
+    const float thumbH = std::max(
+        0.042f,
+        EDITOR_SCROLL_TRACK_H * static_cast<float>(EDITOR_VISIBLE_ROWS) / static_cast<float>(total));
+    const float usable = std::max(0.001f, EDITOR_SCROLL_TRACK_H - thumbH);
+    const float ratio  = std::clamp(
+        (normY - EDITOR_SCROLL_TRACK_Y - thumbH * 0.5f) / usable, 0.0f, 1.0f);
+    m_editorScrollRow = static_cast<int>(std::round(ratio * static_cast<float>(maxScroll)));
 }
 
 // ── OpenEditorForChart ────────────────────────────────────────────────────────
@@ -260,12 +431,28 @@ void SceneMenu::OpenEditorForChart(int idx)
     if (idx < 0 || idx >= static_cast<int>(m_customCharts.size())) return;
 
     const auto& entry = m_customCharts[idx];
-    LOG_INFO("[SceneMenu] 打开自制谱编辑器: {}", entry.folderPath);
-    m_showEditorMenu = false;
+    const int diffCount = static_cast<int>(entry.difficulties.size());
+    const int diffIdx   = diffCount > 0
+        ? std::clamp(m_selectedEditorDiffIdx, 0, diffCount - 1)
+        : 0;
+    const std::string diffFile = (diffCount > 0 && !entry.difficulties[diffIdx].chartFile.empty())
+        ? entry.difficulties[diffIdx].chartFile
+        : "normal.json";
+
+    if (!entry.id.empty())
+    {
+        sakura::core::Config::GetInstance().Set("library.last_chart", entry.id);
+        sakura::core::Config::GetInstance().Set("library.last_difficulty", diffIdx);
+    }
+
+    LOG_INFO("[SceneMenu] 打开谱面编辑器: {} ({})", entry.folderPath, diffFile);
+    m_showEditorMenu       = false;
+    m_draggingEditorScroll = false;
     m_manager.SwitchScene(
         std::make_unique<SceneEditor>(m_manager,
                                       entry.folderPath,
-                                      entry.diffFile),
+                                      diffFile,
+                                      diffIdx),
         TransitionType::SlideLeft, 0.4f);
 }
 
@@ -336,6 +523,16 @@ void SceneMenu::SetupAccountModal()
         if (m_inputServerUrl) m_inputServerUrl->SetText(sakura::net::APIClient::GetInstance().GetServerUrl());
         if (sakura::net::APIClient::GetInstance().IsAuthenticated() && m_inputUsername)
             m_inputUsername->SetText(sakura::net::APIClient::GetInstance().GetCurrentUser().username);
+    });
+
+    m_btnMarket = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.695f, 0.088f, 0.253f, 0.042f },
+        "✦ 在线谱面市场  /  MARKET", m_fontButton, 0.019f, 0.012f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnMarket.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnMarket->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnMarket->SetOnClick([this]()
+    {
+        m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager), TransitionType::SakuraSweep, 0.42f);
     });
 
     m_inputServerUrl = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.315f, 0.310f, 0.044f }, m_fontButton, 0.020f, 128);
@@ -439,6 +636,7 @@ void SceneMenu::OnExit()
     m_particles.Clear();
     for (auto& btn : m_buttons) btn.reset();
     m_btnAccountCapsule.reset();
+    m_btnMarket.reset();
     m_inputServerUrl.reset();
     m_inputUsername.reset();
     m_inputPassword.reset();
@@ -532,6 +730,7 @@ void SceneMenu::OnUpdate(float dt)
 
     RefreshAccountCapsuleText();
     if (m_btnAccountCapsule) m_btnAccountCapsule->Update(dt);
+    if (m_btnMarket)         m_btnMarket->Update(dt);
 
     if (m_showAccountModal)
     {
@@ -545,9 +744,36 @@ void SceneMenu::OnUpdate(float dt)
         if (m_btnAuthClose)    m_btnAuthClose->Update(dt);
     }
 
-    // 编辑器子菜单按钮更新
+    // 编辑器子菜单悬停与按钮更新
     if (m_showEditorMenu)
     {
+        const auto [mx, my] = sakura::core::Input::GetMousePosition();
+        const int total = static_cast<int>(m_customCharts.size());
+        const float rowMaxX = (total > EDITOR_VISIBLE_ROWS)
+            ? (EDITOR_ROW_X + EDITOR_ROW_W_SCROLL + 0.006f)
+            : (EDITOR_ROW_X + EDITOR_ROW_W_FULL + 0.006f);
+        int newHover = -1;
+        if (!m_draggingEditorScroll && total > 0 &&
+            mx >= EDITOR_ROW_X && mx <= rowMaxX &&
+            my >= EDITOR_ROW_Y0 && my < EDITOR_ROW_Y0 + EDITOR_VISIBLE_ROWS * EDITOR_ROW_STRIDE)
+        {
+            const float relY = my - EDITOR_ROW_Y0;
+            const int slot   = static_cast<int>(relY / EDITOR_ROW_STRIDE);
+            const float inY  = relY - static_cast<float>(slot) * EDITOR_ROW_STRIDE;
+            if (slot >= 0 && slot < EDITOR_VISIBLE_ROWS && inY <= EDITOR_ROW_H)
+            {
+                const int idx = m_editorScrollRow + slot;
+                if (idx >= 0 && idx < total)
+                    newHover = idx;
+            }
+        }
+        if (newHover != m_hoveredEditorRow)
+        {
+            m_hoveredEditorRow = newHover;
+            if (m_hoveredEditorRow >= 0)
+                sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonHover);
+        }
+
         if (m_btnEditorOpen)   m_btnEditorOpen->Update(dt);
         if (m_btnEditorNew)    m_btnEditorNew->Update(dt);
         if (m_btnEditorCancel) m_btnEditorCancel->Update(dt);
@@ -684,6 +910,7 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         sakura::core::Color{ 208, 212, 232, 168 },
         sakura::core::TextAlign::Left);
     if (m_btnAccountCapsule) m_btnAccountCapsule->Render(renderer);
+    if (m_btnMarket)         m_btnMarket->Render(renderer);
 
     // ── 在线账号登录/访客弹层 ─────────────────────────────────────────────────
     if (m_showAccountModal)
@@ -729,57 +956,239 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     // ── 编辑器子菜单 ──────────────────────────────────────────────────────────
     if (m_showEditorMenu)
     {
-        sakura::ui::VisualStyle::DrawScrim(renderer, 0.66f);
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.68f);
         sakura::ui::VisualStyle::DrawGlassCard(
-            renderer, { 0.295f, 0.265f, 0.41f, 0.465f },
-            { 28, 34, 62, 236 }, { 16, 20, 40, 244 },
-            { 250, 216, 157, 190 }, { 246, 172, 200, 92 },
-            0.018f, 0.62f);
+            renderer, EDITOR_MODAL_RECT,
+            { 28, 34, 62, 240 }, { 14, 18, 36, 246 },
+            { 250, 216, 157, 195 }, { 246, 172, 200, 96 },
+            0.018f, 0.64f);
 
         sakura::ui::VisualStyle::DrawBadgePill(
-            renderer, { 0.425f, 0.285f, 0.15f, 0.028f },
-            "CHART ATELIER", m_fontSub, 0.013f,
-            { 54, 38, 74, 210 }, { 250, 216, 157, 155 }, gold);
-        renderer.DrawText(m_fontSub, "谱面编辑器",
-            0.50f, 0.322f, 0.036f,
+            renderer, { 0.425f, 0.158f, 0.150f, 0.026f },
+            "CHART ATELIER", m_fontSub, 0.0125f,
+            { 54, 38, 74, 215 }, { 250, 216, 157, 155 }, gold);
+        renderer.DrawText(m_fontSub, "谱面工房 · 选择或新建谱面",
+            0.50f, 0.190f, 0.032f,
             sakura::core::Color{ 248, 242, 248, 250 },
             sakura::core::TextAlign::Center);
-        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.33f, 0.67f, 0.374f, 0.78f);
+
+        const int totalCharts = static_cast<int>(m_customCharts.size());
+        int userChartCount = 0;
+        for (const auto& entry : m_customCharts)
+        {
+            if (entry.isUserChart) ++userChartCount;
+        }
+        const int builtinChartCount = totalCharts - userChartCount;
+        renderer.DrawText(m_fontSub,
+            "自制谱 " + std::to_string(userChartCount) + " 首  ·  内置曲库 " +
+            std::to_string(builtinChartCount) + " 首（编辑内置谱自动建立副本）",
+            0.268f, 0.232f, 0.0148f, dim, sakura::core::TextAlign::Left);
+        if (totalCharts > 0 && m_selectedChartIdx >= 0)
+        {
+            renderer.DrawText(m_fontSub,
+                "已选 " + std::to_string(m_selectedChartIdx + 1) + " / " + std::to_string(totalCharts),
+                0.732f, 0.232f, 0.015f, gold, sakura::core::TextAlign::Right);
+        }
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.268f, 0.732f, 0.256f, 0.78f);
+
+        // 谱面列表凹槽底板
+        renderer.DrawRoundedGradientRect(
+            EDITOR_LIST_RECT, 0.013f,
+            { 12, 16, 32, 208 }, { 14, 18, 36, 208 },
+            {  8, 11, 24, 222 }, { 10, 14, 28, 222 }, 12, true);
+        renderer.DrawRoundedRectOutlineGradient(
+            EDITOR_LIST_RECT, 0.013f,
+            { 250, 216, 157, 92 }, { 140, 150, 196, 42 }, 0.0012f, 12);
 
         if (m_customCharts.empty())
         {
-            renderer.DrawText(m_fontSub, "（暂无自制谱面 · 点击下方新建）",
-                0.50f, 0.420f, 0.021f,
-                sakura::core::Color{ 176, 182, 210, 185 },
+            renderer.DrawText(m_fontSub, "暂无可编辑谱面",
+                0.50f, 0.435f, 0.025f,
+                sakura::core::Color{ 248, 242, 248, 245 },
                 sakura::core::TextAlign::Center);
+            renderer.DrawText(m_fontSub, "点击下方「新建谱面」导入音乐创建第一张作品",
+                0.50f, 0.482f, 0.017f, dim, sakura::core::TextAlign::Center);
         }
         else
         {
-            int showCount = std::min(static_cast<int>(m_customCharts.size()), 3);
-            for (int i = 0; i < showCount; ++i)
+            const bool hasScrollbar = (totalCharts > EDITOR_VISIBLE_ROWS);
+            const float baseRowW    = hasScrollbar ? EDITOR_ROW_W_SCROLL : EDITOR_ROW_W_FULL;
+
+            for (int slot = 0; slot < EDITOR_VISIBLE_ROWS && (m_editorScrollRow + slot) < totalCharts; ++slot)
             {
-                bool selected = (m_selectedChartIdx == i);
+                const int idx        = m_editorScrollRow + slot;
+                const auto& entry    = m_customCharts[idx];
+                const bool selected  = (idx == m_selectedChartIdx);
+                const bool hovered   = (idx == m_hoveredEditorRow);
+                const float indent   = selected ? 0.006f : (hovered ? 0.003f : 0.0f);
+                const float rowY     = EDITOR_ROW_Y0 + static_cast<float>(slot) * EDITOR_ROW_STRIDE;
+                const sakura::core::NormRect cardRect{
+                    EDITOR_ROW_X + indent, rowY, baseRowW - indent, EDITOR_ROW_H
+                };
+
                 if (selected)
                 {
+                    sakura::ui::VisualStyle::DrawGlassCard(
+                        renderer, cardRect,
+                        { 84, 52, 90, 238 }, { 46, 34, 70, 242 },
+                        { 250, 216, 157, 228 }, { 246, 178, 206, 138 }, 0.011f, 0.48f);
                     renderer.DrawRoundedGradientRect(
-                        { 0.345f, 0.394f + i * 0.029f, 0.31f, 0.026f },
-                        0.006f, { 82, 54, 88, 170 }, { 48, 38, 72, 130 },
-                        { 82, 54, 88, 170 }, { 48, 38, 72, 130 }, 8, true);
+                        { cardRect.x + 0.0045f, rowY + 0.012f, 0.0032f, EDITOR_ROW_H - 0.024f },
+                        0.0016f, gold, pink, gold, pink, 6, true);
                 }
-                renderer.DrawText(m_fontSub,
-                    (selected ? "◆  " : "   ") + m_customCharts[i].title,
-                    0.358f, 0.396f + i * 0.029f, 0.021f,
-                    selected ? gold : sakura::core::Color{ 210, 214, 234, 195 },
-                    sakura::core::TextAlign::Left);
+                else
+                {
+                    sakura::ui::VisualStyle::DrawGlassCard(
+                        renderer, cardRect,
+                        hovered ? sakura::core::Color{ 38, 46, 78, 226 } : sakura::core::Color{ 22, 28, 52, 204 },
+                        hovered ? sakura::core::Color{ 24, 30, 54, 232 } : sakura::core::Color{ 14, 18, 36, 216 },
+                        hovered ? sakura::core::Color{ 246, 178, 206, 145 } : sakura::core::Color{ 166, 176, 214, 64 },
+                        { 112, 122, 168, 36 }, 0.010f, 0.30f);
+                }
+
+                renderer.DrawText(
+                    m_fontSub,
+                    selected ? "▶" : (entry.isUserChart ? "✦" : "♪"),
+                    cardRect.x + 0.013f, rowY + 0.022f, 0.020f,
+                    selected ? gold : (entry.isUserChart ? pink : dim));
+
+                // 右上角来源标签 + 难度等级范围胶囊
+                float minLv = entry.difficulties.front().level;
+                float maxLv = minLv;
+                for (const auto& d : entry.difficulties)
+                {
+                    minLv = std::min(minLv, d.level);
+                    maxLv = std::max(maxLv, d.level);
+                }
+                const std::string lvLabel = (std::abs(maxLv - minLv) < 0.05f)
+                    ? ("Lv." + FormatEditorLevel(maxLv))
+                    : ("Lv." + FormatEditorLevel(minLv) + "~" + FormatEditorLevel(maxLv));
+
+                sakura::ui::VisualStyle::DrawBadgePill(
+                    renderer,
+                    { cardRect.x + cardRect.width - 0.140f, rowY + 0.010f, 0.050f, 0.023f },
+                    entry.isUserChart ? "自制" : "内置",
+                    m_fontSub, 0.0125f,
+                    entry.isUserChart ? sakura::core::Color{ 34, 64, 62, 212 } : sakura::core::Color{ 34, 42, 70, 195 },
+                    entry.isUserChart ? sakura::core::Color{ 146, 232, 198, 165 } : sakura::core::Color{ 164, 174, 214, 105 },
+                    entry.isUserChart ? sakura::core::Color{ 168, 245, 214, 255 } : dim);
+
+                sakura::ui::VisualStyle::DrawBadgePill(
+                    renderer,
+                    { cardRect.x + cardRect.width - 0.084f, rowY + 0.010f, 0.074f, 0.023f },
+                    lvLabel, m_fontSub, 0.0125f,
+                    selected ? sakura::core::Color{ 104, 64, 98, 224 } : sakura::core::Color{ 36, 44, 74, 198 },
+                    selected ? gold : sakura::core::Color{ 174, 184, 218, 95 },
+                    selected ? gold : pink);
+
+                const float textX     = cardRect.x + 0.034f;
+                const float maxTitleW = std::max(0.10f, (cardRect.x + cardRect.width - 0.148f) - textX);
+                sakura::ui::VisualStyle::DrawTextFit(
+                    renderer, m_fontSub, entry.title, textX, rowY + 0.009f, 0.022f, maxTitleW,
+                    selected ? sakura::core::Color{ 255, 248, 250, 255 }
+                             : sakura::core::Color{ 240, 242, 250, 245 });
+
+                std::string meta = entry.artist;
+                if (!entry.charter.empty())
+                    meta += "  ·  谱师 " + entry.charter;
+                meta += "  ·  " + FormatEditorNumber(entry.bpm, 0) + " BPM";
+                const float maxMetaW = std::max(0.10f, (cardRect.x + cardRect.width - 0.138f) - textX);
+                sakura::ui::VisualStyle::DrawTextFit(
+                    renderer, m_fontSub, meta, textX, rowY + 0.042f, 0.0148f, maxMetaW,
+                    selected ? sakura::core::Color{ 220, 210, 232, 240 } : dim);
+
+                if (selected)
+                {
+                    const int dIdx = std::clamp(
+                        m_selectedEditorDiffIdx, 0, static_cast<int>(entry.difficulties.size()) - 1);
+                    renderer.DrawText(
+                        m_fontSub,
+                        "编辑：" + entry.difficulties[dIdx].name + " (" +
+                        std::to_string(entry.difficulties.size()) + " 难度)",
+                        cardRect.x + cardRect.width - 0.010f, rowY + 0.043f, 0.0142f,
+                        gold, sakura::core::TextAlign::Right);
+                }
+                else
+                {
+                    renderer.DrawText(
+                        m_fontSub,
+                        std::to_string(entry.difficulties.size()) + " 个难度",
+                        cardRect.x + cardRect.width - 0.010f, rowY + 0.043f, 0.0142f,
+                        dim, sakura::core::TextAlign::Right);
+                }
             }
-            if (static_cast<int>(m_customCharts.size()) > 3)
+
+            // 右侧滚动条（超出可见行数时显示）
+            if (hasScrollbar)
             {
-                renderer.DrawText(m_fontSub,
-                    "   ...（共 " + std::to_string(m_customCharts.size()) + " 首自制谱面）",
-                    0.358f, 0.396f + 3 * 0.029f, 0.018f,
-                    sakura::core::Color{ 168, 174, 202, 155 },
-                    sakura::core::TextAlign::Left);
+                const sakura::core::NormRect trackRect{
+                    EDITOR_SCROLL_TRACK_X, EDITOR_SCROLL_TRACK_Y,
+                    EDITOR_SCROLL_TRACK_W, EDITOR_SCROLL_TRACK_H
+                };
+                renderer.DrawRoundedRect(trackRect, EDITOR_SCROLL_TRACK_W * 0.5f, { 22, 28, 52, 185 }, true);
+
+                const int maxScroll = std::max(1, totalCharts - EDITOR_VISIBLE_ROWS);
+                const float thumbH  = std::max(
+                    0.042f,
+                    EDITOR_SCROLL_TRACK_H * static_cast<float>(EDITOR_VISIBLE_ROWS) / static_cast<float>(totalCharts));
+                const float thumbY  = EDITOR_SCROLL_TRACK_Y +
+                    (EDITOR_SCROLL_TRACK_H - thumbH) *
+                    (static_cast<float>(m_editorScrollRow) / static_cast<float>(maxScroll));
+                const bool scrollHover = m_draggingEditorScroll ||
+                    (mx >= EDITOR_SCROLL_TRACK_X - 0.008f &&
+                     mx <= EDITOR_SCROLL_TRACK_X + EDITOR_SCROLL_TRACK_W + 0.008f &&
+                     my >= EDITOR_SCROLL_TRACK_Y && my <= EDITOR_SCROLL_TRACK_Y + EDITOR_SCROLL_TRACK_H);
+
+                const sakura::core::Color thumbTop = scrollHover ? gold : pink;
+                const sakura::core::Color thumbBot = scrollHover
+                    ? pink
+                    : sakura::core::Color{ 156, 128, 210, 225 };
+                renderer.DrawRoundedGradientRect(
+                    { EDITOR_SCROLL_TRACK_X, thumbY, EDITOR_SCROLL_TRACK_W, thumbH },
+                    EDITOR_SCROLL_TRACK_W * 0.5f,
+                    thumbTop, thumbTop, thumbBot, thumbBot,
+                    8, true);
             }
+        }
+
+        // 选中谱面的难度切换栏
+        renderer.DrawText(m_fontSub, "编辑难度", EDITOR_DIFF_LABEL_X, EDITOR_DIFF_Y + 0.007f, 0.0155f, dim);
+        if (m_selectedChartIdx >= 0 && m_selectedChartIdx < totalCharts)
+        {
+            const auto& selEntry = m_customCharts[m_selectedChartIdx];
+            const int diffCount  = static_cast<int>(selEntry.difficulties.size());
+            const int pageStart  = (m_selectedEditorDiffIdx / 4) * 4;
+            const int visDiffs   = std::min(4, diffCount - pageStart);
+            const float slotW    = EDITOR_DIFF_W / static_cast<float>(std::max(1, visDiffs));
+
+            for (int k = 0; k < visDiffs; ++k)
+            {
+                const int di = pageStart + k;
+                const auto& diff = selEntry.difficulties[di];
+                const sakura::core::NormRect pillRect{
+                    EDITOR_DIFF_X0 + static_cast<float>(k) * slotW,
+                    EDITOR_DIFF_Y,
+                    slotW - 0.008f,
+                    EDITOR_DIFF_H
+                };
+                const bool diffSel = (di == m_selectedEditorDiffIdx);
+                const bool diffHov = (mx >= pillRect.x && mx <= pillRect.x + pillRect.width &&
+                                      my >= pillRect.y && my <= pillRect.y + pillRect.height);
+                sakura::ui::VisualStyle::DrawBadgePill(
+                    renderer, pillRect,
+                    diff.name + "  Lv." + FormatEditorLevel(diff.level),
+                    m_fontSub, 0.0142f,
+                    diffSel ? sakura::core::Color{ 96, 58, 94, 232 }
+                            : (diffHov ? sakura::core::Color{ 44, 52, 86, 220 }
+                                       : sakura::core::Color{ 24, 30, 56, 200 }),
+                    diffSel ? gold : (diffHov ? pink : sakura::core::Color{ 166, 176, 214, 95 }),
+                    diffSel ? gold : (diffHov ? sakura::core::Color::White : dim));
+            }
+        }
+        else
+        {
+            renderer.DrawText(m_fontSub, "新建谱面后可添加并切换多个难度",
+                EDITOR_DIFF_X0, EDITOR_DIFF_Y + 0.007f, 0.015f, dim);
         }
 
         if (m_btnEditorOpen)
@@ -789,6 +1198,11 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         }
         if (m_btnEditorNew)    m_btnEditorNew->Render(renderer);
         if (m_btnEditorCancel) m_btnEditorCancel->Render(renderer);
+
+        renderer.DrawText(
+            m_fontSub,
+            "左键选谱 · 双击直接打开 · 滚轮翻页   |   ↑↓ 选谱 · ←→ 切换难度 · Enter 打开 · Esc 关闭",
+            0.50f, 0.805f, 0.0142f, dim, sakura::core::TextAlign::Center);
     }
 
     // ── 退出确认对话框 ────────────────────────────────────────────────────────
@@ -855,29 +1269,142 @@ void SceneMenu::OnEvent(const SDL_Event& event)
     // 编辑器子菜单优先
     if (m_showEditorMenu)
     {
+        const int totalCharts = static_cast<int>(m_customCharts.size());
+        const auto [mx, my]   = sakura::core::Input::GetMousePosition();
+
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT)
+        {
+            m_draggingEditorScroll = false;
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION && m_draggingEditorScroll)
+        {
+            UpdateEditorScrollFromMouseY(my);
+            return;
+        }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL && totalCharts > 0)
+        {
+            m_editorWheelAccum -= event.wheel.y;
+            int steps = 0;
+            while (m_editorWheelAccum >= 0.85f)  { ++steps; m_editorWheelAccum -= 1.0f; }
+            while (m_editorWheelAccum <= -0.85f) { --steps; m_editorWheelAccum += 1.0f; }
+            if (steps != 0)
+                ScrollEditorListBy(steps);
+            return;
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+        {
+            // 右侧滚动条点击/拖拽
+            if (totalCharts > EDITOR_VISIBLE_ROWS &&
+                mx >= EDITOR_SCROLL_TRACK_X - 0.008f &&
+                mx <= EDITOR_SCROLL_TRACK_X + EDITOR_SCROLL_TRACK_W + 0.010f &&
+                my >= EDITOR_LIST_RECT.y && my <= EDITOR_LIST_RECT.y + EDITOR_LIST_RECT.height)
+            {
+                m_draggingEditorScroll = true;
+                UpdateEditorScrollFromMouseY(my);
+                return;
+            }
+
+            // 谱面列表条目点击选中 / 双击直接进入编辑器
+            const float rowMaxX = (totalCharts > EDITOR_VISIBLE_ROWS)
+                ? (EDITOR_SCROLL_TRACK_X - 0.008f)
+                : (EDITOR_LIST_RECT.x + EDITOR_LIST_RECT.width);
+            if (totalCharts > 0 &&
+                mx >= EDITOR_LIST_RECT.x && mx < rowMaxX &&
+                my >= EDITOR_ROW_Y0 && my < EDITOR_ROW_Y0 + EDITOR_VISIBLE_ROWS * EDITOR_ROW_STRIDE)
+            {
+                const int slot = static_cast<int>((my - EDITOR_ROW_Y0) / EDITOR_ROW_STRIDE);
+                const int idx  = m_editorScrollRow + slot;
+                if (slot >= 0 && slot < EDITOR_VISIBLE_ROWS && idx >= 0 && idx < totalCharts)
+                {
+                    const bool wasSelected = (idx == m_selectedChartIdx);
+                    sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+                    SelectEditorChart(idx, false);
+                    if (wasSelected && event.button.clicks >= 2)
+                        OpenEditorForChart(idx);
+                    return;
+                }
+            }
+
+            // 底部难度胶囊点击切换
+            if (m_selectedChartIdx >= 0 && m_selectedChartIdx < totalCharts &&
+                my >= EDITOR_DIFF_Y && my <= EDITOR_DIFF_Y + EDITOR_DIFF_H &&
+                mx >= EDITOR_DIFF_X0 && mx <= EDITOR_DIFF_X0 + EDITOR_DIFF_W)
+            {
+                const auto& selEntry = m_customCharts[m_selectedChartIdx];
+                const int diffCount  = static_cast<int>(selEntry.difficulties.size());
+                const int pageStart  = (m_selectedEditorDiffIdx / 4) * 4;
+                const int visDiffs   = std::min(4, diffCount - pageStart);
+                const float slotW    = EDITOR_DIFF_W / static_cast<float>(std::max(1, visDiffs));
+                const int k          = static_cast<int>((mx - EDITOR_DIFF_X0) / slotW);
+                if (k >= 0 && k < visDiffs)
+                {
+                    const float pillX = EDITOR_DIFF_X0 + static_cast<float>(k) * slotW;
+                    if (mx <= pillX + slotW - 0.008f)
+                    {
+                        m_selectedEditorDiffIdx = pageStart + k;
+                        sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+                        return;
+                    }
+                }
+            }
+        }
+
         if (event.type == SDL_EVENT_KEY_DOWN &&
             event.key.scancode == SDL_SCANCODE_ESCAPE)
         {
-            m_showEditorMenu = false;
+            m_showEditorMenu       = false;
+            m_draggingEditorScroll = false;
             return;
         }
 
-        // 方向键上下选择自制谱
-        if (event.type == SDL_EVENT_KEY_DOWN && !m_customCharts.empty())
+        // 方向键与翻页键选择谱面及难度
+        if (event.type == SDL_EVENT_KEY_DOWN && totalCharts > 0)
         {
+            const int maxIdx = totalCharts - 1;
             if (event.key.scancode == SDL_SCANCODE_UP)
             {
-                int maxIdx = static_cast<int>(m_customCharts.size()) - 1;
-                m_selectedChartIdx = (m_selectedChartIdx <= 0) ? maxIdx : m_selectedChartIdx - 1;
+                SelectEditorChart((m_selectedChartIdx <= 0) ? maxIdx : (m_selectedChartIdx - 1), true);
                 return;
             }
             if (event.key.scancode == SDL_SCANCODE_DOWN)
             {
-                int maxIdx = static_cast<int>(m_customCharts.size()) - 1;
-                m_selectedChartIdx = (m_selectedChartIdx >= maxIdx) ? 0 : m_selectedChartIdx + 1;
+                SelectEditorChart((m_selectedChartIdx >= maxIdx) ? 0 : (m_selectedChartIdx + 1), true);
                 return;
             }
-            if (event.key.scancode == SDL_SCANCODE_RETURN && m_selectedChartIdx >= 0)
+            if (event.key.scancode == SDL_SCANCODE_PAGEUP)
+            {
+                SelectEditorChart(std::max(0, m_selectedChartIdx - EDITOR_VISIBLE_ROWS), true);
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_PAGEDOWN)
+            {
+                SelectEditorChart(std::min(maxIdx, m_selectedChartIdx + EDITOR_VISIBLE_ROWS), true);
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_HOME)
+            {
+                SelectEditorChart(0, true);
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_END)
+            {
+                SelectEditorChart(maxIdx, true);
+                return;
+            }
+            if ((event.key.scancode == SDL_SCANCODE_LEFT || event.key.scancode == SDL_SCANCODE_RIGHT) &&
+                m_selectedChartIdx >= 0 && m_selectedChartIdx < totalCharts)
+            {
+                const int diffCount = static_cast<int>(m_customCharts[m_selectedChartIdx].difficulties.size());
+                if (diffCount > 1)
+                {
+                    const int delta = (event.key.scancode == SDL_SCANCODE_LEFT) ? -1 : 1;
+                    m_selectedEditorDiffIdx = (m_selectedEditorDiffIdx + diffCount + delta) % diffCount;
+                }
+                return;
+            }
+            if ((event.key.scancode == SDL_SCANCODE_RETURN ||
+                 event.key.scancode == SDL_SCANCODE_KP_ENTER) &&
+                m_selectedChartIdx >= 0)
             {
                 OpenEditorForChart(m_selectedChartIdx);
                 return;
@@ -920,6 +1447,8 @@ void SceneMenu::OnEvent(const SDL_Event& event)
     }
 
     if (m_btnAccountCapsule && m_btnAccountCapsule->HandleEvent(event))
+        return;
+    if (m_btnMarket && m_btnMarket->HandleEvent(event))
         return;
 
     // 分发给按钮（带当前 X 偏移做命中测试）

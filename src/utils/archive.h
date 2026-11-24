@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace sakura::utils
 {
@@ -21,5 +22,9 @@ bool ExtractZipArchive(const std::filesystem::path& archivePath,
 
 // Computes IEEE 802.3 CRC-32.
 std::uint32_t ComputeCrc32(const std::uint8_t* data, std::size_t length);
+
+// Computes lowercase hex FIPS 180-4 SHA-256 digest.
+std::string ComputeSha256Hex(const std::uint8_t* data, std::size_t length);
+std::string ComputeSha256Hex(std::string_view data);
 
 } // namespace sakura::utils

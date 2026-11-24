@@ -180,7 +180,10 @@ HttpResponse MockHttpTransport::Send(const HttpRequest& request)
         res.error      = "MockHttpTransport has no handler configured.";
         return res;
     }
-    return fn(request);
+    HttpResponse res = fn(request);
+    if (request.onProgress && res.IsSuccess())
+        request.onProgress(res.body.size(), res.body.size());
+    return res;
 }
 
 std::vector<HttpRequest> MockHttpTransport::GetRecordedRequests() const
@@ -345,7 +348,18 @@ HttpResponse WinHttpTransport::Send(const HttpRequest& request)
         }
     }
 
+    std::size_t expectedTotal = 0;
+    {
+        const std::string cl = response.GetHeader("Content-Length");
+        if (!cl.empty())
+        {
+            try { expectedTotal = static_cast<std::size_t>(std::stoull(cl)); } catch (...) { expectedTotal = 0; }
+        }
+    }
+
     std::string outBody;
+    if (expectedTotal > 0 && expectedTotal <= 64ULL * 1024ULL * 1024ULL)
+        outBody.reserve(expectedTotal);
     for (;;)
     {
         DWORD avail = 0;
@@ -365,6 +379,8 @@ HttpResponse WinHttpTransport::Send(const HttpRequest& request)
             break;
         }
         outBody.resize(offset + downloaded);
+        if (request.onProgress)
+            request.onProgress(outBody.size(), expectedTotal);
     }
     response.body = std::move(outBody);
     return response;

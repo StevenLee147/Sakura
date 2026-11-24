@@ -21,6 +21,7 @@ add_executable(SakuraTests
     test_video_and_clock.cpp
     test_v1_stress.cpp
     test_online_v110.cpp
+    test_market_sync_v120.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

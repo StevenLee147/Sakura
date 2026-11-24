@@ -37,6 +37,7 @@ public:
     static AchievementManager& GetInstance();
 
     bool LoadAchievements(std::string_view path = "config/achievements.json");
+    void ReloadUnlocked() { RefreshUnlockedCache(); }
     std::vector<AchievementProgress> CheckAndUnlock(const GameResult& result);
 
     std::vector<AchievementProgress> GetAll() const;

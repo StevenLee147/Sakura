@@ -98,8 +98,11 @@ private:
     int m_propertyKeyboard=-1,m_propertyMouse=-1;
     std::vector<std::string> m_propertyLabels;
     std::vector<std::unique_ptr<sakura::ui::TextInput>> m_propertyInputs;
-    std::unique_ptr<sakura::ui::Button> m_btnProperties,m_btnExport,m_propertyApply,m_propertyCancel;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    bool m_publishing = false;
+    std::unique_ptr<sakura::ui::Button> m_btnProperties,m_btnExport,m_btnPublish,m_propertyApply,m_propertyCancel;
     void DoExportSakura();
+    void DoPublishMarket();
     void OpenProperties();
     void ApplyProperties();
     void CloseProperties();

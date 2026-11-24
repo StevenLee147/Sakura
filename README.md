@@ -2,11 +2,11 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v1.1.0** · Windows x64 · C++20 / SDL3
+当前版本：**v1.2.0** · Windows x64 · C++20 / SDL3 + TypeScript Hono Online Stack
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
-正式版完整提供双域协同演奏（Chart v3）、六课教程、15 首多难度曲库、WSOLA 变速不变调练习、深度结算分析、原生 MP4 背景视频舞台、谱面工房 v3（支持 `.sakura` 谱面包）与本地存档管理。在线生态见 [路线图](doc/ROADMAP.md)。
+正式版完整提供双域协同演奏（Chart v3）、六课教程、15 首多难度曲库、WSOLA 变速不变调练习、深度结算分析、原生 MP4 背景视频舞台、谱面工房 v3、全球在线排行榜与回放分享、游戏内在线谱面市场（`SceneMarket` 一键校验安装与工房直传）以及多端幂等云存档同步（官方在线服默认接入 `https://steven-lee.tech:233`，同时内置零配置本地双模服务端 `server/`）。详见 [路线图](doc/ROADMAP.md)。
 
 ![Sakura 的主菜单、曲库、视觉设置与双区舞台](doc/images/sakura-0.6-overview.jpg)
 
@@ -69,7 +69,7 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v1.1.0`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v1.2.0`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
 
@@ -107,7 +107,8 @@ GitHub Actions 会运行 Windows Debug / Release 构建及 Linux 逻辑测试；
 | `src/core/`、`src/scene/` | 应用基础设施与各游戏场景 |
 | `src/game/`、`src/editor/` | 判定、计分、回放、谱面处理与工房 |
 | `src/audio/`、`src/ui/`、`src/effects/` | 音频、界面组件与视觉效果 |
-| `src/data/`、`src/utils/` | 持久化与通用工具 |
+| `src/data/`、`src/utils/` | 本地 SQLite 持久化、PKZIP/SHA-256 与通用工具 |
+| `src/net/`、`server/` | WinHTTP 跨平台异步网络层与内建 Hono 双模在线服务端 |
 | `resources/`、`config/` | 内置曲目、字体、图片与成就配置 |
 | `tests/`、`scripts/` | 逻辑测试、内容生成、打包与版本管理 |
 | `doc/` | 玩家指南、架构、格式规范与路线图 |

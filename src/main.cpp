@@ -5,8 +5,10 @@
 #include "core/paths.h"
 #include "game/chart_loader.h"
 #include "scene/scene_menu.h"
+#include "scene/scene_market.h"
 #include "scene/scene_splash.h"
 #include "scene/scene_select.h"
+#include "game/achievement_manager.h"
 #include "scene/scene_settings.h"
 #include "scene/scene_game.h"
 #include "scene/scene_result.h"
@@ -50,7 +52,7 @@ public:
     bool succeeded = true;
 private:
     std::filesystem::path m_directory;
-    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
+    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "market", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
         "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "game_bga_f3", "result", "result_detail"};
     size_t m_stage = 0;
     bool m_started = false;
@@ -130,6 +132,7 @@ private:
             }
             if (name == "menu") scene = std::make_unique<SceneMenu>(manager);
             if (name == "select" || name=="select_practice") scene = std::make_unique<SceneSelect>(manager);
+            if (name == "market") scene = std::make_unique<SceneMarket>(manager);
             if (name.starts_with("settings")) scene = std::make_unique<SceneSettings>(manager);
             if (name == "tutorial") scene = std::make_unique<SceneTutorial>(manager);
             if (name == "stats") scene = std::make_unique<SceneStats>(manager);
@@ -247,7 +250,7 @@ private:
                 }
             }
             if(name=="verify_missing_audio" && m_time>2.0f){m_semantic=dynamic_cast<SceneSelect*>(manager.GetCurrentScene())!=nullptr;m_capture=true;}
-            if(m_time>110){m_semantic=false;m_capture=true;}
+            if(m_time>160){m_semantic=false;m_capture=true;}
         } else {
             const float duration = name=="game" ? 9.6f : name=="game_bga_f3" ? 4.6f : name=="first_run"?6.5f:name=="result"?1.8f:1.3f;
             if(m_time>duration&&!manager.IsTransitioning())m_capture=true;
@@ -269,6 +272,7 @@ private:
         if(name=="first_run_skip")m_semantic=dynamic_cast<SceneMenu*>(current)&&sakura::core::Config::GetInstance().Get<bool>("tutorial.prompt_shown",false);
         if(name=="menu")m_semantic=dynamic_cast<SceneMenu*>(current)!=nullptr;
         if(name.starts_with("select")) {const auto* select=dynamic_cast<SceneSelect*>(current);m_semantic=select && (name!="select_practice" || select->CurrentMode()==sakura::game::PlayMode::Practice);}
+        if(name=="market")m_semantic=dynamic_cast<SceneMarket*>(current)!=nullptr;
         if(name.starts_with("settings")){const auto* settings=dynamic_cast<SceneSettings*>(current);int page=name=="settings"?0:name=="settings_audio"?1:name=="settings_controls"?2:name=="settings_display"?3:name=="settings_visual"?4:5;m_semantic=settings&&settings->CurrentPage()==page;}
         if(name=="game"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&game->Session().Score().GetJudgedCount()>0;}
         if(name=="game_bga_f3"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&IsDiagnosticsOverlayVisible();SetDiagnosticsOverlayVisible(false);}
@@ -318,6 +322,7 @@ bool RunVerifyOnline(const std::string& baseUrl)
 
     std::error_code tmpEc;
     const fs::path e2eDir = fs::temp_directory_path(tmpEc) / "sakura_e2e_v110";
+    fs::remove_all(e2eDir, tmpEc);
     fs::create_directories(e2eDir, tmpEc);
     sakura::core::Config::GetInstance().Load((e2eDir / "settings.json").string());
     sakura::net::APIClient api(nullptr, (e2eDir / "queue.json").string());
@@ -434,17 +439,153 @@ bool RunVerifyOnline(const std::string& baseUrl)
         return false;
     }
 
+    // v1.2.0 E2E: Export & publish .sakura -> Market search & rate -> Fresh user install -> Play & rank -> Cloud Sync restore
+    const std::string mktSlug = "e2e_bloom_" + std::to_string(SDL_GetTicksNS() % 100000000ULL);
+    const fs::path srcPkgDir  = e2eDir / "workshop_chart";
+    const fs::path pkgArchive = e2eDir / (mktSlug + ".sakura");
+    fs::remove_all(srcPkgDir, ec);
+    fs::create_directories(srcPkgDir, ec);
+
+    const nlohmann::json pkgInfo = {
+        { "version", 3 },
+        { "id", mktSlug },
+        { "title", "E2E Blossom " + mktSlug },
+        { "artist", "Sakura Atelier" },
+        { "charter", uname },
+        { "music_file", "music.wav" },
+        { "bpm", 120.0 },
+        { "tags", { "e2e", "synergy" } },
+        { "difficulties", nlohmann::json::array({
+            { { "name", "Expert" }, { "level", 10.8 }, { "chart_file", "expert.json" } }
+        }) }
+    };
+    const nlohmann::json pkgDiff = {
+        { "version", 3 },
+        { "timing_points", nlohmann::json::array({ { { "time", 0 }, { "bpm", 120.0 } } }) },
+        { "keyboard_notes", nlohmann::json::array({
+            { { "time", 500 }, { "lane", 0 }, { "type", "tap" } },
+            { { "time", 1000 }, { "lane", 1 }, { "type", "hold" }, { "duration", 1000 } },
+            { { "time", 2100 }, { "lane", 2 }, { "type", "tap" } },
+            { { "time", 2450 }, { "lane", 4 }, { "type", "tap" }, { "link_id", 1 } }
+        }) },
+        { "mouse_notes", nlohmann::json::array({
+            { { "time", 800 }, { "x", 0.5 }, { "y", 0.5 }, { "type", "circle" } },
+            { { "time", 1400 }, { "x", 0.35 }, { "y", 0.5 }, { "type", "slider" }, { "slider_duration", 800 }, { "slider_path", nlohmann::json::array({ nlohmann::json::array({ 0.65, 0.5 }) }) } },
+            { { "time", 2450 }, { "x", 0.5 }, { "y", 0.5 }, { "type", "circle" }, { "link_id", 1 }, { "require_lane", 4 } }
+        }) }
+    };
+    if (!sakura::utils::AtomicWrite(srcPkgDir / "info.json", pkgInfo.dump(2))) return false;
+    if (!sakura::utils::AtomicWrite(srcPkgDir / "expert.json", pkgDiff.dump(2))) return false;
+    {
+        constexpr int samples = 44100;
+        std::ofstream wav(srcPkgDir / "music.wav", std::ios::binary);
+        auto u16 = [&](uint16_t v) { wav.put(static_cast<char>(v & 0xFF)); wav.put(static_cast<char>((v >> 8) & 0xFF)); };
+        auto u32 = [&](uint32_t v) { u16(static_cast<uint16_t>(v & 0xFFFF)); u16(static_cast<uint16_t>((v >> 16) & 0xFFFF)); };
+        wav.write("RIFF", 4); u32(36 + samples * 2); wav.write("WAVEfmt ", 8);
+        u32(16); u16(1); u16(1); u32(44100); u32(88200); u16(2); u16(16);
+        wav.write("data", 4); u32(samples * 2);
+        for (int i = 0; i < samples; ++i) u16(0);
+    }
+    if (!sakura::utils::CreateZipArchive(srcPkgDir, pkgArchive)) return false;
+
+    auto failStep = [](const char* step, const std::string& detail = {}) {
+        std::ofstream f(sakura::core::Paths::User("verify-online-fail.txt"), std::ios::app);
+        f << "[verify-online] FAIL at " << step << ": " << detail << "\n";
+        return false;
+    };
+
+    const auto pubRes = api.PublishChartPackage(pkgArchive.string(), "Automated v1.2.0 E2E package");
+    if (!pubRes.ok || pubRes.chart.id.empty()) return failStep("PublishChartPackage", pubRes.error);
+
+    sakura::net::MarketQuery mq;
+    mq.q        = mktSlug;
+    mq.minLevel = 9.0f;
+    mq.maxLevel = 15.0f;
+    const auto mktList = api.FetchMarketCharts(mq);
+    if (!mktList.ok || mktList.charts.empty() || mktList.charts[0].id != pubRes.chart.id)
+        return failStep("FetchMarketCharts", mktList.error);
+
+    const auto rateRes = api.RateMarketChart(pubRes.chart.id, 5, "E2E verified 5 stars");
+    if (!rateRes.ok || rateRes.myRating != 5) return failStep("RateMarketChart", rateRes.error);
+
+    const fs::path freshChartsDir = e2eDir / "fresh_user_charts";
+    fs::remove_all(freshChartsDir, ec);
+    float lastProgress = 0.0f;
+    const auto dlRes = api.DownloadAndInstallChart(mktList.charts[0], freshChartsDir.string(),
+        [&](float p) { lastProgress = std::max(lastProgress, p); });
+    if (!dlRes.ok || lastProgress < 0.99f)
+        return failStep("DownloadAndInstallChart", dlRes.error + " prog=" + std::to_string(lastProgress));
+    if (sakura::net::APIClient::GetInstalledMarketState(mktList.charts[0], freshChartsDir.string()) != sakura::net::MarketInstallState::Installed)
+        return failStep("GetInstalledMarketState");
+
+    ChartLoader mktLoader;
+    const auto installedCharts = mktLoader.ScanCharts(freshChartsDir.string());
+    if (installedCharts.size() != 1 || installedCharts[0].id != mktSlug)
+        return failStep("ScanCharts", "count=" + std::to_string(installedCharts.size()));
+    auto loadedDiff = mktLoader.LoadChartData(installedCharts[0].folderPath + "/" + installedCharts[0].difficulties[0].chartFile);
+    if (!loadedDiff) return failStep("LoadChartData");
+
+    PlaySession mktSession;
+    mktSession.Initialize(*loadedDiff, false, 0, 0);
+    for (const auto& ev : script) mktSession.Submit(ev);
+    mktSession.Finish();
+
+    GameResult mktResult = mktSession.Score().GetResult(mktSlug, installedCharts[0].title, "Expert", 0, 10.8f, 3.0);
+    mktResult.chartHash      = Replay::Hash(*loadedDiff, 0);
+    mktResult.totalJudgments = mktSession.Score().GetJudgedCount();
+    mktResult.assisted       = false;
+    const auto mktSub = api.SubmitScore(mktResult);
+    if (!mktSub.ok || mktSub.rank != 1) return failStep("SubmitMarketScore", mktSub.error);
+
+    // Multi-device Cloud Sync push on Device A -> pull restore on clean Device B
+    auto& db  = sakura::data::Database::GetInstance();
+    auto& cfg = sakura::core::Config::GetInstance();
+    db.Shutdown();
+    const fs::path dbA = e2eDir / "device_a.db";
+    const fs::path dbB = e2eDir / "device_b.db";
+    fs::remove(dbA, ec); fs::remove(dbB, ec);
+    if (!db.Initialize(dbA.string())) return failStep("InitDbA");
+    if (!db.SaveScore(mktResult)) return failStep("SaveScoreDbA");
+    if (!db.SaveAchievement("first_fc")) return failStep("SaveAchDbA");
+    cfg.Set("gameplay.note_speed", 7.6f);
+    cfg.Set("audio.global_offset_ms", -15);
+    cfg.Set("online.settings_updated_at", static_cast<long long>(std::time(nullptr)) + 10LL);
+    const auto syncPush = api.SyncCloudSave();
+    if (!syncPush.ok) return failStep("SyncPush", syncPush.error);
+
+    db.Shutdown();
+    if (!db.Initialize(dbB.string())) return failStep("InitDbB");
+    cfg.Set("gameplay.note_speed", 5.0f);
+    cfg.Set("audio.global_offset_ms", 0);
+    cfg.Set("online.settings_updated_at", 0LL);
+    const auto syncPull = api.SyncCloudSave();
+    if (!syncPull.ok || syncPull.scoresPulled < 1 || syncPull.achievementsPulled < 1)
+        return failStep("SyncPull", syncPull.error + " sp=" + std::to_string(syncPull.scoresPulled) + " ap=" + std::to_string(syncPull.achievementsPulled));
+    const auto restoredBest = db.GetBestScore(mktSlug, "Expert", mktResult.chartHash);
+    if (!restoredBest || restoredBest->score != mktResult.score || !db.IsAchievementUnlocked("first_fc"))
+        return failStep("VerifyRestoredDbB");
+    if (std::abs(cfg.Get<float>("gameplay.note_speed", 5.0f) - 7.6f) > 0.05f ||
+        cfg.Get<int>("audio.global_offset_ms", 0) != -15)
+    {
+        return failStep("VerifyRestoredSettings");
+    }
+    db.Shutdown();
+
     const nlohmann::json report = {
         { "verified", true },
         { "username", uname },
         { "score_id", submitted.scoreId },
+        { "market_chart_id", pubRes.chart.id },
         { "score", liveResult.score },
         { "rank", submitted.rank },
         { "pp", submitted.pp },
-        { "replay_events", dlReplay->inputs.size() }
+        { "replay_events", dlReplay->inputs.size() },
+        { "cloud_restored_scores", syncPull.scoresPulled },
+        { "cloud_restored_achievements", syncPull.achievementsPulled }
     };
     sakura::utils::AtomicWrite(fs::path(sakura::core::Paths::User("verify-online.json")), report.dump(2));
     api.Shutdown();
+    fs::remove_all(e2eDir, tmpEc);
     return true;
 }
 }

@@ -10,6 +10,7 @@
 #include "game/chart_loader.h"
 #include "core/resource_manager.h"
 #include "audio/audio_manager.h"
+#include "net/api_client.h"
 #include "ui/toast.h"
 #include "utils/archive.h"
 #include "utils/logger.h"
@@ -127,16 +128,23 @@ void SceneEditor::OnEnter()
     // 初始滚动：让 t=0 在时间轴靠下位置
     m_timeline.CenterOnTime(0);
 
+    *m_alive = true;
+    m_publishing = false;
     SetupToolbar();
-    m_btnProperties=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.575f,0.834f,0.158f,0.033f},"编辑属性",m_fontUI,0.0175f);
+    m_btnExport=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.430f,0.834f,0.098f,0.033f},"导出包",m_fontUI,0.0170f);
+    m_btnExport->SetTextAlign(sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::ApplyButton(m_btnExport.get(),sakura::ui::ButtonVariant::Accent);
+    m_btnExport->SetOnClick([this]{DoExportSakura();});
+
+    m_btnProperties=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.534f,0.834f,0.102f,0.033f},"编辑属性",m_fontUI,0.0170f);
     m_btnProperties->SetTextAlign(sakura::core::TextAlign::Center);
     sakura::ui::VisualStyle::ApplyButton(m_btnProperties.get(),sakura::ui::ButtonVariant::Secondary);
     m_btnProperties->SetOnClick([this]{OpenProperties();});
 
-    m_btnExport=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.435f,0.834f,0.132f,0.033f},"导出 .sakura",m_fontUI,0.0175f);
-    m_btnExport->SetTextAlign(sakura::core::TextAlign::Center);
-    sakura::ui::VisualStyle::ApplyButton(m_btnExport.get(),sakura::ui::ButtonVariant::Accent);
-    m_btnExport->SetOnClick([this]{DoExportSakura();});
+    m_btnPublish=std::make_unique<sakura::ui::Button>(sakura::core::NormRect{0.642f,0.834f,0.098f,0.033f},"发布市场",m_fontUI,0.0170f);
+    m_btnPublish->SetTextAlign(sakura::core::TextAlign::Center);
+    sakura::ui::VisualStyle::ApplyButton(m_btnPublish.get(),sakura::ui::ButtonVariant::Primary);
+    m_btnPublish->SetOnClick([this]{DoPublishMarket();});
     UpdateToolButtons();
 }
 
@@ -144,6 +152,7 @@ void SceneEditor::OnEnter()
 
 void SceneEditor::OnExit()
 {
+    *m_alive = false;
     LOG_INFO("[SceneEditor] 退出编辑器场景");
     m_core.StopPlayback();
 }
@@ -427,6 +436,71 @@ void SceneEditor::DoExportSakura()
         sakura::ui::ToastManager::Instance().Show(".sakura 谱面包导出失败", sakura::ui::ToastType::Error);
 }
 
+void SceneEditor::DoPublishMarket()
+{
+    if (m_publishing) return;
+    auto& api = sakura::net::APIClient::GetInstance();
+    if (!api.IsAuthenticated())
+    {
+        sakura::ui::ToastManager::Instance().Show("请先在主菜单右上角登录在线账号后再发布至市场", sakura::ui::ToastType::Info, 3.8f);
+        return;
+    }
+    if (m_core.IsDirty() && !m_core.SaveChart())
+    {
+        sakura::ui::ToastManager::Instance().Show("发布前保存谱面失败", sakura::ui::ToastType::Error);
+        return;
+    }
+
+    sakura::game::ChartLoader loader;
+    const auto& info = m_core.GetChartInfo();
+    std::size_t totalNotes = 0;
+    for (const auto& diff : info.difficulties)
+    {
+        const auto data = loader.LoadChartData(info.folderPath + "/" + diff.chartFile);
+        if (!data || !loader.ValidateChartData(*data))
+        {
+            sakura::ui::ToastManager::Instance().Show("谱面数据未通过合法性校验：" + diff.name, sakura::ui::ToastType::Warning, 4.0f);
+            return;
+        }
+        totalNotes += data->keyboardNotes.size() + data->mouseNotes.size();
+    }
+    if (totalNotes == 0)
+    {
+        sakura::ui::ToastManager::Instance().Show("请至少放置 1 个有效音符后再发布至市场", sakura::ui::ToastType::Info, 3.5f);
+        return;
+    }
+
+    std::string safeId = info.id.empty() ? "chart" : info.id;
+    for (char& c : safeId)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_')) c = '_';
+    const auto outPath = std::filesystem::path(sakura::core::Paths::User("exports")) / (safeId + ".sakura");
+    if (!sakura::utils::CreateZipArchive(m_core.GetFolderPath(), outPath))
+    {
+        sakura::ui::ToastManager::Instance().Show("打包 .sakura 失败，无法上传", sakura::ui::ToastType::Error);
+        return;
+    }
+
+    m_publishing = true;
+    if (m_btnPublish) m_btnPublish->SetEnabled(false);
+    sakura::ui::ToastManager::Instance().Show("正在打包并上传谱面至在线市场...", sakura::ui::ToastType::Info, 2.5f);
+
+    auto alive = m_alive;
+    api.PublishChartPackageAsync(outPath.string(), info.source, [this, alive](sakura::net::MarketPublishResult res)
+    {
+        if (!*alive) return;
+        m_publishing = false;
+        if (m_btnPublish) m_btnPublish->SetEnabled(true);
+        if (res.ok)
+        {
+            sakura::ui::ToastManager::Instance().Show("已成功发布至在线谱面市场：" + res.chart.title, sakura::ui::ToastType::Success, 4.2f);
+        }
+        else
+        {
+            sakura::ui::ToastManager::Instance().Show("市场发布失败：" + res.error, sakura::ui::ToastType::Error, 4.5f);
+        }
+    });
+}
+
 // ── SwitchDifficulty ──────────────────────────────────────────────────────────
 
 void SceneEditor::SwitchDifficulty(int index)
@@ -618,6 +692,7 @@ void SceneEditor::OnUpdate(float dt)
     if(m_propertyEditing){for(auto& i:m_propertyInputs)i->Update(dt);m_propertyApply->Update(dt);m_propertyCancel->Update(dt);return;}
     if(m_btnProperties)m_btnProperties->Update(dt);
     if(m_btnExport)m_btnExport->Update(dt);
+    if(m_btnPublish)m_btnPublish->Update(dt);
     m_recoveryTimer+=dt;
     if(m_recoveryTimer>=45){
         m_recoveryTimer=0;
@@ -858,6 +933,7 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
     }
     if (m_btnProperties) m_btnProperties->Render(renderer);
     if (m_btnExport)     m_btnExport->Render(renderer);
+    if (m_btnPublish)    m_btnPublish->Render(renderer);
 
     sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.870f, 0.45f);
     renderer.DrawText(m_fontSmall, "1-4 工具  ·  第5轨 SP=拇指轨  ·  Space 播放",
@@ -1322,6 +1398,7 @@ void SceneEditor::OnEvent(const SDL_Event& event)
 
     if(m_btnProperties && m_btnProperties->HandleEvent(event))return;
     if(m_btnExport && m_btnExport->HandleEvent(event))return;
+    if(m_btnPublish && m_btnPublish->HandleEvent(event))return;
     if (HandleOverviewAxisEvent(event))
         return;
 

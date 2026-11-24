@@ -116,6 +116,19 @@ bool App::Initialize()
     {
         LOG_WARN("AchievementManager 初始化失败（非致命）");
     }
+    if (Config::GetInstance().Get<bool>("online.auto_cloud_sync", true) &&
+        sakura::net::APIClient::GetInstance().IsAuthenticated())
+    {
+        sakura::net::APIClient::GetInstance().SyncCloudSaveAsync([](sakura::net::CloudSyncResult syncRes)
+        {
+            if (syncRes.ok && (syncRes.scoresPulled > 0 || syncRes.achievementsPulled > 0))
+            {
+                sakura::ui::ToastManager::Instance().Show(
+                    "已从云端同步恢复 " + std::to_string(syncRes.scoresPulled + syncRes.achievementsPulled) + " 项记录",
+                    sakura::ui::ToastType::Success, 3.6f);
+            }
+        });
+    }
     // ── SDL 初始化 ────────────────────────────────────────────────────────────
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
     {

@@ -31,6 +31,7 @@ struct HttpRequest
     std::vector<std::pair<std::string, std::string>> headers;
     std::string body;
     int         timeoutMs = 10000;
+    std::function<void(std::size_t downloadedBytes, std::size_t totalBytes)> onProgress;
 };
 
 struct HttpResponse

@@ -49,6 +49,12 @@ public:
     // 将一局游戏结果写入 scores 表
     bool SaveScore(const sakura::game::GameResult& result);
 
+    // 幂等合并云端最高分记录（仅当高于本地同谱面同难度记录时写入，不累加游玩局数）
+    bool MergeCloudScore(const sakura::game::GameResult& cloudScore);
+
+    // 幂等合并云端成就记录（保留最早解锁时间戳）
+    bool MergeCloudAchievement(const std::string& id, long long unlockedAt);
+
     // 返回某谱面某难度的最高分记录（无记录则返回空 optional）
     std::optional<sakura::game::GameResult> GetBestScore(
         const std::string& chartId,

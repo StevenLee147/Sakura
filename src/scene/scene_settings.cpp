@@ -213,6 +213,46 @@ void SceneSettings::BuildPages()
         std::filesystem::create_directories(Paths::User("backups"));
         SDL_OpenURL(("file:///" + Paths::User("backups")).c_str());
     });
+    AddToggle(5, "自动云端同步", "启动与正式结算后自动幂等合并云端成绩与成就", "online.auto_cloud_sync");
+    {
+        const long long lastTs = cfg.Get<long long>("online.last_cloud_sync_ts", 0LL);
+        std::string syncHint = "合并多设备最高成绩、最早解锁成就与核心键位流速设置";
+        if (lastTs > 0)
+        {
+            const std::time_t tt = static_cast<std::time_t>(lastTs);
+            std::tm tmBuf{};
+#ifdef _WIN32
+            localtime_s(&tmBuf, &tt);
+#else
+            localtime_r(&tt, &tmBuf);
+#endif
+            std::ostringstream oss;
+            oss << "最近云同步：" << std::put_time(&tmBuf, "%Y-%m-%d %H:%M");
+            syncHint = oss.str();
+        }
+        AddAction(5, "多端云存档", syncHint, "立即云端同步", []
+        {
+            auto& api = sakura::net::APIClient::GetInstance();
+            if (!api.IsAuthenticated())
+            {
+                ToastManager::Instance().Show("请先在主菜单右上角登录在线账号后再进行云同步", ToastType::Info, 3.5f);
+                return;
+            }
+            ToastManager::Instance().Show("正在与云端合并存档...", ToastType::Info, 2.0f);
+            api.SyncCloudSaveAsync([](sakura::net::CloudSyncResult res)
+            {
+                if (!res.ok)
+                {
+                    ToastManager::Instance().Show("云同步暂不可用：" + res.error, ToastType::Warning, 3.8f);
+                    return;
+                }
+                ToastManager::Instance().Show(
+                    "云端同步完成 · 上传更新 " + std::to_string(res.scoresPushed)
+                    + " 项 / 拉取恢复 " + std::to_string(res.scoresPulled + res.achievementsPulled) + " 项",
+                    ToastType::Success, 4.0f);
+            });
+        });
+    }
     AddToggle(5, "自动检查更新", "启动时后台静默检测 GitHub Releases 新版本", "online.auto_check_updates");
     AddAction(5, "版本更新", std::string("当前版本 v") + SAKURA_VERSION_STRING + " · 检测并前往最新发布页", "检查更新", []
     {
@@ -261,10 +301,16 @@ void SceneSettings::SyncAudio()
 
 bool SceneSettings::Save()
 {
+    Config::GetInstance().Set("online.settings_updated_at", static_cast<long long>(std::time(nullptr)));
     if (!Config::GetInstance().Save())
     { ToastManager::Instance().Show("设置保存失败，请检查目录权限与剩余空间", ToastType::Error); return false; }
     m_saved = Config::GetInstance().GetRoot();
     m_dirty = false;
+    if (Config::GetInstance().Get<bool>("online.auto_cloud_sync", true) &&
+        sakura::net::APIClient::GetInstance().IsAuthenticated())
+    {
+        sakura::net::APIClient::GetInstance().SyncCloudSaveAsync();
+    }
     ToastManager::Instance().Show("设置已保存", ToastType::Success);
     return true;
 }

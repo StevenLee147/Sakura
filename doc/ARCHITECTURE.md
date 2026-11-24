@@ -415,33 +415,11 @@ CREATE TABLE statistics (
 
 ---
 
-## 6. 网络层设计 (预留)
+## 6. 在线生态与双模网络架构 (`src/net/` + `server/`)
 
-```cpp
-namespace sakura::net
-{
-    // API 客户端（预留接口，后期实现）
-    class APIClient
-    {
-    public:
-        void SetBaseURL(std::string_view url);
-        void SetAuthToken(std::string_view token);
-
-        // 异步请求
-        std::future<APIResponse> Get(std::string_view endpoint);
-        std::future<APIResponse> Post(std::string_view endpoint, 
-                                      const nlohmann::json& body);
-
-        // 具体 API
-        std::future<APIResponse> Login(std::string_view username, 
-                                       std::string_view password);
-        std::future<APIResponse> UploadScore(const ScoreData& score);
-        std::future<APIResponse> GetLeaderboard(std::string_view chartId, 
-                                                 std::string_view difficulty);
-        std::future<APIResponse> DownloadChart(std::string_view chartId);
-    };
-}
-```
+- **客户端跨平台传输层 (`src/net/http_client.h/.cpp`)**：抽象纯 C++20 `IHttpTransport` 接口（纳入无 SDL 依赖的 `sakura-game-logic`）。Windows 主程序通过系统原生 `WinHttpTransport` 支持 TLS 1.2/1.3 HTTPS 与流式下载进度回调；Linux CI 与单元测试注入内存 `MockHttpTransport`。
+- **异步 API 客户端与自动更新 (`src/net/api_client.h/.cpp`、`src/core/updater.h/.cpp`)**：后台工作线程执行登录鉴权、防作弊成绩与 `.skr` 回放上报、离线待传队列刷新、`SceneMarket` `.sakura` 谱面包上传/检索/评分/SHA-256 校验安装、多端幂等云存档同步（`SyncCloudSave`）以及 SemVer 版本更新检测，主线程在 `App::Update` 中通过 `PumpCallbacks()` 无锁阻塞风险地消费 UI 回调。
+- **仓库内建双模服务端 (`server/`)**：基于 Node.js 22 + TypeScript + Hono 构建，内置 `SqliteStorageAdapter`（零外部依赖支持本地与 GitHub Actions `--verify-online` 实服闭环）与 `PostgresCompatibleAdapter` 云端生产接口，提供 PKZIP 内存解包防穿越校验、权威 PP 复算、全球排行榜、在线谱面市场与幂等云同步 REST API。
 
 ---
 
@@ -489,3 +467,15 @@ namespace sakura::net
 | 对象池 | 粒子系统 | 固定大小粒子池 |
 | 工厂 | 音符创建 | 根据类型创建对应音符 |
 | 策略 | 缓动函数 | 可替换的缓动算法 |
+
+---
+
+## 9. 在线生态架构 (v1.1 ~ v1.2)
+
+| 模块 | 位置 | 职责说明 |
+|------|------|----------|
+| HTTP 传输抽象 | `src/net/http_client.h/.cpp` | `IHttpTransport` 纯 C++20 接口；Windows 使用原生 `winhttp.lib` 支持 TLS 1.2/1.3 与系统代理，Linux CI 与单元测试注入 `MockHttpTransport` |
+| 在线业务客户端 | `src/net/api_client.h/.cpp` | 封装账号鉴权、成绩与 `.skr` 回放防作弊上报、全球排行榜查询、谱面市场检索/评分/SHA-256 校验安装、工房 `.sakura` 直传与多端云存档同步 |
+| 自动更新器 | `src/core/updater.h/.cpp` | 后台异步查询 GitHub Releases SemVer，弹出非阻断更新提示并支持设置页一键跳转下载 |
+| 在线谱面市场 | `src/scene/scene_market.h/.cpp` | `0.0~1.0` 归一化毛玻璃卡片市场界面，支持搜索筛选、星级评价与一键下载安装开玩 |
+| 双模在线服务端 | `server/src/` | Node.js + TypeScript + Hono 服务端，`IStorageAdapter` 默认零配置 SQLite + 本地包存储，兼容生产环境容器与反向代理部署 |

@@ -3,6 +3,7 @@
 #include "scene.h"
 #include "scene_manager.h"
 #include "core/updater.h"
+#include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/ui_base.h"
 

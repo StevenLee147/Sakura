@@ -946,4 +946,83 @@ bool Database::IsAchievementUnlocked(const std::string& id) const
     return found;
 }
 
+bool Database::MergeCloudScore(const sakura::game::GameResult& cloudScore)
+{
+    if (!m_db || cloudScore.assisted || cloudScore.chartId.empty() || cloudScore.difficulty.empty())
+        return false;
+
+    const auto localBest = GetBestScore(cloudScore.chartId, cloudScore.difficulty, cloudScore.chartHash);
+    if (localBest.has_value())
+    {
+        if (cloudScore.score < localBest->score)
+            return false;
+        if (cloudScore.score == localBest->score && cloudScore.accuracy <= localBest->accuracy + 0.001f)
+            return false;
+    }
+
+    const char* sql = R"sql(
+        INSERT INTO scores (
+            chart_id, chart_title, difficulty, difficulty_level,
+            score, accuracy, max_combo, grade,
+            perfect_count, great_count, good_count, bad_count, miss_count,
+            is_full_combo, is_all_perfect, played_at, hit_errors_json, chart_hash
+        ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?);
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    const long long playedAt = cloudScore.playedAt > 0 ? cloudScore.playedAt : NowTimestamp();
+    const std::string hitJson = HitErrorsToJson(cloudScore.hitErrors);
+    sqlite3_bind_text  (stmt,  1, cloudScore.chartId.c_str(),    -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text  (stmt,  2, cloudScore.chartTitle.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text  (stmt,  3, cloudScore.difficulty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt,  4, cloudScore.difficultyLevel);
+    sqlite3_bind_int   (stmt,  5, cloudScore.score);
+    sqlite3_bind_double(stmt,  6, cloudScore.accuracy);
+    sqlite3_bind_int   (stmt,  7, cloudScore.maxCombo);
+    sqlite3_bind_text  (stmt,  8, GradeToStr(cloudScore.grade),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int   (stmt,  9, cloudScore.perfectCount);
+    sqlite3_bind_int   (stmt, 10, cloudScore.greatCount);
+    sqlite3_bind_int   (stmt, 11, cloudScore.goodCount);
+    sqlite3_bind_int   (stmt, 12, cloudScore.badCount);
+    sqlite3_bind_int   (stmt, 13, cloudScore.missCount);
+    sqlite3_bind_int   (stmt, 14, cloudScore.isFullCombo  ? 1 : 0);
+    sqlite3_bind_int   (stmt, 15, cloudScore.isAllPerfect ? 1 : 0);
+    sqlite3_bind_int64 (stmt, 16, playedAt);
+    sqlite3_bind_text  (stmt, 17, hitJson.c_str(),               -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text  (stmt, 18, cloudScore.chartHash.c_str(),  -1, SQLITE_TRANSIENT);
+
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    if (ok && GetTotalPlayCount() == 0)
+        IncrementStatistic("total_play_count", 1.0);
+    return ok;
+}
+
+bool Database::MergeCloudAchievement(const std::string& id, long long unlockedAt)
+{
+    if (!m_db || id.empty())
+        return false;
+
+    const bool wasUnlocked = IsAchievementUnlocked(id);
+    const long long ts = unlockedAt > 0 ? unlockedAt : NowTimestamp();
+    const char* sql = R"sql(
+        INSERT INTO achievements (id, unlocked_at)
+        VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            unlocked_at = MIN(achievements.unlocked_at, excluded.unlocked_at);
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text (stmt, 1, id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, ts);
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok && !wasUnlocked;
+}
+
 } // namespace sakura::data

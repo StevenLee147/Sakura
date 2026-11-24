@@ -50,13 +50,13 @@ v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工
 |------|------|----------|------------|------|
 | v0.1 ~ v0.5 | dev/alpha | Phase 0~4 基建至内容 | 核心引擎、双区玩法、工房、教程、成就、PP、统计 | ✅ 已完成 |
 | v0.6 ~ v0.7.0 | alpha | Phase 5~6 回放与琉璃焕新 | 确定性 PlaySession、回放、设置、夜樱琉璃视觉、离线录制与 ZIP 打包 | ✅ 已完成 |
-| v0.8.0-alpha | alpha | 核心玩法进化 (Chart v3) | 空格大拇指横梁、跨区连携 Link Note、樱绽组合技、Fever 满开槽、教程第 6 课 | 🔲 待执行 |
-| v0.8.1-alpha | alpha | 官方曲包扩充 | 通用 STFT/HPSS 自动制谱与封面生成管线、`download/songs` 8~10 首三难度新曲 | 🔲 待执行 |
-| v0.9.0-beta | beta | 专业工具链与深度分析 | WSOLA 变速不变调、全屏结算分析覆盖层、工房波形/SV曲线、`.sakura` 拖拽导入导出 | 🔲 待执行 |
-| v0.9.1-beta | beta | 视听打磨与准正式版压测 | Media Foundation 原生 MP4 背景视频、F3 性能与延迟叠层、音频时钟抗漂移、多分辨率压测 | 🔲 待执行 |
-| v1.0.0 | stable | 正式版双形态发行 | `installer/sakura.iss` 安装器、CI 双产物（Setup EXE + 便携 ZIP）、全曲定级与正式版文档 | 🔲 待执行 |
-| v1.1.0 | stable | 在线生态一期：排行与更新 | `server/` 双模后端、`src/net/` WinHTTP、GitHub 自动检查更新、账号体系与全球排行榜 | 🔲 待执行 |
-| v1.2.0 | stable | 在线生态二期：市场与云同步 | `SceneMarket` 在线谱面市场（搜索/评分/一键下载）、工房直传发布、多端幂等云存档同步 | 🔲 待执行 |
+| v0.8.0-alpha | alpha | 核心玩法进化 (Chart v3) | 空格大拇指横梁、跨区连携 Link Note、樱绽组合技、Fever 满开槽、教程第 6 课 | ✅ 已完成 |
+| v0.8.1-alpha | alpha | 官方曲包扩充 | 通用 STFT/HPSS 自动制谱与封面生成管线、`download/songs` 8 首三难度新曲 | ✅ 已完成 |
+| v0.9.0-beta | beta | 专业工具链与深度分析 | WSOLA 变速不变调、全屏结算分析覆盖层、工房波形/SV曲线、`.sakura` 拖拽导入导出 | ✅ 已完成 |
+| v0.9.1-beta | beta | 视听打磨与准正式版压测 | Media Foundation 原生 MP4 背景视频、F3 性能与延迟叠层、音频时钟抗漂移、多分辨率压测 | ✅ 已完成 |
+| v1.0.0 | stable | 正式版双形态发行 | `installer/sakura.iss` 安装器、CI 双产物（Setup EXE + 便携 ZIP）、全曲定级与正式版文档 | ✅ 已完成 |
+| v1.1.0 | stable | 在线生态一期：排行与更新 | `server/` 双模后端、`src/net/` WinHTTP、GitHub 自动检查更新、账号体系与全球排行榜 | ✅ 已完成 |
+| v1.2.0 | stable | 在线生态二期：市场与云同步 | `SceneMarket` 在线谱面市场（搜索/评分/一键下载）、工房直传发布、多端幂等云存档同步 | ✅ 已完成 |
 
 ---
 
@@ -91,6 +91,6 @@ v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工
 
 ## 当前状态
 
-- **当前版本：** v1.1.0
-- **当前交付：** 完整离线流程、六页设置、练习/回放、工房试玩、存档备份恢复、月夜墨樱琉璃视觉、4K60 离线录制与 Windows x64 发行包。
-- **下一目标版本：** 按 [roadmap/AUTOPILOT_PLAYBOOK.md](roadmap/AUTOPILOT_PLAYBOOK.md) 自动推进 `v0.8.0-alpha` 直至 `v1.2.0`。
+- **当前版本：** v1.2.0
+- **当前交付：** 完整双域协同演奏（Chart v3）、15 首曲库、WSOLA 变速不变调、深度结算遥测、MP4 动态视频舞台、Inno Setup 双产物发行、内建双模服务端、全球排行榜、在线谱面市场（`SceneMarket`）与多端幂等云存档同步。
+- **里程碑状态：** `v0.8.0-alpha` 至 `v1.2.0` 全部七个规划版本已完成研发、自动化验证与发布。

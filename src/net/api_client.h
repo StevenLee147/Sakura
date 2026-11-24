@@ -77,6 +77,100 @@ struct LeaderboardResult
     std::vector<LeaderboardRow> entries;
 };
 
+enum class MarketInstallState
+{
+    NotInstalled,
+    UpdateAvailable,
+    Installed
+};
+
+struct MarketDifficultyInfo
+{
+    std::string name;
+    float       level     = 1.0f;
+    std::string chartFile;
+    int         noteCount = 0;
+};
+
+struct MarketChartItem
+{
+    std::string                       id;
+    std::string                       chartSlug;
+    std::string                       uploaderId;
+    std::string                       uploaderName;
+    std::string                       title;
+    std::string                       artist;
+    std::string                       charter;
+    std::string                       description;
+    float                             bpm          = 120.0f;
+    float                             minLevel     = 1.0f;
+    float                             maxLevel     = 1.0f;
+    std::vector<std::string>          tags;
+    std::vector<MarketDifficultyInfo> difficulties;
+    std::string                       packageSha256;
+    std::string                       contentHash;
+    std::size_t                       packageSize  = 0;
+    int                               downloads    = 0;
+    double                            ratingAvg    = 0.0;
+    int                               ratingCount  = 0;
+    int                               myRating     = 0;
+    long long                         createdAt    = 0;
+    long long                         updatedAt    = 0;
+};
+
+struct MarketQuery
+{
+    std::string q;
+    std::string tag;
+    std::string sort     = "newest"; // newest | popular | rating
+    float       minLevel = 0.0f;
+    float       maxLevel = 20.0f;
+    int         page     = 1;
+    int         pageSize = 20;
+};
+
+struct MarketListResult
+{
+    bool                         ok    = false;
+    std::string                  error;
+    int                          total = 0;
+    std::vector<MarketChartItem> charts;
+};
+
+struct MarketPublishResult
+{
+    bool            ok = false;
+    std::string     error;
+    MarketChartItem chart;
+};
+
+struct MarketDownloadResult
+{
+    bool        ok = false;
+    std::string error;
+    std::string installedFolder;
+    std::string chartId;
+};
+
+struct MarketRateResult
+{
+    bool        ok          = false;
+    std::string error;
+    double      ratingAvg   = 0.0;
+    int         ratingCount = 0;
+    int         myRating    = 0;
+};
+
+struct CloudSyncResult
+{
+    bool        ok                 = false;
+    std::string error;
+    int         scoresPushed       = 0;
+    int         scoresPulled       = 0;
+    int         achievementsPulled = 0;
+    long long   syncedAt           = 0;
+};
+
 class APIClient
 {
 public:
@@ -118,6 +212,18 @@ public:
     LeaderboardResult FetchLeaderboard(const std::string& chartId, const std::string& difficulty, int limit = 50);
     bool DownloadReplay(const std::string& scoreId, const std::string& destPath);
 
+    // v1.2.0 Online Chart Market & Multi-Device Cloud Sync
+    static MarketInstallState GetInstalledMarketState(const MarketChartItem& item,
+                                                      const std::string& chartsRootDir = {},
+                                                      std::string* outInstalledChartId = nullptr);
+    MarketPublishResult PublishChartPackage(const std::string& sakuraFilePath, const std::string& description = {});
+    MarketListResult FetchMarketCharts(const MarketQuery& query = {});
+    MarketDownloadResult DownloadAndInstallChart(const MarketChartItem& item,
+                                                 const std::string& chartsRootDir = {},
+                                                 std::function<void(float)> onProgress = {});
+    MarketRateResult RateMarketChart(const std::string& marketChartId, int rating, const std::string& comment = {});
+    CloudSyncResult SyncCloudSave();
+
     // Asynchronous calls (marshal completion callbacks onto main thread via PumpCallbacks)
     void PostTask(std::function<void()> workerTask);
     void PostMainCallback(std::function<void()> mainCallback);
@@ -132,6 +238,15 @@ public:
                                std::function<void(LeaderboardResult)> cb);
     void DownloadReplayAsync(const std::string& scoreId, const std::string& destPath,
                              std::function<void(bool, std::string)> cb);
+    void PublishChartPackageAsync(const std::string& sakuraFilePath, const std::string& description,
+                                  std::function<void(MarketPublishResult)> cb);
+    void FetchMarketChartsAsync(const MarketQuery& query, std::function<void(MarketListResult)> cb);
+    void DownloadAndInstallChartAsync(const MarketChartItem& item, const std::string& chartsRootDir,
+                                      std::function<void(float)> onProgress,
+                                      std::function<void(MarketDownloadResult)> cb);
+    void RateMarketChartAsync(const std::string& marketChartId, int rating, const std::string& comment,
+                              std::function<void(MarketRateResult)> cb);
+    void SyncCloudSaveAsync(std::function<void(CloudSyncResult)> cb = {});
 
 private:
     void EnsureWorker();

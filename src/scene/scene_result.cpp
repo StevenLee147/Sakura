@@ -205,6 +205,8 @@ void SceneResult::OnEnter()
                 oss << "✦ 全球排行 #" << sub.rank << "  ·  " << std::fixed << std::setprecision(1) << sub.pp << " PP";
                 if (sub.newBest) oss << " (PB)";
                 m_onlineStatusText = oss.str();
+                if (sakura::core::Config::GetInstance().Get<bool>("online.auto_cloud_sync", true))
+                    sakura::net::APIClient::GetInstance().SyncCloudSaveAsync();
             }
             else if (sub.queuedOffline)
             {

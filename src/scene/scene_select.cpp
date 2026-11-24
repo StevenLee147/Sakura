@@ -1,5 +1,6 @@
 #include "scene_select.h"
 #include "scene_menu.h"
+#include "scene_market.h"
 #include "scene_game.h"
 #include "scene_settings.h"
 #include "scene_editor.h"
@@ -52,6 +53,7 @@ void SceneSelect::OnEnter() {
     m_startInput->SetText("0"); m_endInput->SetText("0");
     m_buttons.push_back(Button({0.33f,0.16f,0.062f,0.051f},"收藏",[this]{m_onlyFavorites=!m_onlyFavorites;Filter();}));
     m_buttons.push_back(Button({0.398f,0.16f,0.062f,0.051f},"排序",[this]{m_sort=(m_sort+1)%3;Filter();}));
+    m_buttons.push_back(Button({0.445f,0.064f,0.095f,0.044f},"谱面市场",[this]{m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager),TransitionType::SilkShutter,0.38f);},true));
     m_buttons.push_back(Button({0.55f,0.064f,0.09f,0.044f},"导入谱面",[this]{ImportFolder();}));
     m_buttons.push_back(Button({0.65f,0.064f,0.09f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);}));
     m_buttons.push_back(Button({0.75f,0.064f,0.09f,0.044f},"打开曲库",[]{const std::filesystem::path path=Paths::User("charts");std::error_code ec;std::filesystem::create_directories(path,ec);SDL_OpenURL(("file:///"+path.generic_string()).c_str());}));
