@@ -85,8 +85,21 @@ private:
 
     // Hold/Slider 活跃状态
 
-    // 判定闪现
+    // 判定闪现与命中瞬态冲击波
     std::vector<JudgeFlash> m_judgeFlashes;
+    struct HitShockwave
+    {
+        float x          = 0.0f;
+        float y          = 0.0f;
+        float timer      = 0.0f;
+        float maxTime    = 0.24f;
+        sakura::core::Color color{};
+        bool  isKeyboard = true;
+        int   lane       = 0;
+        bool  isSynergy  = false;
+    };
+    std::vector<HitShockwave> m_hitShockwaves;
+    sakura::game::RetryTapTracker m_retryTracker{ 3, 1.5f };
 
     // 字体
     sakura::core::FontHandle m_fontHUD   = sakura::core::INVALID_HANDLE;

@@ -8,7 +8,7 @@ audio itself, so everything can be rebuilt reproducibly from the repository root
     python scripts/build_sakura_breath.py --source "download/songs/樱花落下的呼吸 (2).mp3"
 
 Options: ``--preview-dir <dir>`` also renders review piano-rolls (20 s of drop A per difficulty),
-``--skip-audio`` keeps an existing ``music.ogg`` (charts, cover and validation are still rebuilt).
+``--skip-audio`` decodes the existing ``music.ogg`` directly without needing the source MP3.
 Running twice produces byte-identical files; the SHA-256 list printed at the end shows it.
 
 Requirements: Python 3.11+, numpy, scipy, Pillow and ``ffmpeg`` on PATH. Decoding goes through
@@ -346,7 +346,10 @@ def analyze(samples: np.ndarray) -> Analysis:
 # ── Chart generation ─────────────────────────────────────────────────────────
 
 ASPECT = (16 / 9 * 0.50) / 0.66  # mouse play area width / height (scene_game MOUSE_W / MOUSE_H)
-AREA_MIN, AREA_MAX = 0.12, 0.88  # circle / slider placement range (validated against 0.1..0.9)
+MOUSE_X_MIN, MOUSE_X_MAX = 0.16, 0.84  # horizontal circle / slider bounds
+MOUSE_Y_MIN, MOUSE_Y_MAX = 0.18, 0.82  # vertical circle / slider bounds
+MOUSE_RECENT_WINDOW_MS = 1100  # anti-clumping lookback window (ms)
+MOUSE_MIN_DIST = 0.18  # minimum Euclidean distance against mouse notes in lookback window
 
 
 def section_rates(intro, build1, drop_a, break1, build2, drop_b, break2, build3, drop_c, outro) -> dict:
@@ -385,19 +388,19 @@ DIFFICULTIES = [
                kb_rate=section_rates(0.65, 1.15, 1.75, 0.55, 1.25, 1.8, 0.6, 1.4, 1.75, 0.5),
                chord_share=0.0, chord_spacing=0, hold_beats=(2.0, 3.0),
                mouse_rate=section_rates(0.3, 0.35, 0.45, 0.3, 0.35, 0.47, 0.3, 0.3, 0.45, 0.26),
-               mouse_gap=8, slider_beats=(2.0, 4.0), slider_quantum=1.0, slider_rest=1.0, speed=0.7,
+               mouse_gap=8, slider_beats=(2.0, 4.0), slider_quantum=1.0, slider_rest=1.0, speed=1.25,
                waypoints=(2, 2), sv=False),
     Difficulty("Hard", 7.5, grid=2, min_gap=2, lane_gap=1.0, min_strength=0.2,
                kb_rate=section_rates(1.45, 2.6, 3.35, 1.35, 2.8, 3.45, 1.3, 3.0, 3.35, 1.25),
-               chord_share=0.05, chord_spacing=8, hold_beats=(1.5, 3.0),
+               chord_share=0.075, chord_spacing=4, hold_beats=(1.5, 3.0),
                mouse_rate=section_rates(0.7, 0.8, 1.1, 0.7, 0.85, 1.12, 0.7, 0.7, 1.1, 0.6),
-               mouse_gap=4, slider_beats=(1.5, 3.0), slider_quantum=0.5, slider_rest=1.0, speed=1.1,
+               mouse_gap=4, slider_beats=(1.5, 3.0), slider_quantum=0.5, slider_rest=1.0, speed=1.55,
                waypoints=(2, 3), sv=False),
     Difficulty("Expert", 10.5, grid=1, min_gap=1, lane_gap=0.5, min_strength=0.12,
                kb_rate=section_rates(2.6, 4.3, 5.7, 2.4, 4.5, 5.8, 2.5, 5.0, 5.7, 2.3),
-               chord_share=0.1, chord_spacing=2, hold_beats=(1.5, 3.0),
+               chord_share=0.11, chord_spacing=2, hold_beats=(1.5, 3.0),
                mouse_rate=section_rates(1.1, 1.3, 1.8, 1.1, 1.4, 1.85, 1.1, 1.1, 1.8, 1.0),
-               mouse_gap=2, slider_beats=(1.0, 4.0), slider_quantum=0.5, slider_rest=0.5, speed=1.6,
+               mouse_gap=2, slider_beats=(1.0, 4.0), slider_quantum=0.5, slider_rest=0.5, speed=2.0,
                waypoints=(2, 4), sv=True),
 ]
 
@@ -570,20 +573,34 @@ def plan_keyboard(an: Analysis, diff: Difficulty) -> list[KeyEvent]:
                 busy_until = t + (e.hold + 0.5) * BEAT
         events = kept
 
-    # Chords on accents (never in the quiet parts): strongest multi-band hits, spaced out.
+    # Clear 2-lane downbeat chords in Hard/Expert (never in quiet parts or overlapping holds).
     if diff.chord_share > 0:
         quota = round(diff.chord_share * len(events) / (1 + diff.chord_share))
+        hold_spans = [(e.step, e.step + int(round(e.hold * 4)) + 2) for e in events if e.hold]
         isolated = []
         for i, e in enumerate(events):
             kind = section_of(e.step / 4)[3]
             prev_gap = e.step - events[i - 1].step if i else 99
             next_gap = events[i + 1].step - e.step if i + 1 < len(events) else 99
-            if kind == "quiet" or e.hold or min(prev_gap, next_gap) < 2 or accent[e.step] < 1.4:
+            if kind == "quiet" or e.hold or any(a <= e.step < b for a, b in hold_spans):
                 continue
-            if kind in ("build", "riser") and e.step % 16 and accent[e.step] < 2.2:
+            if e.step % 4 != 0 or next_gap < 2:
+                continue
+            if (diff.name == "Hard" or kind in ("build", "riser")) and e.step % 8 != 0:
+                continue
+            if prev_gap < 2 and not (diff.name == "Expert" and e.step % 16 == 0 and prev_gap == 1):
+                continue
+            min_accent = 1.0 if e.step % 16 == 0 else (1.25 if e.step % 8 == 0 else 1.55)
+            if accent[e.step] < min_accent:
                 continue
             isolated.append(e)
-        ranked = sorted(isolated, key=lambda e: (-accent[e.step] * position_weight(e.step), e.step))
+        ranked = sorted(
+            isolated,
+            key=lambda e: (
+                -accent[e.step] * (2.4 if e.step % 16 == 0 else (1.45 if e.step % 8 == 0 else 1.0)),
+                e.step,
+            ),
+        )
         taken: list[int] = []
         for e in ranked:
             if len(taken) >= quota:
@@ -597,84 +614,135 @@ def plan_keyboard(an: Analysis, diff: Difficulty) -> list[KeyEvent]:
 
 
 def assign_lanes(events: list[KeyEvent], diff: Difficulty) -> None:
-    """Kick/bass anchor lane A and snare lane F (moving inward on quick repeats; Normal alternates),
-    stabs/hats flow on S/D, single-instrument rolls climb as stairs."""
-    free_at = [-1e9] * 4  # time a lane may take a new note (hold end + half beat)
-    last_at = [-1e9] * 4
-    hold_end = [-1e9] * 4
-    lane_gap = diff.lane_gap * BEAT - 1e-6
-    prev_lane, prev_time = 1, -1e9
-    # Rolls: >= 4 hits of one instrument at a constant 8th/16th spacing become stairs.
-    stair = {}
+    """Ergonomic left-hand 4K flow: uniform 16th/8th/beat runs form clean stairs/waves, single taps
+    alternate hands smoothly without jacks, and downbeat 2-lane chords rotate spread/inner pairs."""
+    free_ms = [-10**9] * 4  # integer ms when a lane may accept a new note (hold end + half beat)
+    last_ms = [-10**9] * 4
+    hold_end_ms = [-10**9] * 4
+    min_lane_ms = diff.lane_gap * BEAT * 1000.0 - 0.5
+    prev_lanes: set[int] = set()
+    prev_ms = -10**9
+    prev2_lane, prev2_ms = -1, -10**9
+    last_chord_pair: tuple[int, int] | None = None
+
+    # Uniform 16th/8th runs (>= 3 notes) or Normal beat walks (>= 4 notes) glide as smooth stairs/waves.
+    stair: dict[int, int] = {}
+    asc_wave = (0, 1, 2, 3, 2, 1)
+    desc_wave = (3, 2, 1, 0, 1, 2)
     i, rolls = 0, 0
     while i < len(events):
         k = i
-        if i + 1 < len(events) and events[i + 1].step - events[i].step <= 2:
+        max_sp = 4 if diff.grid == 4 else 2
+        if (not events[i].chord and not events[i].hold
+                and i + 1 < len(events) and 1 <= events[i + 1].step - events[i].step <= max_sp):
             spacing = events[i + 1].step - events[i].step
             while (k + 1 < len(events) and events[k + 1].step - events[k].step == spacing
-                   and events[k + 1].cls == events[i].cls and not events[k + 1].chord and not events[k + 1].hold):
+                   and not events[k + 1].chord and not events[k + 1].hold):
                 k += 1
-        if k - i + 1 >= 4 and not events[i].chord and not events[i].hold:
-            for n, e in enumerate(events[i:k + 1]):
-                stair[e.step] = n if rolls % 2 == 0 else 3 - (n % 4)
-            rolls += 1
-            i = k + 1
-        else:
-            i += 1
+            min_run = 4 if spacing == 4 else 3
+            if k - i + 1 >= min_run:
+                wave = asc_wave if rolls % 2 == 0 else desc_wave
+                for n, ev in enumerate(events[i:k + 1]):
+                    stair[ev.step] = wave[n % len(wave)]
+                rolls += 1
+                i = k + 1
+                continue
+        i += 1
 
-    def usable(lane: int, t: float) -> bool:
-        return t >= free_at[lane] - 1e-6 and t - last_at[lane] >= lane_gap
+    def usable(lane: int, t_ms: int) -> bool:
+        return t_ms >= free_ms[lane] and (t_ms - last_ms[lane]) >= min_lane_ms
 
-    last_of_class: dict[int, tuple[int, float]] = {}
+    last_of_class: dict[int, tuple[int, int]] = {}
+    close_window_ms = int(round(1.5 * BEAT * 1000.0))
+    trill_window_ms = int(round(2.2 * BEAT * 1000.0))
     for e in events:
-        t = step_time(e.step)
-        close = t - prev_time < BEAT + 1e-6
-        held = sum(1 for end in hold_end if end > t + 1e-6)
+        t_ms = ms(step_time(e.step))
+        close = (t_ms - prev_ms) <= close_window_ms
+        held = sum(1 for end in hold_end_ms if end > t_ms)
         if held >= 2:
             continue
         if e.chord and held:
             e.chord = False  # never more than two keys down at once
         if e.chord:
-            pairs = [(0, 3), (1, 2), (0, 2), (1, 3), (0, 1), (2, 3)]
-            pair = next((p for p in pairs if usable(p[0], t) and usable(p[1], t)), None)
-            if pair is None:
+            ergonomic_pairs = [(0, 3), (1, 2), (0, 2), (1, 3)]
+            fallback_pairs = [(0, 1), (2, 3)]
+            cands = [p for p in ergonomic_pairs if usable(p[0], t_ms) and usable(p[1], t_ms)]
+            if not cands:
+                cands = [p for p in fallback_pairs if usable(p[0], t_ms) and usable(p[1], t_ms)]
+            if not cands:
                 e.chord = False
             else:
-                e.lanes = pair
+                def chord_score(p: tuple[int, int]) -> tuple[int, int, int]:
+                    no_jack = 1 if (not close or set(p).isdisjoint(prev_lanes)) else 0
+                    varied = 1 if p != last_chord_pair else 0
+                    if e.cls in (KICK, BASS):
+                        musical = 2 if 0 in p else 1
+                    elif e.cls == SNARE:
+                        musical = 2 if 3 in p else 1
+                    else:
+                        musical = 2 if p in ((1, 2), (0, 2), (1, 3)) else 1
+                    return (no_jack, varied, musical)
+
+                best_pair = max(cands, key=chord_score)
+                e.lanes = best_pair
+                last_chord_pair = best_pair
         if not e.lanes:
             group = KICK if e.cls in (KICK, BASS) else SNARE if e.cls == SNARE else STAB
             recent = last_of_class.get(group)
-            repeat = recent is not None and t - recent[1] < BEAT + 1e-6
             if e.step in stair:
-                n = stair[e.step] % 4
-                order = [n, (n + 1) % 4, (n + 3) % 4, (n + 2) % 4]
-            elif group == KICK:
-                alternate = repeat or (diff.grid == 4 and recent is not None and recent[0] == 0)
-                order = [1, 0] if alternate and recent[0] == 0 else [0, 1]
-                order += [2, 3]
-            elif group == SNARE:
-                alternate = repeat or (diff.grid == 4 and recent is not None and recent[0] == 3)
-                order = [2, 3] if alternate and recent[0] == 3 else [3, 2]
-                order += [1, 0]
+                s_lane = stair[e.step]
+                if close and s_lane in prev_lanes:
+                    s_lane = 3 - s_lane
+                adj = [l for l in (s_lane - 1, s_lane + 1, 3 - s_lane, 0, 1, 2, 3) if 0 <= l <= 3 and l != s_lane]
+                seen = [s_lane]
+                for l in adj:
+                    if l not in seen:
+                        seen.append(l)
+                order = [l for l in seen if not (close and l in prev_lanes)] + [l for l in seen if close and l in prev_lanes]
+            elif close and prev_lanes:
+                if len(prev_lanes) == 2:
+                    comp = [l for l in range(4) if l not in prev_lanes]
+                    if group == SNARE:
+                        comp.sort(reverse=True)
+                    elif group == STAB:
+                        comp.sort(key=lambda l: (0 if l in (1, 2) else 1, l))
+                    order = comp + [l for l in range(4) if l in prev_lanes]
+                else:
+                    pl = next(iter(prev_lanes))
+                    if pl < 2:
+                        opp = [3, 2] if group == SNARE else [2, 3]
+                        partner = 1 - pl
+                    else:
+                        opp = [0, 1] if group == KICK else [1, 0]
+                        partner = 5 - pl
+                    if prev2_lane in opp and (t_ms - prev2_ms) <= trill_window_ms:
+                        opp = [l for l in opp if l != prev2_lane] + [prev2_lane]
+                    order = opp + [partner, pl]
             else:
-                order = [2, 1] if recent is not None and recent[0] == 1 else [1, 2]
-                order += [0, 3] if prev_lane >= 2 else [3, 0]
-            if close:
-                # Avoid jacks when a different lane is free.
-                order = [l for l in order if l != prev_lane] + [prev_lane]
-            lane = next((l for l in order if usable(l, t)), None)
+                if group == KICK:
+                    order = [1, 0, 2, 3] if (recent is not None and recent[0] == 0) else [0, 1, 2, 3]
+                elif group == SNARE:
+                    order = [2, 3, 1, 0] if (recent is not None and recent[0] == 3) else [3, 2, 1, 0]
+                else:
+                    order = [2, 1, 0, 3] if (recent is not None and recent[0] == 1) else [1, 2, 3, 0]
+            lane = next((l for l in order if usable(l, t_ms)), None)
             if lane is None:
                 e.lanes = ()
                 continue
             e.lanes = (lane,)
-            last_of_class[group] = (lane, t)
+            last_of_class[group] = (lane, t_ms)
         for lane in e.lanes:
-            last_at[lane] = t
-            free_at[lane] = t + (e.hold + 0.5) * BEAT if e.hold else t
+            last_ms[lane] = t_ms
             if e.hold:
-                hold_end[lane] = t + e.hold * BEAT
-        prev_lane = e.lanes[-1] if len(e.lanes) == 1 else e.lanes[0]
-        prev_time = t
+                end_h = ms(step_time(e.step) + e.hold * BEAT)
+                hold_end_ms[lane] = end_h
+                free_ms[lane] = ms(step_time(e.step) + (e.hold + 0.5) * BEAT)
+            else:
+                free_ms[lane] = t_ms
+        if len(prev_lanes) == 1:
+            prev2_lane, prev2_ms = next(iter(prev_lanes)), prev_ms
+        prev_lanes = set(e.lanes)
+        prev_ms = t_ms
     events[:] = [e for e in events if e.lanes]
 
 
@@ -698,7 +766,13 @@ def pitch_reference(an: Analysis, s: int) -> float:
 def pitch_to_y(an: Analysis, s: int, pitch: float) -> float:
     if np.isnan(pitch):
         return 0.5
-    return float(np.clip(0.5 - (pitch - pitch_reference(an, s)) * 0.034, 0.16, 0.84))
+    return float(np.clip(0.5 - (pitch - pitch_reference(an, s)) * 0.032, MOUSE_Y_MIN, MOUSE_Y_MAX))
+
+
+def target_mouse_distance(dt_ms: float) -> float:
+    """Target Euclidean distance scaling positively with dt_ms since previous mouse note ended."""
+    raw = 0.15 + 0.50 * (1.0 - math.exp(-max(0.0, float(dt_ms)) / 620.0))
+    return float(np.clip(raw, 0.15, 0.68))
 
 
 def select_mouse(an: Analysis, diff: Difficulty) -> list[MouseEvent]:
@@ -773,75 +847,177 @@ def distance(a: tuple, b: tuple) -> float:
 
 
 def place_mouse(an: Analysis, diff: Difficulty, events: list[MouseEvent]) -> None:
-    """y follows pitch; x sweeps across the area and bounces, so phrases read left-right-left."""
-    x, y, direction = 0.3, 0.5, 1.0
-    prev_end_t = -1e9
+    """Scale spatial distance with dt_ms via d(dt_ms) within [0.16, 0.84] x [0.18, 0.82],
+    blending melodic pitch height and enforcing >= 0.18 clearance over the preceding 1100 ms."""
+    angles = [2.0 * math.pi * k / 72.0 for k in range(72)]
+    slider_angles = [2.0 * math.pi * k / 48.0 for k in range(48)]
+    grid_pts = [
+        (round(float(gx), 4), round(float(gy), 4))
+        for gx in np.linspace(MOUSE_X_MIN, MOUSE_X_MAX, 25)
+        for gy in np.linspace(MOUSE_Y_MIN, MOUSE_Y_MAX, 25)
+    ]
+    min_sep = MOUSE_MIN_DIST + 0.002  # guard against 4-decimal rounding
+    history: list[tuple[int, int, tuple[float, float], tuple[float, float], list[tuple[float, float]]]] = []
+    direction = 1.0
+    prev_vec = (1.0, 0.0)
     prev_section = None
-    for ev in events:
-        t = step_time(ev.step)
-        gap = t - prev_end_t
+
+    for idx, ev in enumerate(events):
+        t_ms = ms(step_time(ev.step))
+        pitch_y = pitch_to_y(an, ev.step, an.pitch[ev.step])
         sec = section_of(ev.step / 4)[0]
-        if gap > 3 * BEAT or sec != prev_section:
-            direction = 1.0 if x < 0.5 else -1.0  # a new phrase heads back across the area
-        prev_section = sec
-        gap_beats = min(gap / BEAT, 8.0)
-        step_x = float(np.clip(0.06 + 0.07 * gap_beats, 0.10, 0.30))
-        nx = x + direction * step_x
-        if not AREA_MIN <= nx <= AREA_MAX:
-            direction = -direction
-            nx = x + direction * step_x
-        ny = pitch_to_y(an, ev.step, an.pitch[ev.step])
-        if prev_end_t > -1e8:
-            limit = diff.speed * gap * 0.92
-            d = distance((nx, ny), (x, y))
-            if d > limit:
-                f = limit / d
-                nx, ny = x + (nx - x) * f, y + (ny - y) * f
-            if gap < BEAT - 1e-6:
-                # Quick consecutive circles must not overlap: keep >= 0.11 apart (plain units).
-                while math.hypot(nx - x, ny - y) < 0.11 and AREA_MIN <= nx + direction * 0.01 <= AREA_MAX:
-                    nx += direction * 0.01
-                if math.hypot(nx - x, ny - y) < 0.11:
-                    ny = float(np.clip(y + (0.12 if y < 0.5 else -0.12), 0.16, 0.84))
-        ev.x, ev.y = round(float(nx), 4), round(float(ny), 4)
-        x, y = ev.x, ev.y
-        prev_end_t = t
-        if ev.beats:
-            n_points = int(np.clip(round(ev.beats), diff.waypoints[0], diff.waypoints[1]))
-            length = float(np.clip(0.09 * ev.beats / ASPECT + 0.06, 0.12, 0.34))
-            if not AREA_MIN <= x + direction * length <= AREA_MAX:
+
+        if idx == 0:
+            ev.x, ev.y = 0.28, round(pitch_y, 4)
+            prev_section = sec
+            recent_anchors: list[tuple[float, float]] = []
+        else:
+            _, prev_end_ms, _, prev_pos, _ = history[-1]
+            prev_x, prev_y = prev_pos
+            dt_ms = max(1, t_ms - prev_end_ms)
+            gap_s = dt_ms / 1000.0
+            target_d = target_mouse_distance(dt_ms)
+            max_d = min(0.68, diff.speed * gap_s - 0.002)
+
+            if dt_ms > 1050 or sec != prev_section:
+                direction = 1.0 if prev_x < 0.5 else -1.0
+            elif (direction > 0 and prev_x > 0.68) or (direction < 0 and prev_x < 0.32):
                 direction = -direction
+            prev_section = sec
+
+            recent_anchors = []
+            recent_waypoints: list[tuple[float, float]] = []
+            for s_ms, e_ms, h_pos, e_pos, pts in history:
+                if (t_ms - s_ms) <= MOUSE_RECENT_WINDOW_MS or (t_ms - e_ms) <= MOUSE_RECENT_WINDOW_MS:
+                    recent_anchors.append(h_pos)
+                    if e_pos != h_pos:
+                        recent_anchors.append(e_pos)
+                    if len(pts) > 2:
+                        recent_waypoints.extend(pts[1:-1])
+
+            radii = []
+            for mult in (1.0, 0.98, 1.02, 0.94, 1.06, 0.88, 1.12, 0.80, 1.20, 0.70, 0.60):
+                r = float(np.clip(target_d * mult, min_sep, max(min_sep, max_d)))
+                if r <= max_d and all(abs(r - er) > 1e-4 for er in radii):
+                    radii.append(r)
+
+            raw_cands: list[tuple[float, float]] = []
+            for r in radii:
+                for ang in angles:
+                    cx = round(prev_x + r * math.cos(ang), 4)
+                    cy = round(prev_y + r * math.sin(ang), 4)
+                    if MOUSE_X_MIN <= cx <= MOUSE_X_MAX and MOUSE_Y_MIN <= cy <= MOUSE_Y_MAX:
+                        raw_cands.append((cx, cy))
+            raw_cands.extend(grid_pts)
+
+            v_norm = math.hypot(*prev_vec) or 1.0
+            best_choice: tuple[float, float, float] | None = None
+            for clearance in (min_sep, MOUSE_MIN_DIST + 1e-4):
+                for cx, cy in raw_cands:
+                    d_prev = math.hypot(cx - prev_x, cy - prev_y)
+                    if d_prev < clearance or d_prev > max_d:
+                        continue
+                    if any(math.hypot(cx - ax, cy - ay) < clearance for ax, ay in recent_anchors):
+                        continue
+                    cos_turn = ((cx - prev_x) * prev_vec[0] + (cy - prev_y) * prev_vec[1]) / (d_prev * v_norm)
+                    turn_pen = max(0.0, -cos_turn - 0.15) if dt_ms <= 850 else 0.0
+                    dir_pen = 0.0 if (cx - prev_x) * direction >= -0.02 else 1.0
+                    wp_pen = 1.5 if any(math.hypot(cx - wx, cy - wy) < min_sep for wx, wy in recent_waypoints) else 0.0
+                    cost = (
+                        6.5 * abs(d_prev - target_d)
+                        + 1.35 * abs(cy - pitch_y)
+                        + 0.28 * dir_pen
+                        + 0.20 * turn_pen
+                        + wp_pen
+                    )
+                    cand_tuple = (cost, cx, cy)
+                    if best_choice is None or cand_tuple < best_choice:
+                        best_choice = cand_tuple
+                if best_choice is not None:
+                    break
+
+            if best_choice is not None:
+                _, nx, ny = best_choice
+            else:
+                nx = round(float(np.clip(prev_x + direction * 0.20, MOUSE_X_MIN, MOUSE_X_MAX)), 4)
+                ny = round(pitch_y, 4)
+
+            prev_vec = (nx - prev_x, ny - prev_y)
+            if abs(nx - prev_x) > 0.04:
+                direction = 1.0 if nx > prev_x else -1.0
+            ev.x, ev.y = nx, ny
+
+        if ev.beats:
+            end_ms = ms(step_time(ev.step) + ev.beats * BEAT)
+            dur_s = max(0.1, (end_ms - t_ms) / 1000.0)
+            n_points = int(np.clip(round(ev.beats), diff.waypoints[0], diff.waypoints[1]))
+            desired_len = float(np.clip(0.095 * ev.beats + 0.06, 0.14, min(0.36, diff.speed * dur_s * 0.72)))
             end_step = min(an.steps - 1, ev.step + int(round(ev.beats * 4)) - 1)
             end_pitch = an.pitch[end_step]
-            ex = x + direction * length
-            ey = y if np.isnan(end_pitch) else y + (pitch_to_y(an, end_step, end_pitch) - y) * 0.5
-            # Quadratic Bezier with a soft bulge toward the centre line: smooth, readable arcs.
-            chord = math.hypot(ex - x, ey - y) or 1.0
-            nx_, ny_ = -(ey - y) / chord, (ex - x) / chord
-            if (0.5 - (y + ey) / 2) * ny_ < 0:
+            end_py = (
+                ev.y if np.isnan(end_pitch)
+                else float(np.clip(0.35 * ev.y + 0.65 * pitch_to_y(an, end_step, end_pitch),
+                                   MOUSE_Y_MIN + 0.01, MOUSE_Y_MAX - 0.01))
+            )
+            best_end: tuple[float, float, float] | None = None
+            for mult in (1.0, 0.92, 1.08, 0.82, 0.72):
+                r = max(0.12, desired_len * mult)
+                for ang in slider_angles:
+                    ex = round(ev.x + r * math.cos(ang), 4)
+                    ey = round(ev.y + r * math.sin(ang), 4)
+                    if not (MOUSE_X_MIN + 0.01 <= ex <= MOUSE_X_MAX - 0.01
+                            and MOUSE_Y_MIN + 0.01 <= ey <= MOUSE_Y_MAX - 0.01):
+                        continue
+                    d_end = math.hypot(ex - ev.x, ey - ev.y)
+                    dir_pen = 0.0 if (ex - ev.x) * direction >= -0.02 else 1.0
+                    anchor_pen = 1.2 if any(math.hypot(ex - ax, ey - ay) < min_sep for ax, ay in recent_anchors) else 0.0
+                    sc = 4.0 * abs(d_end - desired_len) + 1.4 * abs(ey - end_py) + 0.35 * dir_pen + anchor_pen
+                    cand_end = (sc, ex, ey)
+                    if best_end is None or cand_end < best_end:
+                        best_end = cand_end
+            if best_end is not None:
+                _, ex, ey = best_end
+            else:
+                ex = float(np.clip(ev.x + (0.16 if ev.x < 0.5 else -0.16), MOUSE_X_MIN + 0.01, MOUSE_X_MAX - 0.01))
+                ey = end_py
+
+            chord = math.hypot(ex - ev.x, ey - ev.y) or 1.0
+            nx_, ny_ = -(ey - ev.y) / chord, (ex - ev.x) / chord
+            if (0.5 - (ev.y + ey) / 2) * ny_ < 0:
                 nx_, ny_ = -nx_, -ny_
-            cx, cy = (x + ex) / 2 + nx_ * 0.18 * chord, (y + ey) / 2 + ny_ * 0.18 * chord
+            cx = float(np.clip((ev.x + ex) / 2 + nx_ * 0.16 * chord, MOUSE_X_MIN, MOUSE_X_MAX))
+            cy = float(np.clip((ev.y + ey) / 2 + ny_ * 0.16 * chord, MOUSE_Y_MIN, MOUSE_Y_MAX))
             path = []
             for k in range(1, n_points + 1):
                 u = k / n_points
-                bx = (1 - u) ** 2 * x + 2 * (1 - u) * u * cx + u * u * ex
-                by = (1 - u) ** 2 * y + 2 * (1 - u) * u * cy + u * u * ey
-                path.append([round(float(np.clip(bx, AREA_MIN, AREA_MAX)), 4),
-                             round(float(np.clip(by, AREA_MIN, AREA_MAX)), 4)])
+                bx = (1 - u) ** 2 * ev.x + 2 * (1 - u) * u * cx + u * u * ex
+                by = (1 - u) ** 2 * ev.y + 2 * (1 - u) * u * cy + u * u * ey
+                path.append([round(float(np.clip(bx, MOUSE_X_MIN, MOUSE_X_MAX)), 4),
+                             round(float(np.clip(by, MOUSE_Y_MIN, MOUSE_Y_MAX)), 4)])
             ev.path = path
-            x, y = path[-1]
-            prev_end_t = t + ev.beats * BEAT
+            end_pt = (path[-1][0], path[-1][1])
+            prev_vec = (end_pt[0] - ev.x, end_pt[1] - ev.y)
+            if abs(end_pt[0] - ev.x) > 0.04:
+                direction = 1.0 if end_pt[0] > ev.x else -1.0
+            history.append((t_ms, end_ms, (ev.x, ev.y), end_pt, [(ev.x, ev.y)] + [tuple(p) for p in path]))
+        else:
+            history.append((t_ms, t_ms, (ev.x, ev.y), (ev.x, ev.y), [(ev.x, ev.y)]))
 
 
 def sv_points(diff: Difficulty) -> list[dict]:
-    """Expert breathes with the song: calmer scroll in quiet parts, a little faster in drops."""
+    """Expert breathes with the song: calmer scroll in quiet parts, faster in drops and climax."""
     if not diff.sv:
         return [dict(time=0, speed=1.0, easing="linear")]
-    speeds = {"quiet": 0.9, "build": 1.0, "riser": 1.0, "drop": 1.1}
+    speeds = {"quiet": 0.9, "build": 1.0, "riser": 1.04, "drop": 1.1}
     points: list[dict] = []
-    for _, j0, _, kind in SECTIONS:
-        if not points or points[-1]["speed"] != speeds[kind]:
-            points.append(dict(time=0 if j0 == 0 else ms(beat_time(j0)), speed=speeds[kind], easing="linear"))
+    for name, j0, _, kind in SECTIONS:
+        spd = speeds[kind]
+        if not points or points[-1]["speed"] != spd:
+            points.append(dict(time=0 if j0 == 0 else ms(beat_time(j0)), speed=spd, easing="linear"))
+        if name == "dropA":
+            points.append(dict(time=ms(beat_time(128)), speed=1.14, easing="linear"))
+        elif name == "dropC":
+            points.append(dict(time=ms(beat_time(432)), speed=1.15, easing="linear"))
     return points
 
 
@@ -959,6 +1135,12 @@ def validate_playability(chart: dict, diff: Difficulty) -> list[str]:
             if b["time"] - a["time"] < lane_gap:
                 errors.append(f"lane {lane}: same-lane gap {b['time'] - a['time']} ms at {b['time']}")
     holds = [n for n in kb if n["type"] == "hold"]
+    if not holds:
+        errors.append("expected at least one hold note")
+    if not any(n["type"] == "slider" for n in mouse):
+        errors.append("expected at least one slider note")
+    if diff.sv and len(chart["sv_points"]) < 10:
+        errors.append(f"expected >= 10 sv_points in {diff.name}, got {len(chart['sv_points'])}")
     for t in times:
         starting = sum(1 for n in kb if n["time"] == t)
         held = sum(1 for h in holds if h["time"] < t < h["time"] + h["duration"])
@@ -970,8 +1152,9 @@ def validate_playability(chart: dict, diff: Difficulty) -> list[str]:
     rest_ms = diff.slider_rest * beat_ms - 1
     for i, n in enumerate(mouse):
         pts = [(n["x"], n["y"])] + [tuple(p) for p in n["slider_path"]]
-        if any(not (0.1 <= c <= 0.9) for p in pts for c in p):
-            errors.append(f"mouse note {n['time']}: outside 0.1..0.9")
+        if any(not (MOUSE_X_MIN - 1e-6 <= p[0] <= MOUSE_X_MAX + 1e-6
+                    and MOUSE_Y_MIN - 1e-6 <= p[1] <= MOUSE_Y_MAX + 1e-6) for p in pts):
+            errors.append(f"mouse note {n['time']}: outside [{MOUSE_X_MIN}, {MOUSE_X_MAX}] x [{MOUSE_Y_MIN}, {MOUSE_Y_MAX}]")
         end, _ = mouse_end(n)
         if n["time"] < NOTE_START * 1000 or end > NOTE_END * 1000:
             errors.append(f"mouse note outside {NOTE_START}-{NOTE_END} s at {n['time']}")
@@ -990,6 +1173,14 @@ def validate_playability(chart: dict, diff: Difficulty) -> list[str]:
                     errors.append(f"slider {n['time']}: sharp turn")
         if i == 0:
             continue
+        for j in range(i):
+            older = mouse[j]
+            older_end, older_end_pos = mouse_end(older)
+            if (n["time"] - older["time"]) <= MOUSE_RECENT_WINDOW_MS or (n["time"] - older_end) <= MOUSE_RECENT_WINDOW_MS:
+                dh = math.hypot(n["x"] - older["x"], n["y"] - older["y"])
+                de = math.hypot(n["x"] - older_end_pos[0], n["y"] - older_end_pos[1])
+                if min(dh, de) < MOUSE_MIN_DIST - 1e-6:
+                    errors.append(f"mouse note {n['time']} within {min(dh, de):.3f} (< {MOUSE_MIN_DIST}) of {older['time']}")
         prev = mouse[i - 1]
         prev_end, prev_pos = mouse_end(prev)
         if n["time"] - prev["time"] < diff.mouse_gap * beat_ms / 4 - 1:
@@ -1000,8 +1191,6 @@ def validate_playability(chart: dict, diff: Difficulty) -> list[str]:
         travel = math.hypot(n["x"] - prev_pos[0], n["y"] - prev_pos[1])
         if gap <= 0 or travel > diff.speed * gap + 1e-9:
             errors.append(f"mouse jump {travel:.3f} in {gap * 1000:.0f} ms at {n['time']}")
-        if gap * 1000 < beat_ms - 1 and travel < 0.10:
-            errors.append(f"overlapping consecutive targets at {n['time']} ({travel:.3f})")
     return errors
 
 
@@ -1198,17 +1387,24 @@ def main() -> int:
     parser.add_argument("--skip-audio", action="store_true", help="keep an existing music.ogg")
     parser.add_argument("--preview-dir", type=Path, help="also render review piano-rolls into this folder")
     args = parser.parse_args()
-    if not args.source.is_file():
-        print(f"source audio not found: {args.source}", file=sys.stderr)
-        return 2
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    samples = decode(args.source)
-    print(f"decoded {args.source.name}: {len(samples) / SR:.3f} s, {SR} Hz stereo")
     ogg = OUT_DIR / "music.ogg"
-    if not (args.skip_audio and ogg.is_file()):
+
+    if args.skip_audio:
+        if not ogg.is_file():
+            print(f"existing audio not found: {ogg}", file=sys.stderr)
+            return 2
+        audio_source = ogg
+    else:
+        if not args.source.is_file():
+            print(f"source audio not found: {args.source}", file=sys.stderr)
+            return 2
         encode_ogg(args.source, ogg)
         print(f"wrote {ogg.relative_to(ROOT)} ({ogg.stat().st_size / 1e6:.2f} MB)")
+        audio_source = args.source
+
+    samples = decode(audio_source)
+    print(f"decoded {audio_source.name}: {len(samples) / SR:.3f} s, {SR} Hz stereo")
 
     an = analyze(samples)
     results = []
@@ -1217,9 +1413,11 @@ def main() -> int:
         errors = validate_loader_rules(chart) + validate_playability(chart, diff)
         results.append((diff, chart, errors))
 
+    video_file = "bg.mp4" if (OUT_DIR / "bg.mp4").is_file() else ""
     info = dict(version=2, id=CHART_ID, title=TITLE, artist=ARTIST, charter="Sakura",
                 source="Sakura Originals · Vol. 02", tags=["original", "electronic", "ai-generated", "suno"],
                 music_file="music.ogg", cover_file="cover.png", background_file="",
+                video_file=video_file,
                 preview_time=ms(beat_time(64)), bpm=BPM, offset=0, difficulties=[])
     for diff, chart, _ in results:
         file_name = f"{diff.name.lower()}.json"
@@ -1230,10 +1428,12 @@ def main() -> int:
             mouse_note_count=len(chart["mouse_notes"])))
     write_json(OUT_DIR / "info.json", info)
 
-    sys.dont_write_bytecode = True
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from build_starter_album import cover  # reuse the built-in album cover style
-    cover(OUT_DIR, (236, 150, 178), "06", TITLE)
+    cover_path = OUT_DIR / "cover.png"
+    if not (args.skip_audio and cover_path.is_file()):
+        sys.dont_write_bytecode = True
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from build_starter_album import cover  # reuse the built-in album cover style
+        cover(OUT_DIR, (236, 150, 178), "06", TITLE)
 
     print_report(results)
     if args.preview_dir:

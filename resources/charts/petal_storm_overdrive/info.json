@@ -22,21 +22,21 @@
       "name": "Hard",
       "level": 10.5,
       "chart_file": "hard.json",
-      "note_count": 896,
-      "hold_count": 26,
+      "note_count": 932,
+      "hold_count": 8,
       "mouse_note_count": 276,
-      "thumb_count": 33,
-      "synergy_count": 107
+      "thumb_count": 36,
+      "synergy_count": 105
     },
     {
       "name": "Expert",
       "level": 14.5,
       "chart_file": "expert.json",
-      "note_count": 1382,
-      "hold_count": 20,
+      "note_count": 1320,
+      "hold_count": 12,
       "mouse_note_count": 415,
-      "thumb_count": 26,
-      "synergy_count": 152
+      "thumb_count": 45,
+      "synergy_count": 159
     }
   ]
 }

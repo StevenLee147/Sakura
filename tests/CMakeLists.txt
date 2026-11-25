@@ -22,6 +22,7 @@ add_executable(SakuraTests
     test_v1_stress.cpp
     test_online_v110.cpp
     test_market_sync_v120.cpp
+    test_v130_feel_and_charts.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

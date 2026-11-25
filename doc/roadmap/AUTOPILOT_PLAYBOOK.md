@@ -34,6 +34,20 @@
 
 ---
 
+## 单版本 5 路并行子智能体（5-Parallel-Subagent）执行策略
+
+在每个里程碑版本内部，主协调智能体（Coordinator）应优先对齐核心共享头文件契约，随后在同一轮工具调用中通过 `task` 工具（`agent_type: "general-purpose"`）并行启动 **5 个文件作用域严格互斥（Disjoint File Scopes）** 的子智能体同步开发：
+
+1. **Subagent 1（核心逻辑与状态）**：独占修改 `src/game/`、`src/core/` 与根 `CMakeLists.txt`。
+2. **Subagent 2（舞台手感与特效）**：独占修改 `src/scene/scene_game.*`、`src/effects/`。
+3. **Subagent 3（外围场景与网络/UI）**：独占修改 `src/scene/scene_select.*`、`src/scene/scene_result.*`、`src/ui/`、`src/net/`。
+4. **Subagent 4（音效合成与谱面管线）**：独占修改 `src/audio/`、`scripts/`、`resources/charts/`、`server/`。
+5. **Subagent 5（单测审计与文档）**：独占修改 `tests/`、`doc/`。
+
+**并行铁律**：各子智能体 Prompt 必须显式列出允许写入的文件白名单，严禁跨界修改其他目录或自行执行 `git commit`；待 5 路全部返回后，由主智能体统一执行编译、`ctest`、`--smoke-test` 与发版提交流程。
+
+---
+
 ## 标准单版本闭环执行流
 
 ### Step A — 开发与增量保存

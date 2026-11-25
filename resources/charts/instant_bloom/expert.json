@@ -85,15 +85,14 @@
     },
     {
       "time": 1686,
-      "lane": 3,
+      "lane": 1,
       "type": "tap",
       "link_id": 1
     },
     {
       "time": 1900,
-      "lane": 2,
-      "type": "hold",
-      "duration": 857
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 2114,
@@ -101,18 +100,35 @@
       "type": "tap"
     },
     {
-      "time": 2329,
+      "time": 2221,
       "lane": 3,
+      "type": "hold",
+      "duration": 429
+    },
+    {
+      "time": 2329,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 2543,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 2757,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 2971,
       "lane": 0,
+      "type": "tap",
+      "link_id": 2
+    },
+    {
+      "time": 2971,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -122,28 +138,32 @@
     },
     {
       "time": 3400,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 3614,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 3829,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 0,
+      "type": "tap"
     },
     {
-      "time": 4043,
+      "time": 3829,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 4043,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 4150,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -153,37 +173,38 @@
     },
     {
       "time": 4364,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 4471,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 4686,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 4793,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 5007,
+      "time": 4793,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 5114,
       "lane": 3,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 3
     },
     {
       "time": 5329,
-      "lane": 0,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 5543,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -192,33 +213,44 @@
       "type": "tap"
     },
     {
-      "time": 5650,
-      "lane": 0,
+      "time": 5757,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 6186,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 6400,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 6829,
+      "time": 6400,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 7043,
+      "time": 6829,
       "lane": 2,
+      "type": "tap",
+      "link_id": 4
+    },
+    {
+      "time": 7043,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 7257,
-      "lane": 4,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 7257,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -228,7 +260,7 @@
     },
     {
       "time": 7579,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -243,7 +275,7 @@
     },
     {
       "time": 8221,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -254,14 +286,13 @@
     {
       "time": 8543,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 5
     },
     {
       "time": 8971,
       "lane": 4,
-      "type": "hold",
-      "duration": 643,
-      "link_id": 2
+      "type": "tap"
     },
     {
       "time": 9186,
@@ -269,13 +300,8 @@
       "type": "tap"
     },
     {
-      "time": 9400,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 9614,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -284,23 +310,23 @@
       "type": "tap"
     },
     {
-      "time": 10043,
-      "lane": 3,
+      "time": 9829,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 10257,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 10364,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 10471,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -311,87 +337,98 @@
     {
       "time": 10686,
       "lane": 1,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 10900,
-      "lane": 3,
       "type": "tap"
     },
     {
-      "time": 11329,
+      "time": 10686,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 11436,
+      "time": 10900,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 11329,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 11543,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 6
+    },
+    {
+      "time": 11543,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 11971,
+      "time": 11757,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 12079,
+      "time": 11971,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 12186,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 12400,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 12400,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 12614,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 12829,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 12936,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 13043,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 13257,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 13364,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 13471,
+      "time": 13043,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 13257,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 13364,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 13686,
+      "time": 13471,
       "lane": 2,
+      "type": "tap",
+      "link_id": 7
+    },
+    {
+      "time": 13686,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -406,34 +443,34 @@
     },
     {
       "time": 14757,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 14971,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 3
+      "lane": 1,
+      "type": "tap"
     },
     {
-      "time": 15079,
-      "lane": 0,
+      "time": 14971,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 15186,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 15293,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 15400,
-      "lane": 3,
-      "type": "tap"
+      "lane": 0,
+      "type": "tap",
+      "link_id": 8
     },
     {
       "time": 15614,
@@ -442,23 +479,22 @@
     },
     {
       "time": 15829,
-      "lane": 4,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 15829,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 16043,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 4
-    },
-    {
-      "time": 16150,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 16257,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -467,70 +503,75 @@
       "type": "tap"
     },
     {
-      "time": 16579,
-      "lane": 3,
+      "time": 16686,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 16686,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 16900,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 17114,
-      "lane": 2,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 9
     },
     {
       "time": 17329,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 5
-    },
-    {
-      "time": 17436,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 17543,
+      "time": 17436,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 17543,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 17757,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 17971,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 18186,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 10
+    },
+    {
+      "time": 18400,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 18400,
       "lane": 3,
-      "type": "tap",
-      "link_id": 6
+      "type": "tap"
     },
     {
       "time": 18614,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 18721,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -539,14 +580,10 @@
       "type": "tap"
     },
     {
-      "time": 19150,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 19257,
-      "lane": 4,
-      "type": "tap"
+      "lane": 0,
+      "type": "tap",
+      "link_id": 11
     },
     {
       "time": 19364,
@@ -555,33 +592,37 @@
     },
     {
       "time": 19471,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 19686,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 19686,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 19793,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 19900,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 20114,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 20114,
       "lane": 2,
-      "type": "tap",
-      "link_id": 7
+      "type": "tap"
     },
     {
       "time": 20329,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -602,26 +643,32 @@
     {
       "time": 20971,
       "lane": 3,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 12
     },
     {
       "time": 21079,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 21186,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 21400,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 21614,
+      "time": 21400,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 21614,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 21829,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -636,29 +683,33 @@
     },
     {
       "time": 22257,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 8
-    },
-    {
-      "time": 22686,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 22900,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 23114,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 23221,
+      "time": 22686,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 13
+    },
+    {
+      "time": 22686,
       "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 22900,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 23114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 23221,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -668,49 +719,53 @@
     },
     {
       "time": 23543,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 9
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 23543,
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 23757,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 23971,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 24079,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 24186,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 24400,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 4,
+      "type": "tap",
+      "link_id": 14
     },
     {
       "time": 24614,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 24829,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 25043,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -719,15 +774,19 @@
       "type": "tap"
     },
     {
-      "time": 25471,
+      "time": 25364,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 25686,
+      "time": 25471,
       "lane": 2,
-      "type": "tap",
-      "link_id": 10
+      "type": "tap"
+    },
+    {
+      "time": 25686,
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 25900,
@@ -736,43 +795,48 @@
     },
     {
       "time": 26114,
-      "lane": 3,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 15
     },
     {
       "time": 26221,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 26329,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 26543,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 26757,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 26971,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 11
+      "lane": 1,
+      "type": "tap"
     },
     {
-      "time": 27186,
+      "time": 26971,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 27186,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 27400,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -782,42 +846,48 @@
     },
     {
       "time": 27829,
-      "lane": 2,
-      "type": "tap"
+      "lane": 0,
+      "type": "tap",
+      "link_id": 16
     },
     {
       "time": 27936,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 28043,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 28257,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 28471,
+      "time": 28257,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 28471,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
       "time": 28579,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 28686,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 28686,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 28900,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -827,14 +897,19 @@
     },
     {
       "time": 29114,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 12
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 29329,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
+    },
+    {
+      "time": 29543,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 17
     },
     {
       "time": 29543,
@@ -848,90 +923,99 @@
     },
     {
       "time": 29971,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 30186,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 30400,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 13
+      "lane": 0,
+      "type": "tap"
     },
     {
-      "time": 30614,
+      "time": 30400,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 30614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 30829,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 31043,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 31257,
-      "lane": 3,
-      "type": "tap"
+      "lane": 4,
+      "type": "tap",
+      "link_id": 18
     },
     {
       "time": 31471,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 31686,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 14
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 31900,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 32114,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 32114,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 32329,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 32543,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 32864,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 32971,
-      "lane": 3,
+      "lane": 0,
       "type": "tap",
-      "link_id": 15
+      "link_id": 19
+    },
+    {
+      "time": 32971,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 33186,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 33293,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -941,17 +1025,17 @@
     },
     {
       "time": 33614,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 33829,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 33936,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -960,51 +1044,46 @@
       "type": "tap"
     },
     {
-      "time": 34150,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 34257,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 34364,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 34471,
-      "lane": 3,
+      "lane": 2,
       "type": "tap",
-      "link_id": 16
+      "link_id": 20
     },
     {
       "time": 34686,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 34900,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 35007,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 35114,
+      "time": 34686,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 34900,
       "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 35114,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 35329,
       "lane": 3,
       "type": "tap",
-      "link_id": 17
+      "link_id": 21
     },
     {
       "time": 35436,
@@ -1013,12 +1092,12 @@
     },
     {
       "time": 35543,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 35650,
-      "lane": 0,
+      "time": 35543,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -1028,23 +1107,27 @@
     },
     {
       "time": 35864,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 35971,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 36400,
-      "lane": 4,
-      "type": "tap",
-      "link_id": 18
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 36400,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 36614,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -1054,83 +1137,83 @@
     },
     {
       "time": 36829,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 37043,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 37257,
-      "lane": 3,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 22
+    },
+    {
+      "time": 37257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 37471,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 19
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 37686,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 37793,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 37900,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 38114,
-      "lane": 3,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 38329,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 38436,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 38650,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 38757,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 38864,
+      "time": 38650,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 38757,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 38971,
+      "time": 38864,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 38971,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 38971,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 39186,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 39400,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -1140,27 +1223,32 @@
     },
     {
       "time": 39829,
-      "lane": 4,
+      "lane": 0,
       "type": "tap",
-      "link_id": 20
+      "link_id": 23
     },
     {
-      "time": 40043,
+      "time": 39829,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 40257,
+      "time": 40043,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 40364,
-      "lane": 2,
+      "time": 40257,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 40471,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 40686,
       "lane": 0,
       "type": "tap"
     },
@@ -1176,23 +1264,28 @@
     },
     {
       "time": 41007,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 41114,
-      "lane": 3,
+      "lane": 2,
       "type": "tap",
-      "link_id": 21
+      "link_id": 24
     },
     {
       "time": 41543,
-      "lane": 2,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 41543,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 41757,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -1202,23 +1295,23 @@
     },
     {
       "time": 42186,
-      "lane": 3,
-      "type": "tap"
+      "lane": 2,
+      "type": "tap",
+      "link_id": 25
     },
     {
       "time": 42400,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 22
-    },
-    {
-      "time": 42507,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 42614,
+      "time": 42400,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 42614,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -1235,46 +1328,52 @@
       "time": 43257,
       "lane": 0,
       "type": "hold",
-      "duration": 857
+      "duration": 429
     },
     {
       "time": 43364,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 43686,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 44114,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 44543,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 44650,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 44757,
+      "time": 43471,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 43686,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 44864,
+      "time": 44114,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 44971,
+      "time": 44114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 44543,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 26
+    },
+    {
+      "time": 44757,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 44864,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 44971,
+      "lane": 4,
       "type": "tap"
     },
     {
@@ -1289,9 +1388,8 @@
     },
     {
       "time": 45829,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 23
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 45936,
@@ -1304,85 +1402,85 @@
       "type": "tap"
     },
     {
-      "time": 46150,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 46257,
       "lane": 1,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 27
     },
     {
       "time": 46471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 46579,
+      "time": 46686,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 46686,
-      "lane": 4,
-      "type": "tap"
-    },
-    {
-      "time": 46900,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 47007,
-      "lane": 0,
+      "time": 46900,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 47114,
       "lane": 1,
-      "type": "tap",
-      "link_id": 24
+      "type": "tap"
     },
     {
       "time": 47329,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 47543,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 47543,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 47757,
       "lane": 2,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 28
     },
     {
       "time": 47971,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 48186,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 25
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 48293,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 48400,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 48400,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 48614,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -1391,15 +1489,15 @@
       "type": "tap"
     },
     {
-      "time": 48936,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
       "time": 49043,
       "lane": 0,
       "type": "tap",
-      "link_id": 26
+      "link_id": 29
+    },
+    {
+      "time": 49257,
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 49257,
@@ -1408,7 +1506,7 @@
     },
     {
       "time": 49471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -1422,13 +1520,13 @@
       "type": "tap"
     },
     {
-      "time": 49900,
-      "lane": 3,
+      "time": 50114,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 50114,
-      "lane": 4,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -1438,22 +1536,21 @@
     },
     {
       "time": 50436,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 50650,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 50543,
+      "time": 50757,
       "lane": 2,
-      "type": "tap",
-      "link_id": 27
-    },
-    {
-      "time": 50650,
-      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 50757,
+      "time": 50971,
       "lane": 1,
       "type": "tap"
     },
@@ -1463,44 +1560,34 @@
       "type": "tap"
     },
     {
-      "time": 51079,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 51186,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 51400,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 51507,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 51614,
-      "lane": 3,
-      "type": "tap"
+      "lane": 2,
+      "type": "tap",
+      "link_id": 30
     },
     {
       "time": 51721,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 51829,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 28
+      "lane": 4,
+      "type": "tap"
     },
     {
       "time": 52043,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -1510,24 +1597,24 @@
     },
     {
       "time": 52471,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 52579,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 52686,
-      "lane": 2,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 31
+    },
+    {
+      "time": 52686,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 52900,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 29
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 53114,
@@ -1542,9 +1629,12 @@
     {
       "time": 53543,
       "lane": 0,
-      "type": "hold",
-      "duration": 857,
-      "link_id": 30
+      "type": "tap"
+    },
+    {
+      "time": 53543,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 53757,
@@ -1553,18 +1643,24 @@
     },
     {
       "time": 53971,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 54186,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 54293,
-      "lane": 1,
+      "time": 54186,
+      "lane": 3,
       "type": "tap"
+    },
+    {
+      "time": 54293,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 54400,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 32
     },
     {
       "time": 54400,
@@ -1579,8 +1675,7 @@
     {
       "time": 54829,
       "lane": 3,
-      "type": "tap",
-      "link_id": 31
+      "type": "tap"
     },
     {
       "time": 55043,
@@ -1589,34 +1684,39 @@
     },
     {
       "time": 55257,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 55257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 55471,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 55686,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 55793,
-      "lane": 2,
-      "type": "tap"
+      "lane": 0,
+      "type": "tap",
+      "link_id": 33
     },
     {
       "time": 55900,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 56114,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 32
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 56114,
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 56329,
@@ -1624,121 +1724,86 @@
       "type": "tap"
     },
     {
-      "time": 56436,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
       "time": 56543,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 56650,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 56757,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 56864,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 56971,
-      "lane": 3,
-      "type": "tap"
+      "lane": 1,
+      "type": "hold",
+      "duration": 429,
+      "link_id": 34
     },
     {
       "time": 57079,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 57186,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 57293,
       "lane": 0,
       "type": "tap"
-    },
-    {
-      "time": 57400,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 33
     },
     {
       "time": 57507,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 57614,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 57721,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 57829,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 57936,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 58043,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 58257,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 58364,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 58471,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 34
-    },
-    {
-      "time": 58686,
-      "lane": 1,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 58900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 59007,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 59114,
+      "time": 58471,
       "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 58686,
+      "lane": 4,
+      "type": "tap",
+      "link_id": 35
+    },
+    {
+      "time": 58900,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 59007,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 59114,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -1748,49 +1813,47 @@
     },
     {
       "time": 59543,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 35
-    },
-    {
-      "time": 59757,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 59864,
       "lane": 1,
       "type": "tap"
     },
     {
+      "time": 59543,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 59757,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 59971,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 60186,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 60400,
-      "lane": 2,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 60507,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 60614,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 60829,
+      "time": 60400,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 60507,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 60614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 60829,
+      "lane": 2,
       "type": "tap",
       "link_id": 36
     },
@@ -1801,53 +1864,58 @@
     },
     {
       "time": 61257,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 61257,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 61471,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 61686,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 61793,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 61900,
-      "lane": 1,
+      "time": 61686,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 62007,
+      "time": 61900,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 62114,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 62114,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 62329,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 62543,
-      "lane": 3,
+      "lane": 0,
       "type": "tap",
       "link_id": 37
     },
     {
       "time": 62757,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 62971,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -1857,14 +1925,18 @@
     },
     {
       "time": 63186,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 63400,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 38
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 63829,
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 63829,
@@ -1872,18 +1944,13 @@
       "type": "tap"
     },
     {
-      "time": 63936,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 64043,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 64257,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -1892,152 +1959,141 @@
       "type": "tap"
     },
     {
-      "time": 64579,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 64686,
-      "lane": 3,
+      "lane": 0,
       "type": "tap",
-      "link_id": 39
+      "link_id": 38
     },
     {
       "time": 64793,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 64900,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 65007,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 65114,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 65221,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 65329,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 65543,
-      "lane": 2,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 65650,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 65757,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 40
-    },
-    {
-      "time": 65864,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 65971,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 66079,
-      "lane": 0,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 39
     },
     {
       "time": 66186,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 66400,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 66400,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 66614,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 66829,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 66936,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 67043,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 67257,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 41
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 67257,
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 67471,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 67686,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 40
     },
     {
       "time": 67900,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 68114,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 42
-    },
-    {
-      "time": 68329,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 68543,
+      "time": 68114,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 68650,
+      "time": 68329,
       "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 68543,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 68757,
       "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 68971,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2052,18 +2108,19 @@
     },
     {
       "time": 69400,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 69507,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 69614,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
+    },
+    {
+      "time": 69829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 41
     },
     {
       "time": 69829,
@@ -2073,37 +2130,36 @@
     {
       "time": 70043,
       "lane": 2,
-      "type": "tap",
-      "link_id": 43
-    },
-    {
-      "time": 70257,
-      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 70364,
+      "time": 70257,
       "lane": 1,
       "type": "tap"
     },
     {
+      "time": 70364,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
       "time": 70471,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 70686,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 70686,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 70900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 71007,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2118,64 +2174,49 @@
     },
     {
       "time": 71543,
-      "lane": 2,
+      "lane": 0,
       "type": "tap",
-      "link_id": 44
+      "link_id": 42
     },
     {
-      "time": 71757,
-      "lane": 3,
+      "time": 71543,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 71864,
-      "lane": 2,
+      "time": 71757,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 71971,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 72079,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 72186,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 72293,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 72400,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 72614,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 72721,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 72400,
+      "lane": 4,
+      "type": "tap"
+    },
+    {
+      "time": 72614,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 72829,
-      "lane": 0,
+      "lane": 3,
       "type": "tap",
-      "link_id": 45
+      "link_id": 43
     },
     {
       "time": 73043,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -2185,24 +2226,19 @@
     },
     {
       "time": 73364,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 73471,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 73579,
+      "time": 73471,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 73686,
-      "lane": 0,
+      "lane": 2,
       "type": "tap",
-      "link_id": 46
+      "link_id": 44
     },
     {
       "time": 73900,
@@ -2211,18 +2247,17 @@
     },
     {
       "time": 74114,
-      "lane": 4,
-      "type": "hold",
-      "duration": 643
-    },
-    {
-      "time": 74221,
       "lane": 0,
       "type": "tap"
     },
     {
+      "time": 74114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 74329,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2241,8 +2276,13 @@
       "type": "tap"
     },
     {
+      "time": 74971,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 75186,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2252,29 +2292,24 @@
     },
     {
       "time": 75614,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 75829,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 75829,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 47
-    },
-    {
-      "time": 76043,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 76150,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
       "time": 76257,
-      "lane": 0,
-      "type": "tap"
+      "lane": 2,
+      "type": "tap",
+      "link_id": 45
     },
     {
       "time": 76364,
@@ -2283,34 +2318,33 @@
     },
     {
       "time": 76471,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 76579,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 76686,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 76793,
-      "lane": 1,
+      "time": 76686,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 76900,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 77114,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 48
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 77329,
@@ -2318,44 +2352,44 @@
       "type": "tap"
     },
     {
-      "time": 77436,
-      "lane": 0,
-      "type": "tap"
+      "time": 77543,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 46
     },
     {
       "time": 77543,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 77757,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 77971,
+      "time": 77757,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 77971,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 78079,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 78186,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 78400,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 78400,
       "lane": 3,
-      "type": "tap",
-      "link_id": 49
-    },
-    {
-      "time": 78507,
-      "lane": 0,
       "type": "tap"
     },
     {
@@ -2364,45 +2398,30 @@
       "type": "tap"
     },
     {
-      "time": 78721,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 78829,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 78936,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 79043,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 79150,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 79257,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 4,
+      "type": "tap"
     },
     {
       "time": 79471,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 79686,
-      "lane": 0,
-      "type": "tap"
+      "lane": 2,
+      "type": "tap",
+      "link_id": 47
     },
     {
       "time": 79793,
@@ -2417,32 +2436,26 @@
     {
       "time": 80114,
       "lane": 1,
-      "type": "tap",
-      "link_id": 50
-    },
-    {
-      "time": 80221,
-      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 80329,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 80543,
+      "time": 80114,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 80650,
-      "lane": 0,
+      "time": 80329,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 80543,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 80757,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -2452,12 +2465,12 @@
     },
     {
       "time": 81079,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 81186,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2477,28 +2490,33 @@
     },
     {
       "time": 81829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 48
+    },
+    {
+      "time": 81829,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 82043,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 82150,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 82257,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 51
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 82471,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 82686,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2508,22 +2526,17 @@
     },
     {
       "time": 82900,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 83114,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 83221,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 83329,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -2533,12 +2546,18 @@
     },
     {
       "time": 83543,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 49
+    },
+    {
+      "time": 83543,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 83757,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -2548,146 +2567,150 @@
     },
     {
       "time": 84186,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 84400,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 84400,
       "lane": 2,
-      "type": "tap",
-      "link_id": 52
+      "type": "tap"
     },
     {
       "time": 84614,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 84829,
       "lane": 2,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 50
     },
     {
-      "time": 84936,
+      "time": 85043,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 85043,
+      "time": 85257,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 85257,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 85471,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 85686,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 85900,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 86114,
       "lane": 4,
       "type": "tap",
-      "link_id": 53
+      "link_id": 51
     },
     {
       "time": 86329,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 86543,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 86757,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 86971,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 87186,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 87400,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 87507,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 87614,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 87829,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 87936,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 88043,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 88150,
+      "time": 86757,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 86971,
       "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 86971,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 87186,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 87400,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 87614,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 87829,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 87936,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 88043,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 88150,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 88257,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 88471,
-      "lane": 0,
+      "lane": 2,
+      "type": "tap",
+      "link_id": 52
+    },
+    {
+      "time": 88686,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 88686,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 54
-    },
-    {
-      "time": 88793,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 88900,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -2697,22 +2720,22 @@
     },
     {
       "time": 89329,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 89543,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 89543,
-      "lane": 4,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 89757,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 89971,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -2721,13 +2744,8 @@
       "type": "tap"
     },
     {
-      "time": 90400,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
       "time": 90614,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -2742,13 +2760,14 @@
     },
     {
       "time": 90936,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 91150,
+      "time": 91257,
       "lane": 1,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 53
     },
     {
       "time": 91257,
@@ -2762,9 +2781,8 @@
     },
     {
       "time": 91686,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 55
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 91900,
@@ -2773,32 +2791,33 @@
     },
     {
       "time": 92114,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 92221,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 92329,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 92543,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 92543,
+      "lane": 2,
+      "type": "tap",
+      "link_id": 54
+    },
+    {
       "time": 92650,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 92757,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -2808,7 +2827,7 @@
     },
     {
       "time": 93186,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -2818,33 +2837,49 @@
     },
     {
       "time": 93614,
-      "lane": 3,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 55
+    },
+    {
+      "time": 93721,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 93829,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 56
-    },
-    {
-      "time": 94043,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 94257,
+      "time": 93829,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 94043,
       "lane": 1,
       "type": "tap"
     },
     {
+      "time": 94257,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 94471,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 94686,
-      "lane": 4,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 56
+    },
+    {
+      "time": 94686,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -2854,24 +2889,28 @@
     },
     {
       "time": 95007,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 95114,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 95114,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 95329,
-      "lane": 0,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 95543,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 95543,
       "lane": 3,
-      "type": "tap",
-      "link_id": 57
+      "type": "tap"
     },
     {
       "time": 95757,
@@ -2880,55 +2919,85 @@
     },
     {
       "time": 95971,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 96079,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 96186,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 96400,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 96400,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 96614,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 96614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 96829,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 58
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 97043,
+      "lane": 3,
+      "type": "tap",
+      "link_id": 57
+    },
+    {
+      "time": 97150,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 97257,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 97257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 97471,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 97686,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 59
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 97900,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
+    },
+    {
+      "time": 98007,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 98114,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 58
     },
     {
       "time": 98114,
@@ -2937,7 +3006,7 @@
     },
     {
       "time": 98329,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -2952,70 +3021,84 @@
     },
     {
       "time": 98971,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 98971,
       "lane": 2,
-      "type": "tap",
-      "link_id": 60
+      "type": "tap"
     },
     {
       "time": 99186,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 99400,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 99507,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 99614,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 99829,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 4,
+      "type": "tap",
+      "link_id": 59
     },
     {
       "time": 100043,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 100257,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 100471,
+      "time": 100257,
       "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 100471,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 100579,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 100686,
       "lane": 0,
       "type": "tap",
-      "link_id": 61
+      "link_id": 60
+    },
+    {
+      "time": 100686,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 100900,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 101114,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 101329,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -3025,17 +3108,22 @@
     },
     {
       "time": 101543,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 101543,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 101757,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 101971,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -3045,7 +3133,12 @@
     },
     {
       "time": 102293,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 102400,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -3055,54 +3148,59 @@
     },
     {
       "time": 102614,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 102829,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 103043,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 103257,
-      "lane": 4,
-      "type": "tap"
-    },
-    {
-      "time": 103471,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 103686,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 103900,
+      "time": 103043,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 104114,
+      "time": 103257,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 61
+    },
+    {
+      "time": 103257,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 103471,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 104221,
+      "time": 103686,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 103900,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 104114,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 104329,
+      "time": 104221,
       "lane": 1,
-      "type": "tap",
-      "link_id": 62
+      "type": "tap"
+    },
+    {
+      "time": 104329,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 104543,
@@ -3120,23 +3218,33 @@
       "type": "tap"
     },
     {
+      "time": 104971,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 105186,
       "lane": 0,
       "type": "tap",
-      "link_id": 63
+      "link_id": 62
     },
     {
       "time": 105400,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 105507,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 105614,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 105829,
       "lane": 1,
       "type": "tap"
     },
@@ -3151,39 +3259,48 @@
       "type": "tap"
     },
     {
-      "time": 106257,
+      "time": 106150,
       "lane": 1,
-      "type": "tap",
-      "link_id": 64
+      "type": "tap"
+    },
+    {
+      "time": 106257,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 106364,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 106471,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 106686,
-      "lane": 3,
-      "type": "tap"
+      "lane": 4,
+      "type": "tap",
+      "link_id": 63
     },
     {
       "time": 106900,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 107114,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 65
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 107329,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 107543,
       "lane": 0,
       "type": "tap"
     },
@@ -3204,37 +3321,42 @@
     },
     {
       "time": 108079,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 108186,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 108400,
-      "lane": 4,
+      "lane": 1,
       "type": "tap",
-      "link_id": 66
+      "link_id": 64
     },
     {
-      "time": 108614,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 108829,
+      "time": 108400,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 109043,
-      "lane": 0,
+      "time": 108614,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 109150,
+      "time": 108829,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 109043,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 109257,
       "lane": 1,
       "type": "tap"
     },
@@ -3245,12 +3367,12 @@
     },
     {
       "time": 109471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 109686,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -3265,13 +3387,18 @@
     },
     {
       "time": 110114,
-      "lane": 2,
+      "lane": 0,
       "type": "tap",
-      "link_id": 67
+      "link_id": 65
+    },
+    {
+      "time": 110114,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 110329,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -3286,12 +3413,18 @@
     },
     {
       "time": 110971,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 66
+    },
+    {
+      "time": 110971,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 111186,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3301,20 +3434,13 @@
     },
     {
       "time": 111400,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 68
-    },
-    {
-      "time": 111614,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 111829,
+      "time": 111614,
       "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "type": "tap"
     },
     {
       "time": 112043,
@@ -3323,82 +3449,67 @@
     },
     {
       "time": 112257,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 112364,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 112471,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 112579,
-      "lane": 0,
+      "time": 112364,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 112471,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 112686,
       "lane": 0,
-      "type": "tap",
-      "link_id": 69
-    },
-    {
-      "time": 112793,
-      "lane": 3,
       "type": "tap"
     },
     {
-      "time": 112900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 113007,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 113114,
+      "time": 112686,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 113221,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 113329,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 113436,
+      "time": 112900,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 113543,
+      "time": 113114,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 67
+    },
+    {
+      "time": 113221,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 113329,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 113436,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 113650,
+      "time": 113543,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 113543,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 113757,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 113864,
       "lane": 1,
       "type": "tap"
     },
@@ -3409,7 +3520,7 @@
     },
     {
       "time": 114079,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -3418,49 +3529,39 @@
       "type": "tap"
     },
     {
-      "time": 114293,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
       "time": 114400,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 70
-    },
-    {
-      "time": 114507,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 114614,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 114721,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 114829,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 115043,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 115257,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 115364,
+      "time": 114507,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 114614,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 114721,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 114829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 68
+    },
+    {
+      "time": 115043,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 115257,
+      "lane": 4,
       "type": "tap"
     },
     {
@@ -3469,100 +3570,79 @@
       "type": "tap"
     },
     {
-      "time": 115686,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 115793,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 115900,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 116114,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 116114,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 116221,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 116329,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 116436,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 116543,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 116650,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 116757,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 116864,
-      "lane": 3,
+      "time": 116971,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 116971,
       "lane": 2,
-      "type": "tap",
-      "link_id": 71
-    },
-    {
-      "time": 117186,
-      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 117293,
-      "lane": 1,
+      "time": 117186,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 117400,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 69
     },
     {
       "time": 117507,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 117614,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 72
+      "lane": 1,
+      "type": "tap"
     },
     {
       "time": 117721,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 117829,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 117829,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3572,8 +3652,9 @@
     },
     {
       "time": 118257,
-      "lane": 0,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 70
     },
     {
       "time": 118471,
@@ -3582,13 +3663,12 @@
     },
     {
       "time": 118686,
-      "lane": 4,
-      "type": "tap",
-      "link_id": 73
+      "lane": 0,
+      "type": "tap"
     },
     {
-      "time": 118793,
-      "lane": 0,
+      "time": 118686,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3598,7 +3678,7 @@
     },
     {
       "time": 119114,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -3608,38 +3688,38 @@
     },
     {
       "time": 119543,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 119650,
-      "lane": 0,
+      "time": 119543,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 119757,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 119971,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 120186,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 120400,
       "lane": 3,
       "type": "tap",
-      "link_id": 74
+      "link_id": 71
     },
     {
       "time": 120507,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3649,55 +3729,44 @@
     },
     {
       "time": 120829,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 120936,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 121043,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 121257,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 121257,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 121471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 121686,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 75
-    },
-    {
-      "time": 121793,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 72
     },
     {
       "time": 121900,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 122007,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 122114,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 4,
+      "type": "tap"
     },
     {
       "time": 122329,
@@ -3706,39 +3775,44 @@
     },
     {
       "time": 122543,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 122650,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 122757,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 122971,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 76
-    },
-    {
-      "time": 123186,
       "lane": 1,
       "type": "tap"
     },
     {
+      "time": 122971,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 123186,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 123400,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 123614,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
+    },
+    {
+      "time": 123829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 73
     },
     {
       "time": 123829,
@@ -3751,39 +3825,33 @@
       "type": "tap"
     },
     {
-      "time": 124150,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 124257,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 77
-    },
-    {
-      "time": 124471,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 124686,
+      "time": 124471,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 124900,
+      "time": 124686,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 125114,
+      "time": 124686,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 124900,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 125221,
-      "lane": 0,
+      "time": 125114,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3798,19 +3866,18 @@
     },
     {
       "time": 125543,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857,
-      "link_id": 78
+      "lane": 1,
+      "type": "tap",
+      "link_id": 74
     },
     {
-      "time": 125757,
-      "lane": 0,
+      "time": 125543,
+      "lane": 3,
       "type": "tap"
     },
     {
-      "time": 125864,
-      "lane": 0,
+      "time": 125757,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3834,15 +3901,19 @@
       "type": "tap"
     },
     {
+      "time": 126400,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 126614,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 126829,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 79
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 126936,
@@ -3856,17 +3927,23 @@
     },
     {
       "time": 127257,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 75
+    },
+    {
+      "time": 127257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 127471,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 127686,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3876,38 +3953,37 @@
     },
     {
       "time": 127900,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 128114,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 80
-    },
-    {
-      "time": 128329,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 128436,
+      "time": 128114,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 128114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 128329,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 128543,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 128757,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 128971,
-      "lane": 2,
+      "lane": 4,
       "type": "tap"
     },
     {
@@ -3917,18 +3993,13 @@
     },
     {
       "time": 129400,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 81
-    },
-    {
-      "time": 129507,
       "lane": 3,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 76
     },
     {
       "time": 129614,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -3937,13 +4008,18 @@
       "type": "tap"
     },
     {
+      "time": 129829,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 130043,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 130257,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3953,14 +4029,18 @@
     },
     {
       "time": 130686,
-      "lane": 4,
-      "type": "hold",
-      "duration": 643,
-      "link_id": 82
+      "lane": 0,
+      "type": "tap",
+      "link_id": 77
+    },
+    {
+      "time": 130686,
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 130900,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -3970,24 +4050,29 @@
     },
     {
       "time": 131329,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 131543,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 131543,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 131757,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 131971,
       "lane": 1,
       "type": "tap",
-      "link_id": 83
+      "link_id": 78
     },
     {
       "time": 132186,
@@ -3996,22 +4081,18 @@
     },
     {
       "time": 132400,
-      "lane": 4,
-      "type": "tap"
+      "lane": 3,
+      "type": "hold",
+      "duration": 429
     },
     {
       "time": 132507,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 132614,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 132721,
-      "lane": 3,
+      "time": 132614,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -4020,43 +4101,38 @@
       "type": "tap"
     },
     {
-      "time": 132936,
+      "time": 133043,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 133043,
+      "time": 133257,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 133257,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 133364,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 133471,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 133686,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 133793,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 133900,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4065,15 +4141,20 @@
       "type": "tap"
     },
     {
+      "time": 134114,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 134329,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 84
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 134543,
-      "lane": 3,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 79
     },
     {
       "time": 134757,
@@ -4081,7 +4162,7 @@
       "type": "tap"
     },
     {
-      "time": 134864,
+      "time": 134971,
       "lane": 0,
       "type": "tap"
     },
@@ -4092,76 +4173,85 @@
     },
     {
       "time": 135186,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 135400,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 85
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 135507,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 135614,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 135829,
-      "lane": 0,
-      "type": "tap"
+      "lane": 4,
+      "type": "tap",
+      "link_id": 80
     },
     {
       "time": 136043,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 136257,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 136471,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 136686,
-      "lane": 2,
-      "type": "tap",
-      "link_id": 86
-    },
-    {
-      "time": 136900,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 137114,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 137221,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 137329,
+      "time": 136471,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 136686,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 136686,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 136900,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 137114,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 137221,
       "lane": 0,
       "type": "tap"
     },
     {
+      "time": 137329,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 137543,
-      "lane": 4,
-      "type": "hold",
-      "duration": 643
+      "lane": 0,
+      "type": "tap",
+      "link_id": 81
+    },
+    {
+      "time": 137543,
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 137757,
@@ -4170,12 +4260,12 @@
     },
     {
       "time": 137971,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 138079,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4185,12 +4275,11 @@
     },
     {
       "time": 138400,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 87
+      "lane": 1,
+      "type": "tap"
     },
     {
-      "time": 138507,
+      "time": 138400,
       "lane": 2,
       "type": "tap"
     },
@@ -4202,41 +4291,36 @@
     {
       "time": 138829,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 82
     },
     {
       "time": 138936,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 139043,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 139150,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 139257,
-      "lane": 4,
-      "type": "tap"
-    },
-    {
-      "time": 139471,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 139686,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 88
+      "time": 139257,
+      "lane": 3,
+      "type": "tap"
     },
     {
-      "time": 139793,
+      "time": 139471,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 139686,
       "lane": 0,
       "type": "tap"
     },
@@ -4247,17 +4331,18 @@
     },
     {
       "time": 140114,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 83
+    },
+    {
+      "time": 140114,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 140221,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 140329,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4272,18 +4357,22 @@
     },
     {
       "time": 140864,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 140971,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 89
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 140971,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 141186,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4293,19 +4382,24 @@
     },
     {
       "time": 141614,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 141829,
-      "lane": 2,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 84
+    },
+    {
+      "time": 141829,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 142043,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 90
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 142257,
@@ -4319,7 +4413,7 @@
     },
     {
       "time": 142471,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4329,12 +4423,12 @@
     },
     {
       "time": 142900,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 143114,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4348,35 +4442,30 @@
       "type": "tap"
     },
     {
+      "time": 143543,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 143757,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 143864,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 143971,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 91
-    },
-    {
-      "time": 144079,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 144186,
-      "lane": 0,
+      "time": 143971,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 144293,
+      "time": 144186,
       "lane": 1,
       "type": "tap"
+    },
+    {
+      "time": 144400,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 85
     },
     {
       "time": 144400,
@@ -4395,34 +4484,29 @@
     },
     {
       "time": 145043,
-      "lane": 1,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 145257,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 145257,
       "lane": 3,
-      "type": "tap",
-      "link_id": 92
+      "type": "tap"
     },
     {
       "time": 145471,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 145579,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 145686,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 145793,
-      "lane": 0,
-      "type": "tap"
+      "time": 145686,
+      "lane": 2,
+      "type": "tap",
+      "link_id": 86
     },
     {
       "time": 145900,
@@ -4440,23 +4524,23 @@
       "type": "tap"
     },
     {
+      "time": 146114,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 146329,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 146436,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
       "time": 146543,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 146650,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4466,49 +4550,48 @@
     },
     {
       "time": 146971,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 146971,
       "lane": 3,
-      "type": "tap",
-      "link_id": 93
+      "type": "tap"
     },
     {
       "time": 147186,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 147400,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 147507,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 147614,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 147829,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 1,
+      "type": "tap",
+      "link_id": 87
     },
     {
-      "time": 147936,
-      "lane": 0,
+      "time": 147829,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 148043,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 148257,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -4518,22 +4601,17 @@
     },
     {
       "time": 148471,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 148579,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 148686,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 148793,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4543,24 +4621,19 @@
     },
     {
       "time": 149007,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 149114,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 94
-    },
-    {
-      "time": 149221,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 149543,
-      "lane": 3,
-      "type": "tap"
+      "lane": 4,
+      "type": "tap",
+      "link_id": 88
     },
     {
       "time": 149757,
@@ -4574,7 +4647,12 @@
     },
     {
       "time": 150186,
-      "lane": 0,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 150400,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -4584,18 +4662,12 @@
     },
     {
       "time": 150614,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 150829,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 95
-    },
-    {
-      "time": 150936,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4605,12 +4677,18 @@
     },
     {
       "time": 151257,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 89
+    },
+    {
+      "time": 151257,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 151471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4619,40 +4697,35 @@
       "type": "tap"
     },
     {
-      "time": 151793,
+      "time": 151900,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 151900,
+      "time": 152114,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 152114,
       "lane": 3,
-      "type": "tap",
-      "link_id": 96
+      "type": "tap"
     },
     {
       "time": 152329,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 152436,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 152543,
       "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 152650,
-      "lane": 1,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 90
     },
     {
       "time": 152757,
@@ -4660,84 +4733,84 @@
       "type": "tap"
     },
     {
-      "time": 152864,
+      "time": 152971,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 152971,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 153186,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 153400,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 153507,
+      "time": 153400,
       "lane": 0,
       "type": "tap"
     },
     {
+      "time": 153507,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
       "time": 153614,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 153829,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 153829,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 153936,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 154043,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 154150,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 154257,
+      "time": 154150,
       "lane": 3,
-      "type": "tap",
-      "link_id": 97
+      "type": "tap"
     },
     {
-      "time": 154364,
+      "time": 154257,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 154471,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 154686,
-      "lane": 0,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 91
+    },
+    {
+      "time": 154686,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 154900,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 155114,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -4746,25 +4819,24 @@
       "type": "tap"
     },
     {
-      "time": 155436,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
       "time": 155543,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 155757,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 155971,
+      "time": 155543,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 155757,
       "lane": 1,
-      "type": "tap",
-      "link_id": 98
+      "type": "tap"
+    },
+    {
+      "time": 155971,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 156186,
@@ -4774,8 +4846,7 @@
     {
       "time": 156400,
       "lane": 4,
-      "type": "hold",
-      "duration": 643
+      "type": "tap"
     },
     {
       "time": 156507,
@@ -4789,95 +4860,110 @@
     },
     {
       "time": 156829,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 156936,
-      "lane": 1,
-      "type": "tap"
+      "lane": 2,
+      "type": "tap",
+      "link_id": 92
     },
     {
       "time": 157043,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 157257,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 157257,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 99
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 157471,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 157686,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 157900,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 158114,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857
+      "lane": 1,
+      "type": "tap",
+      "link_id": 93
+    },
+    {
+      "time": 158114,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 158329,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 158543,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 158757,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 158971,
-      "lane": 0,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 158971,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 159186,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 159400,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 159507,
       "lane": 1,
       "type": "tap"
     },
     {
+      "time": 159507,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 159614,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 159829,
-      "lane": 3,
+      "lane": 0,
       "type": "tap",
-      "link_id": 100
+      "link_id": 94
+    },
+    {
+      "time": 159829,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 160043,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -4887,52 +4973,63 @@
     },
     {
       "time": 160364,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 160471,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 160686,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 160686,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 160900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 161114,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 161221,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 161329,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 161543,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 161757,
+      "time": 160900,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 161114,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 161864,
+      "time": 161221,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 161329,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 161543,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 95
+    },
+    {
+      "time": 161543,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 161757,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 161864,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -4942,13 +5039,12 @@
     },
     {
       "time": 162186,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 101
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 162293,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -4973,14 +5069,19 @@
     },
     {
       "time": 163043,
-      "lane": 3,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 96
     },
     {
       "time": 163257,
       "lane": 4,
-      "type": "hold",
-      "duration": 643
+      "type": "tap"
+    },
+    {
+      "time": 164114,
+      "lane": 0,
+      "type": "tap"
     },
     {
       "time": 164114,
@@ -4989,49 +5090,44 @@
     },
     {
       "time": 164329,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 164543,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 164650,
+      "time": 164971,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 164971,
       "lane": 3,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 165079,
-      "lane": 0,
       "type": "tap"
     },
     {
       "time": 165186,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 165293,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 165400,
+      "time": 165293,
       "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 165400,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 165614,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 97
     },
     {
       "time": 165829,
@@ -5039,49 +5135,60 @@
       "type": "tap"
     },
     {
+      "time": 165829,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 166257,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 102
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 166471,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 166686,
-      "lane": 3,
-      "type": "tap"
+      "lane": 0,
+      "type": "hold",
+      "duration": 429
     },
     {
       "time": 166793,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 166900,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 167543,
       "lane": 2,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 98
     },
     {
       "time": 167650,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 167971,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 168186,
+      "time": 167971,
       "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 168186,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 168400,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -5090,8 +5197,19 @@
       "type": "tap"
     },
     {
+      "time": 168614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 169043,
       "lane": 2,
+      "type": "tap",
+      "link_id": 99
+    },
+    {
+      "time": 169257,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -5111,22 +5229,23 @@
     },
     {
       "time": 169900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 170114,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 170329,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 170114,
+      "lane": 4,
+      "type": "tap",
+      "link_id": 100
+    },
+    {
+      "time": 170329,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
       "time": 170757,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5136,88 +5255,103 @@
     },
     {
       "time": 170971,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 171186,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 171400,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 171614,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 171721,
+      "time": 171400,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 171614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 171829,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 171829,
-      "lane": 4,
-      "type": "tap",
-      "link_id": 103
-    },
-    {
-      "time": 172043,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 172257,
+      "time": 172043,
       "lane": 2,
       "type": "tap"
     },
     {
+      "time": 172257,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 172471,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 172579,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 172686,
       "lane": 3,
       "type": "tap"
     },
     {
+      "time": 172686,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 172686,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 172900,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 173114,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 173329,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 173543,
-      "lane": 4,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 173543,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 173757,
-      "lane": 2,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 173971,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 101
     },
     {
       "time": 174293,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -5226,125 +5360,141 @@
       "type": "tap"
     },
     {
-      "time": 174721,
+      "time": 174400,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 174614,
       "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 174721,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 174829,
       "lane": 3,
-      "type": "tap",
-      "link_id": 104
+      "type": "tap"
     },
     {
       "time": 175043,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 175257,
-      "lane": 4,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 102
+    },
+    {
+      "time": 175257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 175471,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 175686,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 175793,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 175900,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 176114,
-      "lane": 2,
+      "lane": 1,
       "type": "tap",
-      "link_id": 105
+      "link_id": 103
+    },
+    {
+      "time": 176114,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 176436,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 176543,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 176650,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 176757,
-      "lane": 2,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 176971,
-      "lane": 3,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 177186,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 177400,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 177614,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 177829,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 178043,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 178257,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 178364,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 178471,
+      "time": 177614,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 177829,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 177829,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 178043,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 178579,
+      "time": 178257,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 104
+    },
+    {
+      "time": 178364,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 178471,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 178686,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 178686,
-      "lane": 4,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5355,18 +5505,23 @@
     {
       "time": 179114,
       "lane": 0,
-      "type": "tap",
-      "link_id": 106
+      "type": "tap"
     },
     {
       "time": 179221,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 179329,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
+    },
+    {
+      "time": 179543,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 105
     },
     {
       "time": 179543,
@@ -5375,78 +5530,63 @@
     },
     {
       "time": 179757,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 179971,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 180079,
-      "lane": 3,
+      "time": 179971,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 180186,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 180293,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 180400,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 180400,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 180507,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 180614,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 180721,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 180829,
       "lane": 1,
-      "type": "tap",
-      "link_id": 107
-    },
-    {
-      "time": 181043,
-      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 181150,
+      "time": 181043,
       "lane": 3,
       "type": "tap"
     },
     {
       "time": 181257,
       "lane": 0,
+      "type": "tap",
+      "link_id": 106
+    },
+    {
+      "time": 181257,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 181471,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 181579,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5461,27 +5601,27 @@
     },
     {
       "time": 181900,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 182114,
-      "lane": 4,
-      "type": "tap"
-    },
-    {
-      "time": 182221,
       "lane": 0,
       "type": "tap"
     },
     {
+      "time": 182114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
       "time": 182329,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 182543,
-      "lane": 3,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -5496,48 +5636,53 @@
     },
     {
       "time": 182971,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 182971,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 183186,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 183400,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 183614,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 183829,
+      "time": 183400,
+      "lane": 0,
+      "type": "tap",
+      "link_id": 107
+    },
+    {
+      "time": 183614,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 183936,
-      "lane": 0,
+      "time": 183829,
+      "lane": 4,
       "type": "tap"
     },
     {
       "time": 184043,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 184257,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 108
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 184471,
-      "lane": 3,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 184686,
+      "lane": 0,
       "type": "tap"
     },
     {
@@ -5547,18 +5692,14 @@
     },
     {
       "time": 184900,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 185114,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 185221,
-      "lane": 0,
-      "type": "tap"
+      "time": 185114,
+      "lane": 2,
+      "type": "tap",
+      "link_id": 108
     },
     {
       "time": 185329,
@@ -5567,13 +5708,12 @@
     },
     {
       "time": 185543,
-      "lane": 4,
-      "type": "tap",
-      "link_id": 109
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 185650,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -5583,59 +5723,54 @@
     },
     {
       "time": 185971,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 186186,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 186400,
       "lane": 1,
       "type": "tap"
     },
     {
       "time": 186400,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 186614,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 186829,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 187043,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 187257,
-      "lane": 3,
+      "lane": 0,
       "type": "hold",
-      "duration": 857,
-      "link_id": 110
+      "duration": 429,
+      "link_id": 109
     },
     {
       "time": 187364,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 187471,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 187579,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 187686,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -5645,54 +5780,49 @@
     },
     {
       "time": 188114,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
-      "time": 188221,
-      "lane": 1,
+      "time": 188114,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 188329,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 188436,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 188543,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 188757,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 188971,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 189079,
+      "time": 188757,
       "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 188971,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 189079,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 189186,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 111
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 189400,
       "lane": 0,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 110
     },
     {
       "time": 189507,
@@ -5701,7 +5831,7 @@
     },
     {
       "time": 189614,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5711,22 +5841,16 @@
     },
     {
       "time": 189829,
-      "lane": 2,
-      "type": "tap"
-    },
-    {
-      "time": 190043,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 190257,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 112
+      "time": 189829,
+      "lane": 2,
+      "type": "tap"
     },
     {
-      "time": 190364,
+      "time": 190257,
       "lane": 0,
       "type": "tap"
     },
@@ -5737,8 +5861,9 @@
     },
     {
       "time": 190686,
-      "lane": 3,
-      "type": "tap"
+      "lane": 4,
+      "type": "tap",
+      "link_id": 111
     },
     {
       "time": 190900,
@@ -5751,13 +5876,13 @@
       "type": "tap"
     },
     {
-      "time": 191221,
-      "lane": 3,
+      "time": 191329,
+      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 191329,
-      "lane": 2,
+      "time": 191543,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -5767,9 +5892,8 @@
     },
     {
       "time": 191757,
-      "lane": 0,
-      "type": "tap",
-      "link_id": 113
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 191971,
@@ -5783,26 +5907,22 @@
     },
     {
       "time": 192400,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 112
+    },
+    {
+      "time": 192400,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 192507,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 192614,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 192829,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 192936,
       "lane": 1,
       "type": "tap"
     },
@@ -5813,13 +5933,17 @@
     },
     {
       "time": 193257,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 193257,
       "lane": 3,
-      "type": "tap",
-      "link_id": 114
+      "type": "tap"
     },
     {
       "time": 193471,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5830,12 +5954,8 @@
     {
       "time": 193686,
       "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 193793,
-      "lane": 1,
-      "type": "tap"
+      "type": "tap",
+      "link_id": 113
     },
     {
       "time": 193900,
@@ -5844,18 +5964,17 @@
     },
     {
       "time": 194114,
-      "lane": 2,
-      "type": "hold",
-      "duration": 857
-    },
-    {
-      "time": 194329,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 194436,
-      "lane": 3,
+      "time": 194114,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 194329,
+      "lane": 1,
       "type": "tap"
     },
     {
@@ -5865,48 +5984,48 @@
     },
     {
       "time": 194757,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 194971,
-      "lane": 3,
-      "type": "tap",
-      "link_id": 115
-    },
-    {
-      "time": 195186,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 195400,
-      "lane": 3,
+      "time": 194971,
+      "lane": 2,
       "type": "tap"
     },
     {
-      "time": 195507,
+      "time": 195186,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 195400,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 195614,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 195721,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 195829,
-      "lane": 2,
+      "time": 195721,
+      "lane": 0,
       "type": "tap"
     },
     {
-      "time": 195936,
-      "lane": 0,
+      "time": 195829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 114
+    },
+    {
+      "time": 195829,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5915,59 +6034,48 @@
       "type": "tap"
     },
     {
-      "time": 196150,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
       "time": 196257,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 196364,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 196471,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 196686,
       "lane": 2,
       "type": "tap"
     },
     {
-      "time": 196793,
+      "time": 196686,
       "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 196793,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 196900,
-      "lane": 1,
-      "type": "tap",
-      "link_id": 116
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 197114,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 197221,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 197329,
       "lane": 0,
       "type": "tap"
     },
     {
+      "time": 197329,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
       "time": 197543,
-      "lane": 3,
+      "lane": 4,
       "type": "tap"
     },
     {
@@ -5979,16 +6087,11 @@
       "time": 197971,
       "lane": 1,
       "type": "tap",
-      "link_id": 117
+      "link_id": 115
     },
     {
       "time": 198186,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 198293,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -5997,40 +6100,44 @@
       "type": "tap"
     },
     {
-      "time": 198507,
-      "lane": 0,
+      "time": 198400,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 198614,
-      "lane": 3,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 198829,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 198936,
-      "lane": 3,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 199043,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 199257,
-      "lane": 3,
-      "type": "hold",
-      "duration": 857,
-      "link_id": 118
+      "lane": 1,
+      "type": "tap",
+      "link_id": 116
+    },
+    {
+      "time": 199257,
+      "lane": 2,
+      "type": "tap"
     },
     {
       "time": 199471,
-      "lane": 2,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -6039,13 +6146,8 @@
       "type": "tap"
     },
     {
-      "time": 199793,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
       "time": 199900,
-      "lane": 0,
+      "lane": 2,
       "type": "tap"
     },
     {
@@ -6055,68 +6157,64 @@
     },
     {
       "time": 200221,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 200329,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 200543,
-      "lane": 0,
+      "lane": 2,
       "type": "tap",
-      "link_id": 119
+      "link_id": 117
     },
     {
-      "time": 200650,
+      "time": 200757,
       "lane": 1,
       "type": "tap"
     },
     {
-      "time": 200757,
+      "time": 200971,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 200971,
-      "lane": 4,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 201186,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 201400,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 201507,
+      "time": 201400,
       "lane": 2,
       "type": "tap"
     },
     {
       "time": 201614,
-      "lane": 0,
-      "type": "tap"
-    },
-    {
-      "time": 201721,
-      "lane": 1,
-      "type": "tap"
-    },
-    {
-      "time": 201829,
       "lane": 3,
       "type": "tap"
     },
     {
-      "time": 201936,
-      "lane": 0,
+      "time": 201721,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 201829,
+      "lane": 1,
+      "type": "tap",
+      "link_id": 118
+    },
+    {
+      "time": 201829,
+      "lane": 3,
       "type": "tap"
     },
     {
@@ -6136,58 +6234,63 @@
     },
     {
       "time": 202471,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 202686,
       "lane": 0,
       "type": "tap"
     },
     {
       "time": 202686,
-      "lane": 4,
-      "type": "tap",
-      "link_id": 120
+      "lane": 3,
+      "type": "tap"
     },
     {
       "time": 202900,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 203329,
-      "lane": 0,
-      "type": "tap"
+      "lane": 1,
+      "type": "tap",
+      "link_id": 119
     },
     {
       "time": 203543,
-      "lane": 1,
+      "lane": 0,
       "type": "tap"
     },
     {
       "time": 203650,
-      "lane": 0,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 203757,
-      "lane": 1,
+      "lane": 2,
       "type": "tap"
     },
     {
       "time": 203864,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 203971,
-      "lane": 3,
-      "type": "tap"
-    },
-    {
-      "time": 204186,
       "lane": 0,
       "type": "tap"
     },
     {
-      "time": 204400,
+      "time": 204186,
       "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 204400,
+      "lane": 4,
       "type": "tap"
     },
     {
@@ -6197,2572 +6300,2709 @@
     },
     {
       "time": 204829,
-      "lane": 1,
+      "lane": 3,
       "type": "tap"
     },
     {
       "time": 205364,
-      "lane": 0,
+      "lane": 1,
       "type": "tap"
     },
     {
       "time": 205900,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 206221,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 206543,
+      "lane": 4,
+      "type": "tap"
+    },
+    {
+      "time": 206650,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 206757,
       "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 207079,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 207293,
+      "lane": 3,
+      "type": "tap"
+    },
+    {
+      "time": 207400,
+      "lane": 2,
+      "type": "tap"
+    },
+    {
+      "time": 207614,
+      "lane": 1,
+      "type": "tap"
+    },
+    {
+      "time": 207829,
+      "lane": 0,
+      "type": "tap"
+    },
+    {
+      "time": 207829,
+      "lane": 2,
       "type": "tap"
     }
   ],
   "mouse_notes": [
     {
       "time": 1686,
-      "x": 0.44,
+      "x": 0.62,
       "y": 0.387,
       "type": "circle",
       "link_id": 1
     },
     {
-      "time": 4257,
-      "x": 0.6,
-      "y": 0.409,
+      "time": 2114,
+      "x": 0.224,
+      "y": 0.439,
       "type": "circle"
     },
     {
-      "time": 7686,
-      "x": 0.76,
-      "y": 0.455,
+      "time": 2329,
+      "x": 0.224,
+      "y": 0.736,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 457,
       "slider_path": [
         [
-          0.84,
-          0.555
+          0.309,
+          0.719
         ],
         [
-          0.84,
-          0.455
+          0.381,
+          0.767
         ]
       ]
     },
     {
-      "time": 8971,
-      "x": 0.78,
-      "y": 0.546,
+      "time": 2971,
+      "x": 0.658,
+      "y": 0.731,
       "type": "circle",
       "link_id": 2
     },
     {
-      "time": 11971,
-      "x": 0.62,
-      "y": 0.402,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 13686,
-      "x": 0.46,
-      "y": 0.487,
+      "time": 4257,
+      "x": 0.243,
+      "y": 0.316,
       "type": "circle"
     },
     {
-      "time": 14971,
-      "x": 0.3,
-      "y": 0.467,
+      "time": 4686,
+      "x": 0.194,
+      "y": 0.689,
+      "type": "circle"
+    },
+    {
+      "time": 5114,
+      "x": 0.592,
+      "y": 0.723,
       "type": "circle",
       "link_id": 3
     },
     {
-      "time": 15400,
-      "x": 0.22,
-      "y": 0.518,
+      "time": 5543,
+      "x": 0.745,
+      "y": 0.354,
       "type": "circle"
     },
     {
-      "time": 15829,
-      "x": 0.38,
-      "y": 0.541,
-      "type": "circle"
+      "time": 5757,
+      "x": 0.472,
+      "y": 0.241,
+      "type": "circle",
+      "require_lane": 4
     },
     {
-      "time": 16043,
-      "x": 0.54,
-      "y": 0.445,
+      "time": 6829,
+      "x": 0.753,
+      "y": 0.727,
       "type": "circle",
       "link_id": 4
     },
     {
-      "time": 16686,
-      "x": 0.7,
-      "y": 0.52,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 17114,
-      "x": 0.78,
-      "y": 0.496,
+      "time": 7257,
+      "x": 0.356,
+      "y": 0.688,
       "type": "circle"
     },
     {
-      "time": 17329,
-      "x": 0.62,
-      "y": 0.514,
+      "time": 7686,
+      "x": 0.253,
+      "y": 0.302,
+      "type": "circle"
+    },
+    {
+      "time": 8543,
+      "x": 0.747,
+      "y": 0.478,
       "type": "circle",
       "link_id": 5
     },
     {
-      "time": 17543,
-      "x": 0.46,
-      "y": 0.356,
-      "type": "circle"
+      "time": 8971,
+      "x": 0.43,
+      "y": 0.721,
+      "type": "circle",
+      "require_lane": 4
     },
     {
-      "time": 18186,
-      "x": 0.3,
-      "y": 0.425,
-      "type": "circle"
-    },
-    {
-      "time": 18400,
+      "time": 9186,
       "x": 0.22,
-      "y": 0.412,
+      "y": 0.511,
+      "type": "circle"
+    },
+    {
+      "time": 11543,
+      "x": 0.775,
+      "y": 0.741,
       "type": "circle",
       "link_id": 6
     },
     {
-      "time": 18829,
-      "x": 0.38,
-      "y": 0.5,
-      "type": "circle",
-      "require_lane": 1
+      "time": 11971,
+      "x": 0.775,
+      "y": 0.342,
+      "type": "circle"
     },
     {
-      "time": 19257,
-      "x": 0.54,
-      "y": 0.523,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.66,
-          0.423
-        ],
-        [
-          0.76,
-          0.523
-        ]
-      ]
+      "time": 13257,
+      "x": 0.233,
+      "y": 0.567,
+      "type": "circle"
     },
     {
-      "time": 20114,
-      "x": 0.7,
-      "y": 0.495,
+      "time": 13471,
+      "x": 0.233,
+      "y": 0.271,
       "type": "circle",
       "link_id": 7
     },
     {
-      "time": 20971,
-      "x": 0.78,
-      "y": 0.362,
+      "time": 13686,
+      "x": 0.53,
+      "y": 0.271,
       "type": "circle"
     },
     {
-      "time": 21829,
-      "x": 0.62,
-      "y": 0.517,
+      "time": 14971,
+      "x": 0.254,
+      "y": 0.749,
       "type": "circle"
     },
     {
-      "time": 22257,
-      "x": 0.46,
-      "y": 0.519,
+      "time": 15400,
+      "x": 0.65,
+      "y": 0.697,
       "type": "circle",
       "link_id": 8
     },
     {
-      "time": 22686,
-      "x": 0.3,
-      "y": 0.429,
+      "time": 15829,
+      "x": 0.753,
+      "y": 0.311,
       "type": "slider",
-      "slider_duration": 483,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.18,
-          0.529
+          0.66,
+          0.305
         ],
         [
-          0.16,
-          0.429
+          0.599,
+          0.235
         ]
       ]
     },
     {
-      "time": 23329,
-      "x": 0.22,
-      "y": 0.489,
-      "type": "circle"
+      "time": 16686,
+      "x": 0.25,
+      "y": 0.281,
+      "type": "circle",
+      "require_lane": 1
     },
     {
-      "time": 23543,
-      "x": 0.38,
-      "y": 0.447,
+      "time": 17114,
+      "x": 0.25,
+      "y": 0.68,
       "type": "circle",
       "link_id": 9
     },
     {
-      "time": 24400,
-      "x": 0.54,
-      "y": 0.447,
+      "time": 17329,
+      "x": 0.536,
+      "y": 0.757,
       "type": "circle"
     },
     {
-      "time": 25257,
-      "x": 0.7,
-      "y": 0.548,
+      "time": 17543,
+      "x": 0.771,
+      "y": 0.577,
       "type": "circle"
     },
     {
-      "time": 25686,
-      "x": 0.78,
-      "y": 0.56,
+      "time": 18186,
+      "x": 0.334,
+      "y": 0.396,
       "type": "circle",
       "link_id": 10
     },
     {
-      "time": 26114,
-      "x": 0.62,
-      "y": 0.528,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 26757,
-      "x": 0.46,
-      "y": 0.579,
-      "type": "circle"
-    },
-    {
-      "time": 26971,
-      "x": 0.3,
-      "y": 0.459,
-      "type": "circle",
-      "link_id": 11
-    },
-    {
-      "time": 27829,
-      "x": 0.22,
-      "y": 0.542,
-      "type": "circle"
-    },
-    {
-      "time": 28686,
-      "x": 0.38,
-      "y": 0.459,
-      "type": "circle"
-    },
-    {
-      "time": 29114,
-      "x": 0.54,
-      "y": 0.393,
-      "type": "circle",
-      "link_id": 12
-    },
-    {
-      "time": 29543,
-      "x": 0.7,
-      "y": 0.329,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 29757,
-      "x": 0.78,
-      "y": 0.476,
-      "type": "circle"
-    },
-    {
-      "time": 30400,
-      "x": 0.62,
-      "y": 0.42,
-      "type": "circle",
-      "link_id": 13
-    },
-    {
-      "time": 31257,
-      "x": 0.46,
-      "y": 0.455,
-      "type": "circle"
-    },
-    {
-      "time": 31471,
-      "x": 0.3,
-      "y": 0.521,
-      "type": "circle"
-    },
-    {
-      "time": 31686,
-      "x": 0.22,
-      "y": 0.478,
-      "type": "circle",
-      "link_id": 14
-    },
-    {
-      "time": 31900,
-      "x": 0.38,
-      "y": 0.418,
+      "time": 18400,
+      "x": 0.221,
+      "y": 0.669,
       "type": "circle",
       "require_lane": 0
     },
     {
-      "time": 32114,
-      "x": 0.54,
-      "y": 0.382,
+      "time": 18829,
+      "x": 0.604,
+      "y": 0.553,
       "type": "circle"
     },
     {
-      "time": 32971,
-      "x": 0.7,
-      "y": 0.398,
+      "time": 19257,
+      "x": 0.776,
+      "y": 0.256,
+      "type": "circle",
+      "link_id": 11
+    },
+    {
+      "time": 20114,
+      "x": 0.295,
+      "y": 0.464,
+      "type": "circle"
+    },
+    {
+      "time": 20543,
+      "x": 0.664,
+      "y": 0.617,
+      "type": "circle"
+    },
+    {
+      "time": 20971,
+      "x": 0.761,
+      "y": 0.254,
+      "type": "circle",
+      "link_id": 12
+    },
+    {
+      "time": 21829,
+      "x": 0.292,
+      "y": 0.49,
+      "type": "circle"
+    },
+    {
+      "time": 22257,
+      "x": 0.609,
+      "y": 0.733,
+      "type": "circle"
+    },
+    {
+      "time": 22686,
+      "x": 0.762,
+      "y": 0.364,
+      "type": "circle",
+      "link_id": 13
+    },
+    {
+      "time": 23543,
+      "x": 0.244,
+      "y": 0.447,
+      "type": "circle"
+    },
+    {
+      "time": 23971,
+      "x": 0.487,
+      "y": 0.764,
+      "type": "circle",
+      "require_lane": 3
+    },
+    {
+      "time": 24400,
+      "x": 0.77,
+      "y": 0.481,
+      "type": "circle",
+      "link_id": 14
+    },
+    {
+      "time": 25257,
+      "x": 0.249,
+      "y": 0.545,
+      "type": "circle"
+    },
+    {
+      "time": 25686,
+      "x": 0.19,
+      "y": 0.765,
+      "type": "circle"
+    },
+    {
+      "time": 26114,
+      "x": 0.559,
+      "y": 0.612,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 458,
       "slider_path": [
         [
-          0.82,
-          0.498
+          0.62,
+          0.55
         ],
         [
-          0.84,
-          0.398
+          0.707,
+          0.551
         ]
       ],
       "link_id": 15
     },
     {
-      "time": 33829,
-      "x": 0.78,
-      "y": 0.462,
+      "time": 26757,
+      "x": 0.799,
+      "y": 0.773,
+      "type": "circle",
+      "require_lane": 2
+    },
+    {
+      "time": 26971,
+      "x": 0.462,
+      "y": 0.773,
       "type": "circle"
     },
     {
-      "time": 34257,
-      "x": 0.62,
-      "y": 0.428,
-      "type": "circle"
-    },
-    {
-      "time": 34471,
-      "x": 0.46,
-      "y": 0.435,
+      "time": 27829,
+      "x": 0.781,
+      "y": 0.357,
       "type": "circle",
       "link_id": 16
     },
     {
-      "time": 34686,
-      "x": 0.3,
-      "y": 0.447,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 34900,
-      "x": 0.22,
-      "y": 0.5,
+      "time": 28686,
+      "x": 0.265,
+      "y": 0.45,
       "type": "circle"
     },
     {
-      "time": 35329,
-      "x": 0.38,
-      "y": 0.44,
+      "time": 29114,
+      "x": 0.547,
+      "y": 0.732,
+      "type": "circle"
+    },
+    {
+      "time": 29543,
+      "x": 0.747,
+      "y": 0.386,
       "type": "circle",
       "link_id": 17
     },
     {
-      "time": 35543,
-      "x": 0.54,
-      "y": 0.454,
+      "time": 29757,
+      "x": 0.474,
+      "y": 0.273,
       "type": "circle"
     },
     {
-      "time": 35971,
-      "x": 0.7,
-      "y": 0.336,
+      "time": 30400,
+      "x": 0.238,
+      "y": 0.682,
       "type": "circle"
     },
     {
-      "time": 36400,
-      "x": 0.78,
-      "y": 0.357,
+      "time": 31257,
+      "x": 0.719,
+      "y": 0.474,
       "type": "circle",
       "link_id": 18
     },
     {
-      "time": 36829,
-      "x": 0.62,
-      "y": 0.377,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 37257,
-      "x": 0.46,
-      "y": 0.417,
-      "type": "circle"
-    },
-    {
-      "time": 37471,
-      "x": 0.3,
-      "y": 0.421,
-      "type": "circle",
-      "link_id": 19
-    },
-    {
-      "time": 37686,
-      "x": 0.22,
-      "y": 0.422,
-      "type": "circle"
-    },
-    {
-      "time": 38114,
-      "x": 0.38,
-      "y": 0.402,
-      "type": "circle"
-    },
-    {
-      "time": 38543,
-      "x": 0.54,
-      "y": 0.426,
-      "type": "circle"
-    },
-    {
-      "time": 38757,
-      "x": 0.7,
-      "y": 0.404,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 38971,
-      "x": 0.78,
-      "y": 0.449,
-      "type": "circle"
-    },
-    {
-      "time": 39829,
-      "x": 0.62,
-      "y": 0.385,
-      "type": "circle",
-      "link_id": 20
-    },
-    {
-      "time": 40257,
-      "x": 0.46,
-      "y": 0.435,
-      "type": "circle"
-    },
-    {
-      "time": 40686,
-      "x": 0.3,
-      "y": 0.368,
-      "type": "circle"
-    },
-    {
-      "time": 41114,
-      "x": 0.22,
-      "y": 0.369,
-      "type": "circle",
-      "link_id": 21
-    },
-    {
-      "time": 41543,
-      "x": 0.38,
-      "y": 0.361,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 42186,
-      "x": 0.54,
-      "y": 0.423,
-      "type": "circle"
-    },
-    {
-      "time": 42400,
-      "x": 0.7,
-      "y": 0.311,
-      "type": "circle",
-      "link_id": 22
-    },
-    {
-      "time": 43471,
-      "x": 0.78,
-      "y": 0.347,
+      "time": 31471,
+      "x": 0.539,
+      "y": 0.239,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 458,
       "slider_path": [
         [
-          0.66,
-          0.447
+          0.461,
+          0.278
         ],
         [
-          0.56,
-          0.347
+          0.38,
+          0.249
         ]
       ]
     },
     {
+      "time": 32114,
+      "x": 0.22,
+      "y": 0.457,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 32971,
+      "x": 0.742,
+      "y": 0.402,
+      "type": "circle",
+      "link_id": 19
+    },
+    {
+      "time": 33829,
+      "x": 0.221,
+      "y": 0.466,
+      "type": "circle"
+    },
+    {
+      "time": 34257,
+      "x": 0.503,
+      "y": 0.748,
+      "type": "circle"
+    },
+    {
+      "time": 34471,
+      "x": 0.781,
+      "y": 0.748,
+      "type": "circle",
+      "link_id": 20
+    },
+    {
+      "time": 34686,
+      "x": 0.781,
+      "y": 0.451,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 34900,
+      "x": 0.572,
+      "y": 0.242,
+      "type": "circle"
+    },
+    {
+      "time": 35329,
+      "x": 0.226,
+      "y": 0.442,
+      "type": "circle",
+      "link_id": 21
+    },
+    {
+      "time": 35971,
+      "x": 0.694,
+      "y": 0.38,
+      "type": "circle"
+    },
+    {
+      "time": 36829,
+      "x": 0.24,
+      "y": 0.642,
+      "type": "circle"
+    },
+    {
+      "time": 37257,
+      "x": 0.24,
+      "y": 0.243,
+      "type": "circle",
+      "link_id": 22
+    },
+    {
+      "time": 37686,
+      "x": 0.629,
+      "y": 0.336,
+      "type": "circle"
+    },
+    {
+      "time": 38971,
+      "x": 0.214,
+      "y": 0.751,
+      "type": "circle"
+    },
+    {
+      "time": 39829,
+      "x": 0.656,
+      "y": 0.468,
+      "type": "circle",
+      "link_id": 23
+    },
+    {
+      "time": 40257,
+      "x": 0.787,
+      "y": 0.785,
+      "type": "circle"
+    },
+    {
+      "time": 40686,
+      "x": 0.391,
+      "y": 0.733,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 41114,
+      "x": 0.238,
+      "y": 0.364,
+      "type": "circle",
+      "link_id": 24
+    },
+    {
+      "time": 41543,
+      "x": 0.638,
+      "y": 0.362,
+      "type": "circle"
+    },
+    {
+      "time": 41757,
+      "x": 0.81,
+      "y": 0.258,
+      "type": "circle"
+    },
+    {
+      "time": 42186,
+      "x": 0.758,
+      "y": 0.654,
+      "type": "circle",
+      "link_id": 25
+    },
+    {
+      "time": 42400,
+      "x": 0.472,
+      "y": 0.731,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 42829,
+      "x": 0.229,
+      "y": 0.414,
+      "type": "circle"
+    },
+    {
+      "time": 44543,
+      "x": 0.757,
+      "y": 0.351,
+      "type": "circle",
+      "link_id": 26
+    },
+    {
       "time": 45400,
-      "x": 0.62,
+      "x": 0.233,
       "y": 0.361,
       "type": "circle"
     },
     {
       "time": 45829,
-      "x": 0.46,
-      "y": 0.426,
-      "type": "circle",
-      "link_id": 23
+      "x": 0.233,
+      "y": 0.761,
+      "type": "circle"
     },
     {
       "time": 46257,
-      "x": 0.3,
-      "y": 0.343,
-      "type": "circle",
-      "require_lane": 1
-    },
-    {
-      "time": 46686,
-      "x": 0.22,
-      "y": 0.348,
-      "type": "circle"
-    },
-    {
-      "time": 47114,
-      "x": 0.38,
-      "y": 0.357,
-      "type": "circle",
-      "link_id": 24
-    },
-    {
-      "time": 47543,
-      "x": 0.54,
-      "y": 0.349,
-      "type": "circle"
-    },
-    {
-      "time": 47757,
-      "x": 0.7,
-      "y": 0.353,
-      "type": "circle"
-    },
-    {
-      "time": 48186,
-      "x": 0.78,
-      "y": 0.348,
-      "type": "circle",
-      "link_id": 25
-    },
-    {
-      "time": 48400,
-      "x": 0.62,
-      "y": 0.349,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 48829,
-      "x": 0.46,
-      "y": 0.363,
-      "type": "circle"
-    },
-    {
-      "time": 49043,
-      "x": 0.3,
-      "y": 0.361,
-      "type": "circle",
-      "link_id": 26
-    },
-    {
-      "time": 49257,
-      "x": 0.22,
-      "y": 0.316,
-      "type": "circle"
-    },
-    {
-      "time": 49686,
-      "x": 0.38,
-      "y": 0.363,
-      "type": "circle"
-    },
-    {
-      "time": 50543,
-      "x": 0.54,
-      "y": 0.355,
+      "x": 0.602,
+      "y": 0.608,
       "type": "circle",
       "link_id": 27
     },
     {
-      "time": 50757,
-      "x": 0.7,
-      "y": 0.358,
-      "type": "circle",
-      "require_lane": 1
-    },
-    {
-      "time": 50971,
-      "x": 0.78,
-      "y": 0.362,
+      "time": 46686,
+      "x": 0.758,
+      "y": 0.24,
       "type": "circle"
     },
     {
-      "time": 51829,
-      "x": 0.62,
-      "y": 0.373,
+      "time": 47543,
+      "x": 0.245,
+      "y": 0.348,
+      "type": "circle"
+    },
+    {
+      "time": 47757,
+      "x": 0.245,
+      "y": 0.644,
       "type": "circle",
       "link_id": 28
     },
     {
-      "time": 52257,
-      "x": 0.46,
-      "y": 0.362,
+      "time": 48400,
+      "x": 0.654,
+      "y": 0.407,
       "type": "circle"
     },
     {
-      "time": 52686,
-      "x": 0.3,
-      "y": 0.387,
-      "type": "circle"
+      "time": 48829,
+      "x": 0.285,
+      "y": 0.254,
+      "type": "circle",
+      "require_lane": 1
     },
     {
-      "time": 52900,
-      "x": 0.22,
-      "y": 0.348,
+      "time": 49043,
+      "x": 0.246,
+      "y": 0.547,
       "type": "circle",
       "link_id": 29
     },
     {
-      "time": 53114,
-      "x": 0.38,
-      "y": 0.388,
-      "type": "circle",
-      "require_lane": 2
+      "time": 49257,
+      "x": 0.455,
+      "y": 0.756,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.541,
+          0.72
+        ],
+        [
+          0.626,
+          0.756
+        ]
+      ]
     },
     {
-      "time": 53329,
-      "x": 0.54,
-      "y": 0.443,
+      "time": 50971,
+      "x": 0.219,
+      "y": 0.349,
       "type": "circle"
     },
     {
-      "time": 53543,
-      "x": 0.7,
-      "y": 0.352,
+      "time": 51614,
+      "x": 0.692,
+      "y": 0.348,
       "type": "circle",
       "link_id": 30
     },
     {
-      "time": 53971,
-      "x": 0.78,
-      "y": 0.389,
+      "time": 51829,
+      "x": 0.769,
+      "y": 0.634,
+      "type": "circle",
+      "require_lane": 4
+    },
+    {
+      "time": 52257,
+      "x": 0.413,
+      "y": 0.454,
       "type": "circle"
     },
     {
-      "time": 54400,
-      "x": 0.62,
-      "y": 0.332,
-      "type": "circle"
-    },
-    {
-      "time": 54829,
-      "x": 0.46,
-      "y": 0.341,
+      "time": 52686,
+      "x": 0.241,
+      "y": 0.752,
       "type": "circle",
       "link_id": 31
     },
     {
-      "time": 55257,
-      "x": 0.3,
-      "y": 0.382,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 55686,
-      "x": 0.22,
-      "y": 0.398,
+      "time": 52900,
+      "x": 0.537,
+      "y": 0.752,
       "type": "circle"
     },
     {
-      "time": 56114,
-      "x": 0.38,
-      "y": 0.406,
+      "time": 53971,
+      "x": 0.752,
+      "y": 0.234,
+      "type": "circle"
+    },
+    {
+      "time": 54400,
+      "x": 0.36,
+      "y": 0.31,
       "type": "circle",
       "link_id": 32
     },
     {
-      "time": 56543,
-      "x": 0.54,
-      "y": 0.36,
+      "time": 54829,
+      "x": 0.257,
+      "y": 0.696,
       "type": "circle"
     },
     {
-      "time": 56971,
-      "x": 0.7,
-      "y": 0.355,
+      "time": 55257,
+      "x": 0.655,
+      "y": 0.73,
       "type": "circle"
     },
     {
-      "time": 57400,
-      "x": 0.78,
-      "y": 0.367,
+      "time": 55686,
+      "x": 0.758,
+      "y": 0.344,
       "type": "circle",
       "link_id": 33
     },
     {
-      "time": 57829,
-      "x": 0.62,
-      "y": 0.366,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 58257,
-      "x": 0.46,
-      "y": 0.365,
+      "time": 56114,
+      "x": 0.372,
+      "y": 0.241,
       "type": "circle"
     },
     {
-      "time": 58471,
-      "x": 0.3,
-      "y": 0.382,
+      "time": 56543,
+      "x": 0.219,
+      "y": 0.61,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 56971,
+      "x": 0.605,
+      "y": 0.507,
       "type": "circle",
       "link_id": 34
     },
     {
+      "time": 57400,
+      "x": 0.79,
+      "y": 0.217,
+      "type": "circle"
+    },
+    {
+      "time": 57829,
+      "x": 0.394,
+      "y": 0.269,
+      "type": "circle"
+    },
+    {
       "time": 58686,
-      "x": 0.22,
-      "y": 0.363,
-      "type": "circle"
-    },
-    {
-      "time": 59114,
-      "x": 0.38,
-      "y": 0.357,
-      "type": "circle"
-    },
-    {
-      "time": 59543,
-      "x": 0.54,
-      "y": 0.415,
-      "type": "circle",
+      "x": 0.765,
+      "y": 0.64,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.679,
+          0.675
+        ],
+        [
+          0.644,
+          0.761
+        ]
+      ],
       "link_id": 35
     },
     {
-      "time": 59971,
-      "x": 0.7,
-      "y": 0.356,
-      "type": "circle",
-      "require_lane": 0
+      "time": 59543,
+      "x": 0.292,
+      "y": 0.761,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.292,
+          0.668
+        ],
+        [
+          0.226,
+          0.603
+        ]
+      ]
     },
     {
       "time": 60400,
-      "x": 0.78,
-      "y": 0.334,
+      "x": 0.226,
+      "y": 0.251,
       "type": "circle"
     },
     {
       "time": 60829,
-      "x": 0.62,
-      "y": 0.366,
+      "x": 0.626,
+      "y": 0.251,
       "type": "circle",
       "link_id": 36
     },
     {
       "time": 61257,
-      "x": 0.46,
-      "y": 0.331,
+      "x": 0.779,
+      "y": 0.62,
       "type": "circle"
     },
     {
       "time": 62114,
-      "x": 0.3,
+      "x": 0.306,
       "y": 0.393,
       "type": "circle"
     },
     {
       "time": 62543,
-      "x": 0.22,
-      "y": 0.373,
+      "x": 0.675,
+      "y": 0.24,
       "type": "circle",
       "link_id": 37
     },
     {
-      "time": 62757,
-      "x": 0.38,
-      "y": 0.361,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
       "time": 62971,
-      "x": 0.54,
-      "y": 0.375,
+      "x": 0.778,
+      "y": 0.626,
       "type": "circle"
     },
     {
       "time": 63400,
-      "x": 0.7,
-      "y": 0.296,
-      "type": "circle",
-      "link_id": 38
-    },
-    {
-      "time": 63829,
-      "x": 0.78,
-      "y": 0.253,
-      "type": "circle"
-    },
-    {
-      "time": 64257,
-      "x": 0.62,
-      "y": 0.283,
+      "x": 0.409,
+      "y": 0.473,
       "type": "circle"
     },
     {
       "time": 64686,
-      "x": 0.46,
-      "y": 0.312,
+      "x": 0.81,
+      "y": 0.241,
       "type": "circle",
-      "link_id": 39
-    },
-    {
-      "time": 65114,
-      "x": 0.3,
-      "y": 0.263,
-      "type": "circle",
-      "require_lane": 3
+      "link_id": 38
     },
     {
       "time": 65543,
-      "x": 0.22,
-      "y": 0.331,
+      "x": 0.291,
+      "y": 0.317,
       "type": "circle"
     },
     {
       "time": 65757,
-      "x": 0.38,
-      "y": 0.371,
+      "x": 0.252,
+      "y": 0.61,
+      "type": "circle",
+      "require_lane": 2
+    },
+    {
+      "time": 65971,
+      "x": 0.508,
+      "y": 0.758,
+      "type": "circle",
+      "link_id": 39
+    },
+    {
+      "time": 66400,
+      "x": 0.751,
+      "y": 0.441,
+      "type": "circle"
+    },
+    {
+      "time": 67257,
+      "x": 0.244,
+      "y": 0.307,
+      "type": "circle"
+    },
+    {
+      "time": 67686,
+      "x": 0.244,
+      "y": 0.707,
       "type": "circle",
       "link_id": 40
     },
     {
-      "time": 65971,
-      "x": 0.54,
-      "y": 0.353,
-      "type": "circle"
-    },
-    {
-      "time": 66400,
-      "x": 0.7,
-      "y": 0.397,
+      "time": 68114,
+      "x": 0.561,
+      "y": 0.464,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.82,
-          0.497
+          0.607,
+          0.383
         ],
         [
-          0.84,
-          0.397
+          0.697,
+          0.36
         ]
       ]
     },
     {
-      "time": 67257,
-      "x": 0.78,
-      "y": 0.308,
+      "time": 68971,
+      "x": 0.788,
+      "y": 0.7,
+      "type": "circle"
+    },
+    {
+      "time": 69829,
+      "x": 0.332,
+      "y": 0.44,
       "type": "circle",
       "link_id": 41
     },
     {
-      "time": 67686,
-      "x": 0.62,
-      "y": 0.323,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 67900,
-      "x": 0.46,
-      "y": 0.328,
+      "time": 70043,
+      "x": 0.219,
+      "y": 0.713,
       "type": "circle"
     },
     {
-      "time": 68114,
-      "x": 0.3,
-      "y": 0.344,
+      "time": 70257,
+      "x": 0.512,
+      "y": 0.752,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.595,
+          0.711
+        ],
+        [
+          0.683,
+          0.741
+        ]
+      ]
+    },
+    {
+      "time": 71543,
+      "x": 0.386,
+      "y": 0.338,
       "type": "circle",
       "link_id": 42
     },
     {
-      "time": 68971,
-      "x": 0.22,
-      "y": 0.328,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.34,
-          0.428
-        ],
-        [
-          0.44,
-          0.328
-        ]
-      ]
-    },
-    {
-      "time": 69829,
-      "x": 0.38,
-      "y": 0.371,
-      "type": "circle"
-    },
-    {
-      "time": 70043,
-      "x": 0.54,
-      "y": 0.435,
-      "type": "circle",
-      "link_id": 43
-    },
-    {
-      "time": 70257,
-      "x": 0.7,
-      "y": 0.38,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 71114,
-      "x": 0.78,
-      "y": 0.365,
-      "type": "circle"
-    },
-    {
-      "time": 71543,
-      "x": 0.62,
-      "y": 0.314,
-      "type": "circle",
-      "link_id": 44
-    },
-    {
       "time": 71971,
-      "x": 0.46,
-      "y": 0.37,
+      "x": 0.772,
+      "y": 0.235,
       "type": "circle"
     },
     {
       "time": 72400,
-      "x": 0.3,
-      "y": 0.32,
+      "x": 0.772,
+      "y": 0.635,
       "type": "circle"
     },
     {
       "time": 72829,
-      "x": 0.22,
-      "y": 0.356,
+      "x": 0.455,
+      "y": 0.392,
       "type": "circle",
-      "link_id": 45
+      "link_id": 43
     },
     {
       "time": 73043,
-      "x": 0.38,
-      "y": 0.384,
-      "type": "circle",
-      "require_lane": 1
+      "x": 0.22,
+      "y": 0.572,
+      "type": "circle"
     },
     {
       "time": 73257,
-      "x": 0.54,
-      "y": 0.29,
-      "type": "circle"
+      "x": 0.22,
+      "y": 0.276,
+      "type": "circle",
+      "require_lane": 3
     },
     {
       "time": 73686,
-      "x": 0.7,
-      "y": 0.252,
+      "x": 0.619,
+      "y": 0.259,
       "type": "circle",
-      "link_id": 46
+      "link_id": 44
     },
     {
       "time": 74971,
-      "x": 0.78,
-      "y": 0.274,
-      "type": "circle"
-    },
-    {
-      "time": 75614,
-      "x": 0.62,
-      "y": 0.294,
-      "type": "circle"
-    },
-    {
-      "time": 75829,
-      "x": 0.46,
-      "y": 0.291,
-      "type": "circle",
-      "link_id": 47
-    },
-    {
-      "time": 76257,
-      "x": 0.3,
-      "y": 0.305,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 76686,
-      "x": 0.22,
-      "y": 0.329,
-      "type": "circle"
-    },
-    {
-      "time": 77114,
-      "x": 0.38,
-      "y": 0.334,
-      "type": "circle",
-      "link_id": 48
-    },
-    {
-      "time": 77543,
-      "x": 0.54,
-      "y": 0.302,
-      "type": "circle"
-    },
-    {
-      "time": 78186,
-      "x": 0.7,
-      "y": 0.316,
-      "type": "circle"
-    },
-    {
-      "time": 78400,
-      "x": 0.78,
-      "y": 0.335,
+      "x": 0.262,
+      "y": 0.725,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.66,
-          0.435
-        ],
-        [
-          0.56,
-          0.335
-        ]
-      ],
-      "link_id": 49
-    },
-    {
-      "time": 79257,
-      "x": 0.62,
-      "y": 0.292,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 79686,
-      "x": 0.46,
-      "y": 0.343,
-      "type": "circle"
-    },
-    {
-      "time": 80114,
-      "x": 0.3,
-      "y": 0.32,
-      "type": "circle",
-      "link_id": 50
-    },
-    {
-      "time": 80971,
-      "x": 0.22,
-      "y": 0.326,
-      "type": "circle"
-    },
-    {
-      "time": 81829,
-      "x": 0.38,
-      "y": 0.369,
-      "type": "circle"
-    },
-    {
-      "time": 82257,
-      "x": 0.54,
-      "y": 0.351,
-      "type": "circle",
-      "link_id": 51
-    },
-    {
-      "time": 82686,
-      "x": 0.7,
-      "y": 0.307,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 83543,
-      "x": 0.78,
-      "y": 0.345,
-      "type": "circle"
-    },
-    {
-      "time": 84400,
-      "x": 0.62,
-      "y": 0.296,
-      "type": "circle",
-      "link_id": 52
-    },
-    {
-      "time": 85257,
-      "x": 0.46,
-      "y": 0.324,
-      "type": "circle"
-    },
-    {
-      "time": 85686,
-      "x": 0.3,
-      "y": 0.332,
-      "type": "circle"
-    },
-    {
-      "time": 86114,
-      "x": 0.22,
-      "y": 0.302,
-      "type": "circle",
-      "link_id": 53
-    },
-    {
-      "time": 86971,
-      "x": 0.38,
-      "y": 0.339,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 87829,
-      "x": 0.54,
-      "y": 0.309,
-      "type": "circle"
-    },
-    {
-      "time": 88686,
-      "x": 0.7,
-      "y": 0.335,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.82,
-          0.435
-        ],
-        [
-          0.84,
-          0.335
-        ]
-      ],
-      "link_id": 54
-    },
-    {
-      "time": 90829,
-      "x": 0.78,
-      "y": 0.383,
-      "type": "circle"
-    },
-    {
-      "time": 91257,
-      "x": 0.62,
-      "y": 0.4,
-      "type": "circle"
-    },
-    {
-      "time": 91686,
-      "x": 0.46,
-      "y": 0.492,
-      "type": "circle",
-      "link_id": 55
-    },
-    {
-      "time": 92971,
-      "x": 0.3,
-      "y": 0.438,
-      "type": "circle",
-      "require_lane": 4
-    },
-    {
-      "time": 93614,
-      "x": 0.22,
-      "y": 0.527,
-      "type": "circle"
-    },
-    {
-      "time": 93829,
-      "x": 0.38,
-      "y": 0.419,
-      "type": "circle",
-      "link_id": 56
-    },
-    {
-      "time": 94257,
-      "x": 0.54,
-      "y": 0.51,
-      "type": "circle"
-    },
-    {
-      "time": 94686,
-      "x": 0.7,
-      "y": 0.451,
-      "type": "circle"
-    },
-    {
-      "time": 95543,
-      "x": 0.78,
-      "y": 0.38,
-      "type": "circle",
-      "link_id": 57
-    },
-    {
-      "time": 96186,
-      "x": 0.62,
-      "y": 0.422,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 96400,
-      "x": 0.46,
-      "y": 0.512,
-      "type": "circle"
-    },
-    {
-      "time": 96829,
-      "x": 0.3,
-      "y": 0.292,
-      "type": "circle",
-      "link_id": 58
-    },
-    {
-      "time": 97043,
-      "x": 0.22,
-      "y": 0.381,
-      "type": "circle"
-    },
-    {
-      "time": 97257,
-      "x": 0.38,
-      "y": 0.362,
-      "type": "circle"
-    },
-    {
-      "time": 97686,
-      "x": 0.54,
-      "y": 0.42,
-      "type": "circle",
-      "link_id": 59
-    },
-    {
-      "time": 98114,
-      "x": 0.7,
-      "y": 0.403,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 98757,
-      "x": 0.78,
-      "y": 0.516,
-      "type": "circle"
-    },
-    {
-      "time": 98971,
-      "x": 0.62,
-      "y": 0.451,
-      "type": "circle",
-      "link_id": 60
-    },
-    {
-      "time": 99829,
-      "x": 0.46,
-      "y": 0.507,
-      "type": "circle"
-    },
-    {
-      "time": 100471,
-      "x": 0.3,
-      "y": 0.407,
-      "type": "circle"
-    },
-    {
-      "time": 100686,
-      "x": 0.22,
-      "y": 0.448,
-      "type": "circle",
-      "link_id": 61
-    },
-    {
-      "time": 102400,
-      "x": 0.38,
-      "y": 0.35,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 103257,
-      "x": 0.54,
-      "y": 0.457,
-      "type": "circle"
-    },
-    {
-      "time": 104329,
-      "x": 0.7,
-      "y": 0.406,
-      "type": "circle",
-      "link_id": 62
-    },
-    {
-      "time": 104543,
-      "x": 0.78,
-      "y": 0.376,
-      "type": "circle"
-    },
-    {
-      "time": 104971,
-      "x": 0.62,
-      "y": 0.365,
-      "type": "circle"
-    },
-    {
-      "time": 105186,
-      "x": 0.46,
-      "y": 0.363,
-      "type": "circle",
-      "link_id": 63
-    },
-    {
-      "time": 105614,
-      "x": 0.3,
-      "y": 0.372,
-      "type": "circle",
-      "require_lane": 1
-    },
-    {
-      "time": 105829,
-      "x": 0.22,
-      "y": 0.407,
-      "type": "circle"
-    },
-    {
-      "time": 106257,
-      "x": 0.38,
-      "y": 0.305,
-      "type": "circle",
-      "link_id": 64
-    },
-    {
-      "time": 106686,
-      "x": 0.54,
-      "y": 0.387,
-      "type": "circle"
-    },
-    {
-      "time": 106900,
-      "x": 0.7,
-      "y": 0.46,
-      "type": "circle"
-    },
-    {
-      "time": 107114,
-      "x": 0.78,
-      "y": 0.374,
-      "type": "circle",
-      "link_id": 65
-    },
-    {
-      "time": 107329,
-      "x": 0.62,
-      "y": 0.438,
-      "type": "circle",
-      "require_lane": 0
-    },
-    {
-      "time": 107543,
-      "x": 0.46,
-      "y": 0.364,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.34,
-          0.464
+          0.286,
+          0.635
         ],
         [
           0.24,
-          0.364
+          0.555
         ]
       ]
     },
     {
-      "time": 108400,
-      "x": 0.3,
-      "y": 0.313,
-      "type": "circle",
-      "link_id": 66
+      "time": 75829,
+      "x": 0.24,
+      "y": 0.252,
+      "type": "circle"
     },
     {
-      "time": 109257,
+      "time": 76257,
+      "x": 0.638,
+      "y": 0.28,
+      "type": "circle",
+      "link_id": 45
+    },
+    {
+      "time": 76686,
+      "x": 0.741,
+      "y": 0.666,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 77114,
+      "x": 0.345,
+      "y": 0.614,
+      "type": "circle"
+    },
+    {
+      "time": 77543,
+      "x": 0.248,
+      "y": 0.251,
+      "type": "circle",
+      "link_id": 46
+    },
+    {
+      "time": 78400,
+      "x": 0.765,
+      "y": 0.337,
+      "type": "circle"
+    },
+    {
+      "time": 79257,
+      "x": 0.242,
+      "y": 0.293,
+      "type": "circle"
+    },
+    {
+      "time": 79686,
+      "x": 0.242,
+      "y": 0.693,
+      "type": "circle",
+      "link_id": 47
+    },
+    {
+      "time": 80114,
+      "x": 0.611,
+      "y": 0.54,
+      "type": "circle"
+    },
+    {
+      "time": 80971,
       "x": 0.22,
-      "y": 0.323,
+      "y": 0.24,
       "type": "circle"
     },
     {
-      "time": 109686,
-      "x": 0.38,
-      "y": 0.418,
-      "type": "circle"
-    },
-    {
-      "time": 110114,
-      "x": 0.54,
-      "y": 0.422,
+      "time": 81829,
+      "x": 0.727,
+      "y": 0.376,
       "type": "circle",
-      "link_id": 67
+      "link_id": 48
     },
     {
-      "time": 110329,
-      "x": 0.7,
-      "y": 0.452,
+      "time": 82257,
+      "x": 0.776,
+      "y": 0.748,
+      "type": "circle"
+    },
+    {
+      "time": 82686,
+      "x": 0.376,
+      "y": 0.748,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 83543,
+      "x": 0.512,
+      "y": 0.241,
+      "type": "circle",
+      "link_id": 49
+    },
+    {
+      "time": 84400,
+      "x": 0.774,
+      "y": 0.695,
+      "type": "circle"
+    },
+    {
+      "time": 84614,
+      "x": 0.486,
+      "y": 0.763,
+      "type": "circle"
+    },
+    {
+      "time": 84829,
+      "x": 0.229,
+      "y": 0.615,
+      "type": "circle",
+      "link_id": 50
+    },
+    {
+      "time": 85257,
+      "x": 0.382,
+      "y": 0.246,
       "type": "circle",
       "require_lane": 0
     },
     {
-      "time": 110757,
-      "x": 0.78,
-      "y": 0.352,
+      "time": 85686,
+      "x": 0.782,
+      "y": 0.246,
       "type": "circle"
     },
     {
-      "time": 111400,
-      "x": 0.62,
-      "y": 0.445,
+      "time": 86114,
+      "x": 0.782,
+      "y": 0.645,
       "type": "circle",
-      "link_id": 68
+      "link_id": 51
     },
     {
-      "time": 111829,
-      "x": 0.46,
-      "y": 0.423,
+      "time": 86971,
+      "x": 0.321,
+      "y": 0.395,
       "type": "circle"
     },
     {
-      "time": 112257,
-      "x": 0.3,
-      "y": 0.429,
+      "time": 87829,
+      "x": 0.76,
+      "y": 0.289,
+      "type": "slider",
+      "slider_duration": 457,
+      "slider_path": [
+        [
+          0.73,
+          0.37
+        ],
+        [
+          0.766,
+          0.449
+        ]
+      ]
+    },
+    {
+      "time": 88471,
+      "x": 0.735,
+      "y": 0.726,
+      "type": "circle",
+      "link_id": 52
+    },
+    {
+      "time": 88686,
+      "x": 0.438,
+      "y": 0.726,
       "type": "circle"
     },
     {
-      "time": 112686,
+      "time": 90829,
+      "x": 0.77,
+      "y": 0.293,
+      "type": "circle"
+    },
+    {
+      "time": 91257,
+      "x": 0.371,
+      "y": 0.293,
+      "type": "circle",
+      "link_id": 53
+    },
+    {
+      "time": 91686,
+      "x": 0.218,
+      "y": 0.662,
+      "type": "circle"
+    },
+    {
+      "time": 92114,
+      "x": 0.604,
+      "y": 0.765,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 92543,
+      "x": 0.757,
+      "y": 0.396,
+      "type": "circle",
+      "link_id": 54
+    },
+    {
+      "time": 92971,
+      "x": 0.388,
+      "y": 0.243,
+      "type": "circle"
+    },
+    {
+      "time": 93186,
+      "x": 0.24,
+      "y": 0.5,
+      "type": "circle"
+    },
+    {
+      "time": 93614,
+      "x": 0.636,
+      "y": 0.552,
+      "type": "circle",
+      "link_id": 55
+    },
+    {
+      "time": 93829,
+      "x": 0.784,
+      "y": 0.295,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 94257,
+      "x": 0.388,
+      "y": 0.347,
+      "type": "circle"
+    },
+    {
+      "time": 94686,
+      "x": 0.235,
+      "y": 0.716,
+      "type": "circle",
+      "link_id": 56
+    },
+    {
+      "time": 95543,
+      "x": 0.678,
+      "y": 0.435,
+      "type": "circle"
+    },
+    {
+      "time": 96400,
+      "x": 0.218,
+      "y": 0.688,
+      "type": "slider",
+      "slider_duration": 458,
+      "slider_path": [
+        [
+          0.258,
+          0.611
+        ],
+        [
+          0.232,
+          0.529
+        ]
+      ]
+    },
+    {
+      "time": 97043,
+      "x": 0.231,
+      "y": 0.25,
+      "type": "circle",
+      "link_id": 57
+    },
+    {
+      "time": 97257,
+      "x": 0.527,
+      "y": 0.25,
+      "type": "circle"
+    },
+    {
+      "time": 97686,
+      "x": 0.77,
+      "y": 0.567,
+      "type": "circle"
+    },
+    {
+      "time": 98114,
+      "x": 0.401,
+      "y": 0.72,
+      "type": "circle",
+      "link_id": 58
+    },
+    {
+      "time": 98757,
       "x": 0.22,
-      "y": 0.431,
-      "type": "circle",
-      "link_id": 69
+      "y": 0.283,
+      "type": "circle"
     },
     {
-      "time": 113114,
-      "x": 0.38,
-      "y": 0.35,
+      "time": 98971,
+      "x": 0.513,
+      "y": 0.244,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 99829,
+      "x": 0.775,
+      "y": 0.698,
+      "type": "circle",
+      "link_id": 59
+    },
+    {
+      "time": 100043,
+      "x": 0.482,
+      "y": 0.737,
+      "type": "circle"
+    },
+    {
+      "time": 100471,
+      "x": 0.239,
+      "y": 0.42,
+      "type": "circle"
+    },
+    {
+      "time": 100686,
+      "x": 0.496,
+      "y": 0.272,
+      "type": "circle",
+      "link_id": 60
+    },
+    {
+      "time": 101114,
+      "x": 0.778,
+      "y": 0.554,
       "type": "circle",
       "require_lane": 2
     },
     {
-      "time": 113543,
-      "x": 0.54,
-      "y": 0.357,
-      "type": "circle"
-    },
-    {
-      "time": 114400,
-      "x": 0.7,
-      "y": 0.341,
-      "type": "circle",
-      "link_id": 70
-    },
-    {
-      "time": 115686,
-      "x": 0.78,
+      "time": 102400,
+      "x": 0.227,
       "y": 0.351,
       "type": "circle"
     },
     {
-      "time": 116543,
-      "x": 0.62,
-      "y": 0.355,
+      "time": 103257,
+      "x": 0.742,
+      "y": 0.451,
+      "type": "circle",
+      "link_id": 61
+    },
+    {
+      "time": 104329,
+      "x": 0.223,
+      "y": 0.236,
+      "type": "slider",
+      "slider_duration": 457,
+      "slider_path": [
+        [
+          0.257,
+          0.316
+        ],
+        [
+          0.223,
+          0.396
+        ]
+      ]
+    },
+    {
+      "time": 104971,
+      "x": 0.223,
+      "y": 0.675,
       "type": "circle"
     },
     {
-      "time": 116971,
-      "x": 0.46,
-      "y": 0.344,
+      "time": 105186,
+      "x": 0.509,
+      "y": 0.752,
       "type": "circle",
-      "link_id": 71
+      "link_id": 62
     },
     {
-      "time": 117186,
-      "x": 0.3,
-      "y": 0.331,
+      "time": 105829,
+      "x": 0.745,
+      "y": 0.343,
+      "type": "circle"
+    },
+    {
+      "time": 106257,
+      "x": 0.349,
+      "y": 0.291,
+      "type": "circle"
+    },
+    {
+      "time": 106686,
+      "x": 0.246,
+      "y": 0.677,
+      "type": "circle",
+      "link_id": 63
+    },
+    {
+      "time": 107329,
+      "x": 0.674,
+      "y": 0.476,
+      "type": "circle"
+    },
+    {
+      "time": 107543,
+      "x": 0.771,
+      "y": 0.241,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 108400,
+      "x": 0.251,
+      "y": 0.31,
+      "type": "circle",
+      "link_id": 64
+    },
+    {
+      "time": 109257,
+      "x": 0.775,
+      "y": 0.324,
+      "type": "circle"
+    },
+    {
+      "time": 109686,
+      "x": 0.775,
+      "y": 0.724,
+      "type": "circle"
+    },
+    {
+      "time": 110114,
+      "x": 0.376,
+      "y": 0.724,
+      "type": "circle",
+      "link_id": 65
+    },
+    {
+      "time": 110329,
+      "x": 0.228,
+      "y": 0.467,
+      "type": "circle",
+      "require_lane": 3
+    },
+    {
+      "time": 110757,
+      "x": 0.574,
+      "y": 0.267,
+      "type": "circle"
+    },
+    {
+      "time": 110971,
+      "x": 0.783,
+      "y": 0.476,
+      "type": "circle",
+      "link_id": 66
+    },
+    {
+      "time": 111400,
+      "x": 0.397,
+      "y": 0.579,
+      "type": "circle"
+    },
+    {
+      "time": 112686,
+      "x": 0.798,
+      "y": 0.272,
+      "type": "circle"
+    },
+    {
+      "time": 113114,
+      "x": 0.779,
+      "y": 0.671,
+      "type": "circle",
+      "link_id": 67
+    },
+    {
+      "time": 113543,
+      "x": 0.433,
+      "y": 0.471,
+      "type": "circle"
+    },
+    {
+      "time": 114400,
+      "x": 0.81,
+      "y": 0.253,
+      "type": "circle"
+    },
+    {
+      "time": 114829,
+      "x": 0.758,
+      "y": 0.649,
+      "type": "circle",
+      "link_id": 68
+    },
+    {
+      "time": 115686,
+      "x": 0.342,
+      "y": 0.33,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.252,
+          0.306
+        ],
+        [
+          0.206,
+          0.226
+        ]
+      ]
+    },
+    {
+      "time": 116543,
+      "x": 0.555,
+      "y": 0.272,
       "type": "circle",
       "require_lane": 0
     },
     {
       "time": 117400,
-      "x": 0.22,
-      "y": 0.33,
-      "type": "circle"
+      "x": 0.236,
+      "y": 0.688,
+      "type": "circle",
+      "link_id": 69
     },
     {
       "time": 117614,
-      "x": 0.38,
-      "y": 0.342,
-      "type": "circle",
-      "link_id": 72
+      "x": 0.522,
+      "y": 0.765,
+      "type": "circle"
     },
     {
       "time": 117829,
-      "x": 0.54,
-      "y": 0.389,
+      "x": 0.779,
+      "y": 0.617,
       "type": "circle"
     },
     {
       "time": 118257,
-      "x": 0.7,
-      "y": 0.325,
-      "type": "circle"
+      "x": 0.779,
+      "y": 0.242,
+      "type": "circle",
+      "link_id": 70
     },
     {
       "time": 118686,
-      "x": 0.78,
-      "y": 0.335,
+      "x": 0.385,
+      "y": 0.308,
       "type": "circle",
-      "link_id": 73
+      "require_lane": 0
     },
     {
-      "time": 119114,
-      "x": 0.62,
-      "y": 0.351,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 120186,
-      "x": 0.46,
-      "y": 0.333,
+      "time": 119543,
+      "x": 0.756,
+      "y": 0.679,
       "type": "circle"
     },
     {
       "time": 120400,
-      "x": 0.3,
-      "y": 0.318,
+      "x": 0.385,
+      "y": 0.308,
       "type": "circle",
-      "link_id": 74
+      "link_id": 71
     },
     {
       "time": 120829,
-      "x": 0.22,
-      "y": 0.355,
+      "x": 0.232,
+      "y": 0.677,
       "type": "circle"
     },
     {
       "time": 121257,
-      "x": 0.38,
-      "y": 0.317,
+      "x": 0.628,
+      "y": 0.625,
       "type": "circle"
     },
     {
       "time": 121686,
-      "x": 0.54,
-      "y": 0.324,
+      "x": 0.781,
+      "y": 0.256,
       "type": "circle",
-      "link_id": 75
+      "link_id": 72
     },
     {
       "time": 122114,
-      "x": 0.7,
-      "y": 0.336,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 122543,
-      "x": 0.78,
-      "y": 0.353,
+      "x": 0.385,
+      "y": 0.308,
       "type": "circle"
     },
     {
       "time": 122971,
-      "x": 0.62,
-      "y": 0.342,
-      "type": "circle",
-      "link_id": 76
-    },
-    {
-      "time": 123614,
-      "x": 0.46,
-      "y": 0.321,
+      "x": 0.776,
+      "y": 0.608,
       "type": "circle"
     },
     {
       "time": 123829,
-      "x": 0.3,
-      "y": 0.312,
-      "type": "circle"
+      "x": 0.314,
+      "y": 0.36,
+      "type": "circle",
+      "link_id": 73
     },
     {
       "time": 124257,
-      "x": 0.22,
-      "y": 0.328,
-      "type": "circle",
-      "link_id": 77
-    },
-    {
-      "time": 124686,
-      "x": 0.38,
-      "y": 0.335,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 125114,
-      "x": 0.54,
-      "y": 0.358,
+      "x": 0.211,
+      "y": 0.746,
       "type": "circle"
     },
     {
-      "time": 125543,
-      "x": 0.7,
-      "y": 0.341,
+      "time": 124686,
+      "x": 0.611,
+      "y": 0.746,
       "type": "circle",
-      "link_id": 78
+      "require_lane": 0
+    },
+    {
+      "time": 125543,
+      "x": 0.24,
+      "y": 0.375,
+      "type": "circle",
+      "link_id": 74
     },
     {
       "time": 125971,
-      "x": 0.78,
-      "y": 0.362,
+      "x": 0.626,
+      "y": 0.272,
       "type": "circle"
     },
     {
       "time": 126400,
-      "x": 0.62,
-      "y": 0.314,
+      "x": 0.779,
+      "y": 0.641,
       "type": "circle"
-    },
-    {
-      "time": 126829,
-      "x": 0.46,
-      "y": 0.42,
-      "type": "circle",
-      "link_id": 79
     },
     {
       "time": 127257,
-      "x": 0.3,
-      "y": 0.401,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 127686,
-      "x": 0.22,
-      "y": 0.425,
-      "type": "circle"
-    },
-    {
-      "time": 128114,
-      "x": 0.38,
-      "y": 0.359,
-      "type": "circle",
-      "link_id": 80
+      "x": 0.297,
+      "y": 0.434,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.299,
+          0.341
+        ],
+        [
+          0.233,
+          0.275
+        ]
+      ],
+      "link_id": 75
     },
     {
       "time": 128543,
-      "x": 0.54,
-      "y": 0.346,
-      "type": "circle"
+      "x": 0.729,
+      "y": 0.341,
+      "type": "circle",
+      "require_lane": 0
     },
     {
       "time": 128971,
-      "x": 0.7,
-      "y": 0.329,
+      "x": 0.781,
+      "y": 0.737,
       "type": "circle"
     },
     {
       "time": 129400,
-      "x": 0.78,
-      "y": 0.351,
+      "x": 0.395,
+      "y": 0.634,
       "type": "circle",
-      "link_id": 81
+      "link_id": 76
     },
     {
       "time": 129829,
-      "x": 0.62,
-      "y": 0.383,
-      "type": "circle",
-      "require_lane": 0
+      "x": 0.242,
+      "y": 0.265,
+      "type": "circle"
     },
     {
       "time": 130257,
-      "x": 0.46,
-      "y": 0.377,
+      "x": 0.638,
+      "y": 0.317,
       "type": "circle"
     },
     {
       "time": 130686,
-      "x": 0.3,
-      "y": 0.361,
+      "x": 0.741,
+      "y": 0.703,
       "type": "circle",
-      "link_id": 82
+      "link_id": 77
     },
     {
       "time": 131114,
-      "x": 0.22,
-      "y": 0.353,
+      "x": 0.345,
+      "y": 0.755,
       "type": "circle"
     },
     {
       "time": 131543,
-      "x": 0.38,
-      "y": 0.381,
+      "x": 0.242,
+      "y": 0.369,
       "type": "circle"
     },
     {
       "time": 131971,
-      "x": 0.54,
-      "y": 0.336,
+      "x": 0.628,
+      "y": 0.266,
       "type": "circle",
-      "link_id": 83
+      "link_id": 78
     },
     {
       "time": 132400,
-      "x": 0.7,
-      "y": 0.347,
-      "type": "circle",
-      "require_lane": 4
+      "x": 0.781,
+      "y": 0.635,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.695,
+          0.67
+        ],
+        [
+          0.66,
+          0.756
+        ]
+      ]
     },
     {
       "time": 133257,
-      "x": 0.78,
-      "y": 0.32,
-      "type": "circle"
+      "x": 0.311,
+      "y": 0.71,
+      "type": "circle",
+      "require_lane": 1
     },
     {
-      "time": 134329,
-      "x": 0.62,
-      "y": 0.412,
-      "type": "slider",
-      "slider_duration": 482,
-      "slider_path": [
-        [
-          0.5,
-          0.512
-        ],
-        [
-          0.4,
-          0.412
-        ]
-      ],
-      "link_id": 84
+      "time": 134543,
+      "x": 0.777,
+      "y": 0.353,
+      "type": "circle",
+      "link_id": 79
     },
     {
       "time": 134971,
-      "x": 0.46,
-      "y": 0.394,
-      "type": "circle"
-    },
-    {
-      "time": 135186,
-      "x": 0.3,
-      "y": 0.432,
+      "x": 0.391,
+      "y": 0.25,
       "type": "circle"
     },
     {
       "time": 135400,
-      "x": 0.22,
-      "y": 0.356,
-      "type": "circle",
-      "link_id": 85
+      "x": 0.238,
+      "y": 0.619,
+      "type": "circle"
     },
     {
       "time": 135829,
-      "x": 0.38,
-      "y": 0.345,
+      "x": 0.624,
+      "y": 0.722,
       "type": "circle",
-      "require_lane": 0
+      "link_id": 80
     },
     {
       "time": 136257,
-      "x": 0.54,
-      "y": 0.363,
-      "type": "circle"
+      "x": 0.777,
+      "y": 0.353,
+      "type": "circle",
+      "require_lane": 1
     },
     {
       "time": 136686,
-      "x": 0.7,
-      "y": 0.304,
-      "type": "circle",
-      "link_id": 86
-    },
-    {
-      "time": 137543,
-      "x": 0.78,
-      "y": 0.367,
+      "x": 0.391,
+      "y": 0.25,
       "type": "circle"
     },
     {
+      "time": 137543,
+      "x": 0.762,
+      "y": 0.621,
+      "type": "circle",
+      "link_id": 81
+    },
+    {
       "time": 137971,
-      "x": 0.62,
-      "y": 0.321,
+      "x": 0.807,
+      "y": 0.281,
       "type": "circle"
     },
     {
       "time": 138400,
-      "x": 0.46,
-      "y": 0.362,
-      "type": "circle",
-      "link_id": 87
+      "x": 0.411,
+      "y": 0.334,
+      "type": "circle"
     },
     {
       "time": 138829,
-      "x": 0.3,
-      "y": 0.312,
+      "x": 0.211,
+      "y": 0.68,
       "type": "circle",
-      "require_lane": 0
+      "link_id": 82
     },
     {
       "time": 139257,
-      "x": 0.22,
-      "y": 0.331,
+      "x": 0.607,
+      "y": 0.628,
       "type": "circle"
     },
     {
       "time": 139686,
-      "x": 0.38,
-      "y": 0.345,
-      "type": "circle",
-      "link_id": 88
+      "x": 0.76,
+      "y": 0.259,
+      "type": "circle"
     },
     {
       "time": 140114,
-      "x": 0.54,
-      "y": 0.306,
-      "type": "circle"
-    },
-    {
-      "time": 140543,
-      "x": 0.7,
-      "y": 0.292,
-      "type": "circle"
+      "x": 0.361,
+      "y": 0.259,
+      "type": "circle",
+      "link_id": 83
     },
     {
       "time": 140971,
-      "x": 0.78,
-      "y": 0.312,
-      "type": "circle",
-      "link_id": 89
+      "x": 0.777,
+      "y": 0.578,
+      "type": "circle"
     },
     {
       "time": 141400,
-      "x": 0.62,
-      "y": 0.33,
+      "x": 0.777,
+      "y": 0.234,
       "type": "circle",
       "require_lane": 1
     },
     {
       "time": 141829,
-      "x": 0.46,
-      "y": 0.338,
-      "type": "circle"
-    },
-    {
-      "time": 142043,
-      "x": 0.3,
-      "y": 0.404,
+      "x": 0.381,
+      "y": 0.286,
       "type": "circle",
-      "link_id": 90
+      "link_id": 84
     },
     {
       "time": 142686,
-      "x": 0.22,
-      "y": 0.344,
+      "x": 0.752,
+      "y": 0.657,
       "type": "circle"
     },
     {
       "time": 143114,
-      "x": 0.38,
-      "y": 0.338,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.5,
-          0.438
-        ],
-        [
-          0.6,
-          0.338
-        ]
-      ]
-    },
-    {
-      "time": 143971,
-      "x": 0.54,
-      "y": 0.32,
-      "type": "circle",
-      "link_id": 91
+      "x": 0.356,
+      "y": 0.709,
+      "type": "circle"
     },
     {
       "time": 144400,
-      "x": 0.7,
-      "y": 0.351,
+      "x": 0.771,
+      "y": 0.294,
       "type": "circle",
-      "require_lane": 3
+      "link_id": 85
     },
     {
       "time": 144829,
-      "x": 0.78,
-      "y": 0.334,
-      "type": "circle"
+      "x": 0.375,
+      "y": 0.242,
+      "type": "circle",
+      "require_lane": 0
     },
     {
       "time": 145257,
-      "x": 0.62,
-      "y": 0.364,
-      "type": "circle",
-      "link_id": 92
-    },
-    {
-      "time": 145686,
-      "x": 0.46,
-      "y": 0.321,
+      "x": 0.222,
+      "y": 0.611,
       "type": "circle"
     },
     {
+      "time": 145686,
+      "x": 0.591,
+      "y": 0.764,
+      "type": "circle",
+      "link_id": 86
+    },
+    {
       "time": 146114,
-      "x": 0.3,
-      "y": 0.352,
+      "x": 0.744,
+      "y": 0.395,
       "type": "circle"
     },
     {
       "time": 146971,
-      "x": 0.22,
-      "y": 0.337,
-      "type": "circle",
-      "link_id": 93
-    },
-    {
-      "time": 148257,
-      "x": 0.38,
-      "y": 0.364,
-      "type": "circle",
-      "require_lane": 1
-    },
-    {
-      "time": 148686,
-      "x": 0.54,
-      "y": 0.339,
-      "type": "circle"
-    },
-    {
-      "time": 149114,
-      "x": 0.7,
-      "y": 0.314,
-      "type": "circle",
-      "link_id": 94
-    },
-    {
-      "time": 149543,
-      "x": 0.78,
-      "y": 0.328,
-      "type": "circle"
-    },
-    {
-      "time": 150400,
-      "x": 0.62,
-      "y": 0.309,
-      "type": "circle"
-    },
-    {
-      "time": 150829,
-      "x": 0.46,
-      "y": 0.315,
-      "type": "circle",
-      "link_id": 95
-    },
-    {
-      "time": 151257,
-      "x": 0.3,
-      "y": 0.331,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 151686,
-      "x": 0.22,
-      "y": 0.305,
-      "type": "circle"
-    },
-    {
-      "time": 152114,
-      "x": 0.38,
-      "y": 0.324,
-      "type": "circle",
-      "link_id": 96
-    },
-    {
-      "time": 152543,
-      "x": 0.54,
-      "y": 0.318,
-      "type": "circle"
-    },
-    {
-      "time": 153829,
-      "x": 0.7,
-      "y": 0.335,
-      "type": "circle"
-    },
-    {
-      "time": 154257,
-      "x": 0.78,
-      "y": 0.311,
-      "type": "circle",
-      "link_id": 97
-    },
-    {
-      "time": 154686,
-      "x": 0.62,
-      "y": 0.322,
+      "x": 0.223,
+      "y": 0.333,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.5,
-          0.422
+          0.266,
+          0.416
         ],
         [
-          0.4,
-          0.322
+          0.236,
+          0.504
         ]
       ]
     },
     {
-      "time": 155543,
-      "x": 0.46,
-      "y": 0.334,
+      "time": 147829,
+      "x": 0.485,
+      "y": 0.753,
+      "type": "circle",
+      "link_id": 87
+    },
+    {
+      "time": 148257,
+      "x": 0.767,
+      "y": 0.471,
       "type": "circle"
     },
     {
-      "time": 155971,
-      "x": 0.3,
-      "y": 0.306,
+      "time": 148686,
+      "x": 0.421,
+      "y": 0.271,
+      "type": "circle"
+    },
+    {
+      "time": 149543,
+      "x": 0.74,
+      "y": 0.687,
       "type": "circle",
-      "link_id": 98
+      "link_id": 88
+    },
+    {
+      "time": 150400,
+      "x": 0.369,
+      "y": 0.316,
+      "type": "circle"
+    },
+    {
+      "time": 150829,
+      "x": 0.765,
+      "y": 0.264,
+      "type": "circle",
+      "require_lane": 2
+    },
+    {
+      "time": 151257,
+      "x": 0.765,
+      "y": 0.663,
+      "type": "circle",
+      "link_id": 89
+    },
+    {
+      "time": 151686,
+      "x": 0.419,
+      "y": 0.463,
+      "type": "circle"
+    },
+    {
+      "time": 152114,
+      "x": 0.247,
+      "y": 0.76,
+      "type": "circle"
+    },
+    {
+      "time": 152543,
+      "x": 0.643,
+      "y": 0.708,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.684,
+          0.624
+        ],
+        [
+          0.772,
+          0.595
+        ]
+      ],
+      "link_id": 90
+    },
+    {
+      "time": 153829,
+      "x": 0.338,
+      "y": 0.345,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 154257,
+      "x": 0.218,
+      "y": 0.726,
+      "type": "circle"
+    },
+    {
+      "time": 154686,
+      "x": 0.587,
+      "y": 0.573,
+      "type": "circle",
+      "link_id": 91
+    },
+    {
+      "time": 155543,
+      "x": 0.229,
+      "y": 0.298,
+      "type": "circle"
     },
     {
       "time": 156400,
-      "x": 0.22,
+      "x": 0.753,
       "y": 0.305,
       "type": "circle"
     },
     {
       "time": 156829,
-      "x": 0.38,
-      "y": 0.33,
-      "type": "circle"
+      "x": 0.753,
+      "y": 0.705,
+      "type": "circle",
+      "link_id": 92
     },
     {
       "time": 157257,
-      "x": 0.54,
-      "y": 0.323,
-      "type": "circle",
-      "link_id": 99
+      "x": 0.357,
+      "y": 0.757,
+      "type": "circle"
     },
     {
       "time": 157686,
-      "x": 0.7,
-      "y": 0.329,
+      "x": 0.254,
+      "y": 0.371,
+      "type": "circle"
+    },
+    {
+      "time": 158114,
+      "x": 0.65,
+      "y": 0.319,
       "type": "circle",
-      "require_lane": 0
+      "link_id": 93
     },
     {
       "time": 158543,
-      "x": 0.78,
-      "y": 0.298,
+      "x": 0.753,
+      "y": 0.705,
       "type": "circle"
     },
     {
-      "time": 159829,
-      "x": 0.62,
-      "y": 0.342,
-      "type": "circle",
-      "link_id": 100
-    },
-    {
-      "time": 160257,
-      "x": 0.46,
-      "y": 0.342,
-      "type": "circle"
-    },
-    {
-      "time": 160686,
-      "x": 0.3,
-      "y": 0.307,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.18,
-          0.407
-        ],
-        [
-          0.16,
-          0.307
-        ]
-      ]
-    },
-    {
-      "time": 162186,
-      "x": 0.22,
-      "y": 0.357,
-      "type": "circle",
-      "link_id": 101
-    },
-    {
-      "time": 162400,
-      "x": 0.38,
-      "y": 0.376,
+      "time": 158971,
+      "x": 0.384,
+      "y": 0.552,
       "type": "circle",
       "require_lane": 1
     },
     {
+      "time": 159829,
+      "x": 0.775,
+      "y": 0.252,
+      "type": "circle",
+      "link_id": 94
+    },
+    {
+      "time": 160257,
+      "x": 0.775,
+      "y": 0.651,
+      "type": "circle"
+    },
+    {
+      "time": 160686,
+      "x": 0.389,
+      "y": 0.754,
+      "type": "circle"
+    },
+    {
+      "time": 161543,
+      "x": 0.253,
+      "y": 0.247,
+      "type": "slider",
+      "slider_duration": 458,
+      "slider_path": [
+        [
+          0.335,
+          0.275
+        ],
+        [
+          0.412,
+          0.237
+        ]
+      ],
+      "link_id": 95
+    },
+    {
+      "time": 162186,
+      "x": 0.691,
+      "y": 0.237,
+      "type": "circle",
+      "require_lane": 3
+    },
+    {
+      "time": 162400,
+      "x": 0.768,
+      "y": 0.523,
+      "type": "circle"
+    },
+    {
+      "time": 163043,
+      "x": 0.299,
+      "y": 0.461,
+      "type": "circle",
+      "link_id": 96
+    },
+    {
+      "time": 164114,
+      "x": 0.786,
+      "y": 0.259,
+      "type": "circle"
+    },
+    {
+      "time": 165186,
+      "x": 0.233,
+      "y": 0.356,
+      "type": "circle"
+    },
+    {
       "time": 165614,
-      "x": 0.54,
-      "y": 0.393,
+      "x": 0.233,
+      "y": 0.755,
+      "type": "circle",
+      "link_id": 97
+    },
+    {
+      "time": 165829,
+      "x": 0.53,
+      "y": 0.755,
       "type": "circle"
     },
     {
       "time": 166257,
-      "x": 0.7,
-      "y": 0.431,
-      "type": "circle",
-      "link_id": 102
-    },
-    {
-      "time": 169257,
-      "x": 0.78,
-      "y": 0.473,
+      "x": 0.773,
+      "y": 0.438,
       "type": "circle"
     },
     {
-      "time": 169686,
-      "x": 0.62,
-      "y": 0.341,
-      "type": "circle"
-    },
-    {
-      "time": 171829,
-      "x": 0.46,
-      "y": 0.363,
+      "time": 167543,
+      "x": 0.222,
+      "y": 0.472,
       "type": "circle",
-      "link_id": 103
+      "link_id": 98
     },
     {
-      "time": 173114,
-      "x": 0.3,
-      "y": 0.36,
-      "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 173971,
-      "x": 0.22,
-      "y": 0.352,
-      "type": "circle"
-    },
-    {
-      "time": 174829,
-      "x": 0.38,
-      "y": 0.375,
+      "time": 167971,
+      "x": 0.504,
+      "y": 0.754,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 458,
       "slider_path": [
         [
-          0.5,
-          0.475
+          0.584,
+          0.72
         ],
         [
-          0.6,
-          0.375
-        ]
-      ],
-      "link_id": 104
-    },
-    {
-      "time": 175686,
-      "x": 0.54,
-      "y": 0.306,
-      "type": "circle"
-    },
-    {
-      "time": 175900,
-      "x": 0.7,
-      "y": 0.344,
-      "type": "circle"
-    },
-    {
-      "time": 176114,
-      "x": 0.78,
-      "y": 0.367,
-      "type": "circle",
-      "link_id": 105
-    },
-    {
-      "time": 177829,
-      "x": 0.62,
-      "y": 0.345,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
-      "time": 178686,
-      "x": 0.46,
-      "y": 0.377,
-      "type": "circle"
-    },
-    {
-      "time": 179114,
-      "x": 0.3,
-      "y": 0.381,
-      "type": "circle",
-      "link_id": 106
-    },
-    {
-      "time": 179543,
-      "x": 0.22,
-      "y": 0.389,
-      "type": "circle"
-    },
-    {
-      "time": 180400,
-      "x": 0.38,
-      "y": 0.345,
-      "type": "circle"
-    },
-    {
-      "time": 180829,
-      "x": 0.54,
-      "y": 0.356,
-      "type": "circle",
-      "link_id": 107
-    },
-    {
-      "time": 181257,
-      "x": 0.7,
-      "y": 0.373,
-      "type": "slider",
-      "slider_duration": 643,
-      "slider_path": [
-        [
-          0.82,
-          0.473
-        ],
-        [
-          0.84,
-          0.373
+          0.664,
+          0.754
         ]
       ]
     },
     {
-      "time": 183400,
-      "x": 0.78,
-      "y": 0.345,
+      "time": 168614,
+      "x": 0.771,
+      "y": 0.496,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 169043,
+      "x": 0.454,
+      "y": 0.253,
+      "type": "circle",
+      "link_id": 99
+    },
+    {
+      "time": 169257,
+      "x": 0.219,
+      "y": 0.433,
       "type": "circle"
     },
     {
-      "time": 184257,
-      "x": 0.62,
-      "y": 0.329,
+      "time": 169686,
+      "x": 0.462,
+      "y": 0.75,
+      "type": "circle"
+    },
+    {
+      "time": 170114,
+      "x": 0.779,
+      "y": 0.507,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.738,
+          0.424
+        ],
+        [
+          0.768,
+          0.336
+        ]
+      ],
+      "link_id": 100
+    },
+    {
+      "time": 171829,
+      "x": 0.228,
+      "y": 0.363,
       "type": "circle",
-      "link_id": 108
+      "require_lane": 0
+    },
+    {
+      "time": 173114,
+      "x": 0.78,
+      "y": 0.36,
+      "type": "circle"
+    },
+    {
+      "time": 173971,
+      "x": 0.256,
+      "y": 0.352,
+      "type": "circle",
+      "link_id": 101
+    },
+    {
+      "time": 174400,
+      "x": 0.256,
+      "y": 0.752,
+      "type": "circle"
+    },
+    {
+      "time": 174829,
+      "x": 0.656,
+      "y": 0.752,
+      "type": "circle"
+    },
+    {
+      "time": 175257,
+      "x": 0.759,
+      "y": 0.366,
+      "type": "circle",
+      "link_id": 102
+    },
+    {
+      "time": 175686,
+      "x": 0.373,
+      "y": 0.263,
+      "type": "circle"
+    },
+    {
+      "time": 175900,
+      "x": 0.225,
+      "y": 0.519,
+      "type": "circle"
+    },
+    {
+      "time": 176114,
+      "x": 0.229,
+      "y": 0.773,
+      "type": "circle",
+      "link_id": 103
+    },
+    {
+      "time": 176971,
+      "x": 0.644,
+      "y": 0.452,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.69,
+          0.371
+        ],
+        [
+          0.78,
+          0.347
+        ]
+      ]
+    },
+    {
+      "time": 177829,
+      "x": 0.78,
+      "y": 0.7,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 178257,
+      "x": 0.439,
+      "y": 0.492,
+      "type": "circle",
+      "link_id": 104
+    },
+    {
+      "time": 178686,
+      "x": 0.23,
+      "y": 0.219,
+      "type": "circle"
+    },
+    {
+      "time": 179114,
+      "x": 0.23,
+      "y": 0.618,
+      "type": "circle"
+    },
+    {
+      "time": 179543,
+      "x": 0.576,
+      "y": 0.418,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.668,
+          0.406
+        ],
+        [
+          0.724,
+          0.332
+        ]
+      ],
+      "link_id": 105
+    },
+    {
+      "time": 180400,
+      "x": 0.802,
+      "y": 0.624,
+      "type": "circle",
+      "require_lane": 1
+    },
+    {
+      "time": 180829,
+      "x": 0.416,
+      "y": 0.521,
+      "type": "circle"
+    },
+    {
+      "time": 181257,
+      "x": 0.207,
+      "y": 0.249,
+      "type": "circle",
+      "link_id": 106
+    },
+    {
+      "time": 182114,
+      "x": 0.727,
+      "y": 0.321,
+      "type": "circle"
+    },
+    {
+      "time": 182971,
+      "x": 0.235,
+      "y": 0.35,
+      "type": "circle"
+    },
+    {
+      "time": 183400,
+      "x": 0.235,
+      "y": 0.75,
+      "type": "circle",
+      "link_id": 107
+    },
+    {
+      "time": 184257,
+      "x": 0.371,
+      "y": 0.243,
+      "type": "circle"
     },
     {
       "time": 184686,
-      "x": 0.46,
-      "y": 0.287,
+      "x": 0.771,
+      "y": 0.243,
       "type": "circle"
     },
     {
       "time": 185114,
-      "x": 0.3,
-      "y": 0.315,
-      "type": "circle"
+      "x": 0.771,
+      "y": 0.642,
+      "type": "circle",
+      "link_id": 108
     },
     {
       "time": 185543,
-      "x": 0.22,
-      "y": 0.309,
+      "x": 0.385,
+      "y": 0.539,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.34,
-          0.409
+          0.312,
+          0.482
         ],
         [
-          0.44,
-          0.309
+          0.219,
+          0.495
         ]
-      ],
-      "link_id": 109
+      ]
     },
     {
       "time": 186400,
-      "x": 0.38,
-      "y": 0.346,
+      "x": 0.468,
+      "y": 0.744,
       "type": "circle",
-      "require_lane": 3
-    },
-    {
-      "time": 186829,
-      "x": 0.54,
-      "y": 0.34,
-      "type": "circle"
+      "require_lane": 1
     },
     {
       "time": 187257,
-      "x": 0.7,
-      "y": 0.348,
+      "x": 0.267,
+      "y": 0.259,
       "type": "circle",
-      "link_id": 110
+      "link_id": 109
     },
     {
       "time": 188114,
-      "x": 0.78,
-      "y": 0.326,
-      "type": "circle"
-    },
-    {
-      "time": 188329,
-      "x": 0.62,
-      "y": 0.332,
+      "x": 0.787,
+      "y": 0.327,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.5,
-          0.432
+          0.74,
+          0.407
         ],
         [
-          0.4,
-          0.332
+          0.765,
+          0.497
         ]
       ]
     },
     {
       "time": 189186,
-      "x": 0.46,
-      "y": 0.308,
-      "type": "circle",
-      "link_id": 111
+      "x": 0.416,
+      "y": 0.764,
+      "type": "circle"
     },
     {
       "time": 189400,
-      "x": 0.3,
-      "y": 0.312,
+      "x": 0.236,
+      "y": 0.529,
+      "type": "circle",
+      "link_id": 110
+    },
+    {
+      "time": 189829,
+      "x": 0.519,
+      "y": 0.246,
       "type": "circle",
       "require_lane": 0
     },
     {
-      "time": 189829,
-      "x": 0.22,
-      "y": 0.301,
+      "time": 190257,
+      "x": 0.762,
+      "y": 0.563,
       "type": "circle"
     },
     {
-      "time": 190257,
-      "x": 0.38,
-      "y": 0.288,
+      "time": 190686,
+      "x": 0.362,
+      "y": 0.563,
       "type": "circle",
-      "link_id": 112
+      "link_id": 111
     },
     {
-      "time": 190686,
-      "x": 0.54,
-      "y": 0.333,
+      "time": 191114,
+      "x": 0.231,
+      "y": 0.246,
+      "type": "circle"
+    },
+    {
+      "time": 191543,
+      "x": 0.627,
+      "y": 0.298,
       "type": "slider",
-      "slider_duration": 643,
+      "slider_duration": 536,
       "slider_path": [
         [
-          0.66,
-          0.433
+          0.697,
+          0.36
         ],
         [
-          0.76,
-          0.333
+          0.789,
+          0.353
         ]
       ]
     },
     {
-      "time": 191543,
-      "x": 0.7,
-      "y": 0.312,
-      "type": "circle"
-    },
-    {
-      "time": 191757,
-      "x": 0.78,
-      "y": 0.293,
-      "type": "circle",
-      "link_id": 113
-    },
-    {
       "time": 192400,
-      "x": 0.62,
-      "y": 0.316,
+      "x": 0.743,
+      "y": 0.702,
       "type": "circle",
-      "require_lane": 3
+      "link_id": 112
     },
     {
       "time": 192829,
-      "x": 0.46,
-      "y": 0.311,
+      "x": 0.347,
+      "y": 0.754,
       "type": "circle"
     },
     {
       "time": 193257,
-      "x": 0.3,
-      "y": 0.294,
+      "x": 0.244,
+      "y": 0.368,
+      "type": "circle"
+    },
+    {
+      "time": 193686,
+      "x": 0.63,
+      "y": 0.265,
+      "type": "circle",
+      "link_id": 113
+    },
+    {
+      "time": 194114,
+      "x": 0.783,
+      "y": 0.634,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.697,
+          0.669
+        ],
+        [
+          0.662,
+          0.755
+        ]
+      ]
+    },
+    {
+      "time": 194971,
+      "x": 0.313,
+      "y": 0.709,
+      "type": "circle",
+      "require_lane": 0
+    },
+    {
+      "time": 195829,
+      "x": 0.671,
+      "y": 0.325,
       "type": "circle",
       "link_id": 114
     },
     {
-      "time": 193686,
-      "x": 0.22,
-      "y": 0.304,
-      "type": "circle"
-    },
-    {
-      "time": 194114,
-      "x": 0.38,
-      "y": 0.315,
-      "type": "circle"
-    },
-    {
-      "time": 194971,
-      "x": 0.54,
-      "y": 0.322,
-      "type": "circle",
-      "link_id": 115
-    },
-    {
-      "time": 195829,
-      "x": 0.7,
-      "y": 0.307,
-      "type": "circle",
-      "require_lane": 2
-    },
-    {
       "time": 196686,
-      "x": 0.78,
-      "y": 0.296,
-      "type": "circle"
-    },
-    {
-      "time": 196900,
-      "x": 0.62,
-      "y": 0.301,
-      "type": "circle",
-      "link_id": 116
+      "x": 0.222,
+      "y": 0.287,
+      "type": "slider",
+      "slider_duration": 536,
+      "slider_path": [
+        [
+          0.267,
+          0.368
+        ],
+        [
+          0.241,
+          0.457
+        ]
+      ]
     },
     {
       "time": 197543,
-      "x": 0.46,
-      "y": 0.307,
-      "type": "circle"
-    },
-    {
-      "time": 197757,
-      "x": 0.3,
-      "y": 0.319,
+      "x": 0.455,
+      "y": 0.736,
       "type": "circle"
     },
     {
       "time": 197971,
-      "x": 0.22,
-      "y": 0.304,
+      "x": 0.772,
+      "y": 0.493,
       "type": "circle",
-      "link_id": 117
+      "link_id": 115
     },
     {
       "time": 198400,
-      "x": 0.38,
-      "y": 0.333,
+      "x": 0.455,
+      "y": 0.25,
       "type": "circle",
       "require_lane": 1
     },
     {
       "time": 198829,
-      "x": 0.54,
-      "y": 0.33,
+      "x": 0.255,
+      "y": 0.596,
       "type": "circle"
     },
     {
       "time": 199257,
-      "x": 0.7,
-      "y": 0.312,
+      "x": 0.624,
+      "y": 0.749,
       "type": "circle",
-      "link_id": 118
+      "link_id": 116
     },
     {
       "time": 199686,
-      "x": 0.78,
-      "y": 0.312,
+      "x": 0.777,
+      "y": 0.38,
       "type": "circle"
     },
     {
       "time": 200114,
-      "x": 0.62,
-      "y": 0.303,
+      "x": 0.391,
+      "y": 0.277,
       "type": "circle"
     },
     {
       "time": 200543,
-      "x": 0.46,
-      "y": 0.306,
+      "x": 0.238,
+      "y": 0.646,
       "type": "circle",
-      "link_id": 119
+      "link_id": 117
     },
     {
       "time": 200971,
-      "x": 0.3,
-      "y": 0.319,
-      "type": "circle",
-      "require_lane": 4
+      "x": 0.626,
+      "y": 0.741,
+      "type": "circle"
+    },
+    {
+      "time": 201400,
+      "x": 0.779,
+      "y": 0.372,
+      "type": "circle"
     },
     {
       "time": 201829,
-      "x": 0.22,
-      "y": 0.329,
+      "x": 0.393,
+      "y": 0.269,
+      "type": "circle",
+      "link_id": 118
+    },
+    {
+      "time": 202257,
+      "x": 0.24,
+      "y": 0.638,
       "type": "circle"
     },
     {
       "time": 202686,
-      "x": 0.38,
-      "y": 0.321,
+      "x": 0.626,
+      "y": 0.535,
       "type": "circle",
-      "link_id": 120
+      "require_lane": 0
+    },
+    {
+      "time": 203329,
+      "x": 0.251,
+      "y": 0.247,
+      "type": "circle",
+      "link_id": 119
+    },
+    {
+      "time": 203543,
+      "x": 0.251,
+      "y": 0.543,
+      "type": "circle"
+    },
+    {
+      "time": 206114,
+      "x": 0.774,
+      "y": 0.241,
+      "type": "circle"
+    },
+    {
+      "time": 206329,
+      "x": 0.774,
+      "y": 0.538,
+      "type": "circle"
+    },
+    {
+      "time": 206543,
+      "x": 0.565,
+      "y": 0.747,
+      "type": "circle",
+      "require_lane": 4
+    },
+    {
+      "time": 206757,
+      "x": 0.269,
+      "y": 0.747,
+      "type": "circle"
+    },
+    {
+      "time": 206971,
+      "x": 0.23,
+      "y": 0.454,
+      "type": "circle"
     }
   ]
 }

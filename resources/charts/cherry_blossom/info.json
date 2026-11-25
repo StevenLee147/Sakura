@@ -21,25 +21,25 @@
       "name": "Normal",
       "level": 4.0,
       "chart_file": "normal.json",
-      "note_count": 132,
-      "hold_count": 9,
-      "mouse_note_count": 36
+      "note_count": 166,
+      "hold_count": 14,
+      "mouse_note_count": 55
     },
     {
       "name": "Hard",
       "level": 7.0,
       "chart_file": "hard.json",
-      "note_count": 244,
-      "hold_count": 9,
-      "mouse_note_count": 64
+      "note_count": 261,
+      "hold_count": 20,
+      "mouse_note_count": 72
     },
     {
       "name": "Expert",
       "level": 10.0,
       "chart_file": "expert.json",
-      "note_count": 412,
-      "hold_count": 9,
-      "mouse_note_count": 92
+      "note_count": 344,
+      "hold_count": 19,
+      "mouse_note_count": 104
     }
   ]
 }

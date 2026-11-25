@@ -293,9 +293,27 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
     }
     else
     {
-        // 其他判定：发射对应颜色的命中火花，连携组合技追加鎏金樱瓣爆发
-        m_particles.Emit(emitX, emitY, isSynergy ? 22 : 12,
-            sakura::effects::ParticlePresets::HitBurst(isSynergy ? sakura::core::Color{ 255, 224, 156, 255 } : judgeColor));
+        if (isKb && lane >= 0 && lane < KEY_BIND_COUNT)
+            m_lanePulse[lane] = 1.0f;
+
+        const sakura::core::Color burstCol = isSynergy
+            ? sakura::core::Color{ 255, 224, 156, 255 }
+            : judgeColor;
+        m_particles.Emit(emitX, emitY, isSynergy ? 36 : 24,
+            sakura::effects::ParticlePresets::HitBurst(burstCol));
+        m_particles.Emit(emitX, emitY, 1,
+            sakura::effects::ParticlePresets::ShockwaveRipple(burstCol, isKb ? 0.022f : 0.028f, isSynergy ? 3.8f : 2.9f));
+        if (r == sakura::game::JudgeResult::Perfect || isSynergy)
+        {
+            m_particles.Emit(emitX, emitY, isSynergy ? 10 : 6,
+                sakura::effects::ParticlePresets::ClickSpark());
+            if (!sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false))
+            {
+                sakura::effects::ScreenShake::GetInstance().Trigger(
+                    isSynergy ? 0.0022f : 0.0011f, 0.055f, 18.0f);
+            }
+        }
+        m_hitShockwaves.push_back({ emitX, emitY, 0.22f, 0.22f, burstCol, isKb, lane, isSynergy });
     }
 
     // ── 判定音效 ──────────────────────────────────────────────────────────────
@@ -304,7 +322,7 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
 
     // ── Hitsound（按音符类型）────────────────────────────────────────────────
     auto hsType = isKb
-        ? sakura::audio::HitsoundType::Tap
+        ? (lane == sakura::game::kThumbLaneIndex ? sakura::audio::HitsoundType::HoldStart : sakura::audio::HitsoundType::Tap)
         : sakura::audio::HitsoundType::Circle;
     if (r != sakura::game::JudgeResult::Miss)
         sakura::audio::AudioManager::GetInstance().PlayHitsound(hsType);
@@ -315,6 +333,7 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
 void SceneGame::OnUpdate(float dt)
 {
     if (m_finishing) return;
+    m_retryTracker.Update(dt);
     m_gameState.Update(dt);
     const int now = m_gameState.GetCurrentTime();
     if (m_gameState.IsPlaying() || m_gameState.IsFinished())
@@ -378,11 +397,28 @@ void SceneGame::OnUpdate(float dt)
         return;
     }
     for (auto& note : m_gameState.GetActiveKeyboardNotes())
+    {
         if (note.isJudged && note.result != sakura::game::JudgeResult::None)
-            note.alpha = std::max(0.0f, note.alpha - dt * 8.0f);
+        {
+            const float fadeRate = (note.result == sakura::game::JudgeResult::Miss) ? 5.5f : 14.0f;
+            note.alpha = std::max(0.0f, note.alpha - dt * fadeRate);
+        }
+    }
     for (auto& note : m_gameState.GetActiveMouseNotes())
+    {
         if (note.isJudged && note.result != sakura::game::JudgeResult::None)
-            note.alpha = std::max(0.0f, note.alpha - dt * 8.0f);
+        {
+            const float fadeRate = (note.result == sakura::game::JudgeResult::Miss) ? 6.0f : 12.5f;
+            note.alpha = std::max(0.0f, note.alpha - dt * fadeRate);
+        }
+    }
+
+    for (auto it = m_hitShockwaves.begin(); it != m_hitShockwaves.end(); )
+    {
+        it->timer -= dt;
+        if (it->timer <= 0.0f) it = m_hitShockwaves.erase(it);
+        else ++it;
+    }
 
     // ── 更新判定闪现计时器 ────────────────────────────────────────────────────
     for (auto it = m_judgeFlashes.begin(); it != m_judgeFlashes.end(); )
@@ -501,9 +537,18 @@ void SceneGame::OnEvent(const SDL_Event& event)
         const auto& cfg = sakura::core::Config::GetInstance();
         if (event.key.scancode == SDL_SCANCODE_ESCAPE ||
             event.key.scancode == cfg.Get<int>(sakura::core::ConfigKeys::kKeyPause, SDL_SCANCODE_ESCAPE))
-        { Pause(); return; }
+        {
+            Pause();
+            return;
+        }
         if (event.key.scancode == cfg.Get<int>(sakura::core::ConfigKeys::kKeyRetry, SDL_SCANCODE_R))
-        { Retry(); return; }
+        {
+            if (m_retryTracker.OnPress())
+                Retry();
+            else
+                sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+            return;
+        }
         HandleKeyPress(event.key.scancode);
     }
     if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
@@ -799,26 +844,79 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
     if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
 
     const bool glowOn = sakura::core::Config::GetInstance().Get<bool>("graphics.glow", true);
-    int now = m_gameState.GetCurrentTime();
+    const int now = m_gameState.GetCurrentTime();
+    const float curSv = m_gameState.GetCurrentSVSpeed(now);
     auto activeNotes = m_gameState.GetActiveKeyboardNotes();
+
+    const auto chordGroups = sakura::game::FindKeyboardChordGroups(activeNotes, 6);
+    for (const auto& group : chordGroups)
+    {
+        if (group.noteCount < 2) continue;
+        const float chordY = CalcNoteRenderY(group.timeMs, now, curSv);
+        if (chordY < 0.12f || chordY > JUDGE_LINE_Y) continue;
+
+        const float tieX0 = (group.includesThumb || !group.hasStandard)
+            ? (TRACK_X + 0.008f)
+            : (GetLaneX(group.minLane) + LANE_W * 0.18f);
+        const float tieX1 = (group.includesThumb || !group.hasStandard)
+            ? (TRACK_X + TRACK_W - 0.008f)
+            : (GetLaneX(group.maxLane) + LANE_W * 0.82f);
+        const float tieW = std::max(0.010f, tieX1 - tieX0);
+        const float vis = std::clamp((chordY - 0.12f) / 0.08f, 0.30f, 1.0f);
+
+        if (glowOn)
+        {
+            renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+            renderer.DrawRoundedGradientRect(
+                { tieX0 - 0.003f, chordY - 0.0060f, tieW + 0.006f, 0.0120f }, 0.005f,
+                { 255, 226, 152, static_cast<uint8_t>(92 * vis) },
+                { 255, 226, 152, static_cast<uint8_t>(92 * vis) },
+                { 246, 178, 206, static_cast<uint8_t>(64 * vis) },
+                { 246, 178, 206, static_cast<uint8_t>(64 * vis) }, 6, true);
+            renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+        }
+
+        renderer.DrawRoundedGradientRect(
+            { tieX0, chordY - 0.0026f, tieW, 0.0052f }, 0.0026f,
+            { 255, 238, 180, static_cast<uint8_t>(228 * vis) },
+            { 255, 238, 180, static_cast<uint8_t>(228 * vis) },
+            { 248, 204, 134, static_cast<uint8_t>(216 * vis) },
+            { 248, 204, 134, static_cast<uint8_t>(216 * vis) }, 6, true);
+        renderer.DrawLine(
+            tieX0 + 0.003f, chordY, tieX1 - 0.003f, chordY,
+            { 255, 252, 238, static_cast<uint8_t>(240 * vis) }, 0.0016f);
+    }
 
     for (const auto& note : activeNotes)
     {
         if (note.isJudged && note.alpha <= 0.01f) continue;
 
         const bool isThumb = (note.lane == sakura::game::kThumbLaneIndex);
-        float sv    = m_gameState.GetCurrentSVSpeed(now);
-        float ry    = CalcNoteRenderY(note.time, now, sv);
+        const bool judgedHit = note.isJudged && (note.result != sakura::game::JudgeResult::Miss);
+        const bool judgedMiss = note.isJudged && (note.result == sakura::game::JudgeResult::Miss);
+
+        float ry    = CalcNoteRenderY(note.time, now, curSv);
         float lx    = isThumb ? (TRACK_X + 0.006f) : GetLaneX(note.lane);
         float nw    = isThumb ? (TRACK_W - 0.012f) : LANE_W;
         float alpha = note.alpha;
 
         float tailY = -999.0f;
         if (note.type == sakura::game::NoteType::Hold)
-            tailY = CalcNoteRenderY(note.time + note.duration, now, sv);
+            tailY = CalcNoteRenderY(note.time + note.duration, now, curSv);
 
-        if (note.type == sakura::game::NoteType::Hold)
+        if (note.type == sakura::game::NoteType::Tap)
         {
+            if (judgedHit)
+                ry = JUDGE_LINE_Y;
+            if (ry < -0.05f || ry > 1.05f) continue;
+        }
+        else if (note.type == sakura::game::NoteType::Hold)
+        {
+            if (judgedHit)
+            {
+                ry    = std::min(ry, JUDGE_LINE_Y);
+                tailY = std::min(tailY, JUDGE_LINE_Y);
+            }
             if (tailY > 1.05f) continue;
             if (ry < -0.05f && tailY < -0.05f) continue;
         }
@@ -827,42 +925,102 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
             if (ry < -0.05f || ry > 1.05f) continue;
         }
 
+        bool isChordNote = false;
+        if (!note.isJudged)
+        {
+            for (const auto& group : chordGroups)
+            {
+                if (group.noteCount >= 2 && note.time >= group.timeMs && note.time - group.timeMs <= 6)
+                {
+                    isChordNote = true;
+                    break;
+                }
+            }
+        }
+
         const bool outerLane = (note.lane == 0 || note.lane == LANE_COUNT - 1);
-        const sakura::core::Color gemTop = isThumb
+        sakura::core::Color gemTop = isThumb
             ? sakura::core::Color{ 255, 228, 166, static_cast<uint8_t>(248 * alpha) }
             : (outerLane
                 ? sakura::core::Color{ 252, 198, 222, static_cast<uint8_t>(246 * alpha) }
                 : sakura::core::Color{ 178, 228, 255, static_cast<uint8_t>(246 * alpha) });
-        const sakura::core::Color gemBot = isThumb
+        sakura::core::Color gemBot = isThumb
             ? sakura::core::Color{ 238, 162, 198, static_cast<uint8_t>(238 * alpha) }
             : (outerLane
                 ? sakura::core::Color{ 224, 128, 172, static_cast<uint8_t>(236 * alpha) }
                 : sakura::core::Color{ 108, 168, 236, static_cast<uint8_t>(236 * alpha) });
-        const sakura::core::Color rimGold{ 252, 228, 174, static_cast<uint8_t>(235 * alpha) };
+        sakura::core::Color rimGold{ 252, 228, 174, static_cast<uint8_t>(235 * alpha) };
+
+        if (judgedMiss)
+        {
+            gemTop  = { 138, 76, 86, static_cast<uint8_t>(188 * alpha) };
+            gemBot  = { 76, 44, 54, static_cast<uint8_t>(176 * alpha) };
+            rimGold = { 156, 92, 102, static_cast<uint8_t>(168 * alpha) };
+        }
 
         switch (note.type)
         {
         case sakura::game::NoteType::Tap:
         {
-            const sakura::core::NormRect gemRect{ lx + 0.004f, ry - NOTE_H * (isThumb ? 0.44f : 0.54f), nw - 0.008f, NOTE_H * (isThumb ? 0.88f : 1.08f) };
-            if (glowOn)
+            const float centerX = lx + nw * 0.5f;
+            const float widthScale = judgedHit ? (1.0f + 0.38f * (1.0f - alpha)) : 1.0f;
+            const float tapW = (nw - 0.008f) * widthScale;
+            const float tapH = judgedHit
+                ? (NOTE_H * (0.22f + 0.78f * alpha))
+                : (NOTE_H * (isThumb ? 0.88f : 1.08f));
+            const sakura::core::NormRect gemRect{ centerX - tapW * 0.5f, ry - tapH * 0.5f, tapW, tapH };
+
+            if (judgedHit)
             {
                 renderer.SetBlendMode(sakura::core::BlendMode::Additive);
-                renderer.DrawRadialGradient(lx + nw * 0.5f, ry, nw * 0.55f, NOTE_H * 1.45f,
+                renderer.DrawRadialGradient(centerX, JUDGE_LINE_Y, tapW * 0.74f, NOTE_H * 2.15f,
+                    { 255, 250, 228, static_cast<uint8_t>(215 * alpha) },
+                    { 252, 214, 144, 0 }, 28);
+                renderer.DrawLine(centerX - tapW * 0.62f, JUDGE_LINE_Y, centerX + tapW * 0.62f, JUDGE_LINE_Y,
+                    { 255, 252, 240, static_cast<uint8_t>(230 * alpha) }, 0.0028f);
+                renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+            }
+            else if (glowOn && !judgedMiss)
+            {
+                renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+                renderer.DrawRadialGradient(centerX, ry, nw * 0.55f, NOTE_H * 1.45f,
                     gemTop.WithAlpha(static_cast<uint8_t>(82 * alpha)), gemTop.WithAlpha(0), 24);
                 renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
             }
-            renderer.DrawRoundedGradientRect(gemRect, 0.006f, gemTop, gemTop, gemBot, gemBot, 8, true);
-            renderer.DrawRoundedRect(
-                { gemRect.x + 0.005f, gemRect.y + 0.0025f, gemRect.width - 0.010f, gemRect.height * 0.34f },
-                0.003f, { 255, 252, 250, static_cast<uint8_t>(145 * alpha) }, true, 6);
-            renderer.DrawRoundedRectOutlineGradient(gemRect, 0.006f, rimGold, gemTop, 0.0016f, 8);
+
+            const sakura::core::Color drawTop = judgedHit
+                ? sakura::core::Color{ 255, 250, 234, static_cast<uint8_t>(248 * alpha) }
+                : gemTop;
+            const sakura::core::Color drawBot = judgedHit
+                ? sakura::core::Color{ 252, 222, 162, static_cast<uint8_t>(225 * alpha) }
+                : gemBot;
+            renderer.DrawRoundedGradientRect(gemRect, 0.006f, drawTop, drawTop, drawBot, drawBot, 8, true);
+            if (!judgedMiss)
+            {
+                renderer.DrawRoundedRect(
+                    { gemRect.x + 0.005f, gemRect.y + tapH * 0.12f, std::max(0.004f, gemRect.width - 0.010f), tapH * 0.34f },
+                    0.003f, { 255, 252, 250, static_cast<uint8_t>(145 * alpha) }, true, 6);
+            }
+            renderer.DrawRoundedRectOutlineGradient(gemRect, 0.006f, rimGold, drawTop, 0.0016f, 8);
+
+            if (isChordNote)
+            {
+                const sakura::core::NormRect chordFrame{
+                    gemRect.x - 0.0022f, gemRect.y - 0.0022f,
+                    gemRect.width + 0.0044f, gemRect.height + 0.0044f
+                };
+                renderer.DrawRoundedRectOutlineGradient(
+                    chordFrame, 0.0075f,
+                    { 255, 240, 174, static_cast<uint8_t>(250 * alpha) },
+                    { 252, 204, 122, static_cast<uint8_t>(235 * alpha) },
+                    0.0022f, 8);
+            }
             break;
         }
         case sakura::game::NoteType::Hold:
         {
             bool isHolding = note.isJudged && (note.result == sakura::game::JudgeResult::None);
-            float headY = (isHolding && ry > JUDGE_LINE_Y) ? JUDGE_LINE_Y : ry;
+            float headY = judgedHit ? std::min(ry, JUDGE_LINE_Y) : ry;
             float topY = std::min(headY, tailY);
             float botY = std::max(headY, tailY);
             float bodyH = std::max(0.004f, botY - topY);
@@ -895,6 +1053,18 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
             const sakura::core::NormRect headRect{ lx + 0.004f, headY - NOTE_H * 0.54f, nw - 0.008f, NOTE_H * 1.08f };
             renderer.DrawRoundedGradientRect(headRect, 0.006f, rimGold, rimGold, gemTop, gemTop, 8, true);
             renderer.DrawRoundedRectOutlineGradient(headRect, 0.006f, { 255, 252, 244, static_cast<uint8_t>(245 * alpha) }, rimGold, 0.0016f, 8);
+            if (isChordNote)
+            {
+                const sakura::core::NormRect chordFrame{
+                    headRect.x - 0.0022f, headRect.y - 0.0022f,
+                    headRect.width + 0.0044f, headRect.height + 0.0044f
+                };
+                renderer.DrawRoundedRectOutlineGradient(
+                    chordFrame, 0.0075f,
+                    { 255, 240, 174, static_cast<uint8_t>(250 * alpha) },
+                    { 252, 204, 122, static_cast<uint8_t>(235 * alpha) },
+                    0.0022f, 8);
+            }
 
             if (isHolding)
             {
@@ -964,9 +1134,64 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 
     const auto activeKbNotes = m_gameState.GetActiveKeyboardNotes();
     const float curSv = m_gameState.GetCurrentSVSpeed(now);
+    const auto syncPairs = sakura::game::FindCrossZoneSyncPairs(activeKbNotes, activeNotes, 8);
 
-    for (const auto& note : activeNotes)
+    const sakura::game::MouseNote* prevUnjudged = nullptr;
+    for (const auto& nextNote : activeNotes)
     {
+        if (nextNote.isJudged) continue;
+        if (prevUnjudged != nullptr)
+        {
+            const int deltaMs = nextNote.time - prevUnjudged->time;
+            if (deltaMs > 0 && deltaMs <= 900 &&
+                prevUnjudged->time - now <= m_approachMs &&
+                nextNote.time - now <= std::max(m_approachMs, 900))
+            {
+                const float fromNormX = (prevUnjudged->type == sakura::game::NoteType::Slider && !prevUnjudged->sliderPath.empty())
+                    ? prevUnjudged->sliderPath.back().first
+                    : prevUnjudged->x;
+                const float fromNormY = (prevUnjudged->type == sakura::game::NoteType::Slider && !prevUnjudged->sliderPath.empty())
+                    ? prevUnjudged->sliderPath.back().second
+                    : prevUnjudged->y;
+                const float x0 = MOUSE_X + fromNormX * MOUSE_W;
+                const float y0 = MOUSE_Y + fromNormY * MOUSE_H;
+                const float x1 = MOUSE_X + nextNote.x * MOUSE_W;
+                const float y1 = MOUSE_Y + nextNote.y * MOUSE_H;
+                const float dx = x1 - x0;
+                const float dy = y1 - y0;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                if (dist > 0.012f)
+                {
+                    const float trim = std::min(0.028f, dist * 0.28f);
+                    const float ux = dx / dist;
+                    const float uy = dy / dist;
+                    const sakura::core::NormPoint p0{ x0 + ux * trim, y0 + uy * trim };
+                    const sakura::core::NormPoint p1{ x1 - ux * trim, y1 - uy * trim };
+                    const sakura::core::NormPoint pm{ (p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f };
+                    const float timeFade = 1.0f - 0.52f * (static_cast<float>(deltaMs) / 900.0f);
+                    const float appearFade = std::clamp(
+                        1.0f - static_cast<float>(std::max(0, nextNote.time - now)) /
+                            static_cast<float>(std::max(1, std::max(m_approachMs, 900))),
+                        0.18f, 1.0f);
+                    const float visAlpha = timeFade * appearFade * std::min(prevUnjudged->alpha, nextNote.alpha);
+                    const uint8_t startA = static_cast<uint8_t>(96.0f * visAlpha);
+                    const uint8_t endA   = static_cast<uint8_t>(42.0f * visAlpha);
+                    const std::array<sakura::core::NormPoint, 3> guidePts = { p0, pm, p1 };
+                    renderer.DrawCatmullRomRibbon(
+                        guidePts.data(), 3, 0.0024f, 0.0015f,
+                        { 252, 224, 170, startA },
+                        { 246, 182, 210, endA },
+                        { 252, 224, 170, static_cast<uint8_t>(startA * 0.30f) },
+                        { 246, 182, 210, 0 }, 4, true);
+                }
+            }
+        }
+        prevUnjudged = &nextNote;
+    }
+
+    for (size_t mi = 0; mi < activeNotes.size(); ++mi)
+    {
+        const auto& note = activeNotes[mi];
         if (note.isJudged && note.alpha <= 0.01f) continue;
         if (note.time - now > m_approachMs) continue;
 
@@ -977,11 +1202,14 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
         const float noteSX = MOUSE_X + note.x * MOUSE_W;
         const float noteSY = MOUSE_Y + note.y * MOUSE_H;
 
-        if (note.linkId > 0 && !note.isJudged)
+        if (!note.isJudged)
         {
-            for (const auto& kb : activeKbNotes)
+            for (const auto& sp : syncPairs)
             {
-                if (kb.isJudged || kb.linkId != note.linkId) continue;
+                if (sp.msIndex != mi || sp.kbIndex >= activeKbNotes.size()) continue;
+                const auto& kb = activeKbNotes[sp.kbIndex];
+                if (kb.isJudged) continue;
+
                 const float kx = (kb.lane == sakura::game::kThumbLaneIndex)
                     ? (TRACK_X + TRACK_W * 0.5f)
                     : (GetLaneX(kb.lane) + LANE_W * 0.5f);
@@ -991,11 +1219,16 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                     sakura::core::NormPoint{ (kx + noteSX) * 0.5f, std::min(ky, noteSY) - 0.035f },
                     sakura::core::NormPoint{ noteSX, noteSY }
                 };
-                renderer.DrawCatmullRomRibbon(tether.data(), 3, 0.0038f, 0.0038f,
-                    { 252, 224, 162, static_cast<uint8_t>(alpha * 0.80f) },
-                    { 246, 178, 206, static_cast<uint8_t>(alpha * 0.80f) },
-                    { 252, 224, 162, static_cast<uint8_t>(alpha * 0.25f) },
-                    { 246, 178, 206, static_cast<uint8_t>(alpha * 0.25f) }, 6, true);
+                renderer.DrawCatmullRomRibbon(tether.data(), 3, 0.0040f, 0.0040f,
+                    { 255, 232, 168, static_cast<uint8_t>(alpha * 0.85f) },
+                    { 250, 206, 148, static_cast<uint8_t>(alpha * 0.82f) },
+                    { 255, 224, 152, static_cast<uint8_t>(alpha * 0.28f) },
+                    { 246, 178, 206, static_cast<uint8_t>(alpha * 0.26f) }, 6, true);
+
+                renderer.DrawCircleOutline(noteSX, noteSY, radius * 1.14f,
+                    { 255, 234, 168, static_cast<uint8_t>(alpha * 0.92f) }, 0.0020f, 52);
+                renderer.DrawCircleOutline(noteSX, noteSY, radius * 1.24f,
+                    { 250, 208, 142, static_cast<uint8_t>(alpha * 0.64f) }, 0.0013f, 52);
                 break;
             }
         }
@@ -1188,8 +1421,11 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
     sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.02f, 0.98f, 0.930f, 0.52f);
 
     sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontHUD, m_chartInfo.title, 0.036f, 0.011f, 0.027f, 0.36f, white);
-    const std::string diffBadge = m_chartInfo.difficulties[m_difficultyIndex].name + "  ·  Lv." +
-        std::to_string(static_cast<int>(m_chartInfo.difficulties[m_difficultyIndex].level));
+    const std::string diffBadge = (m_difficultyIndex >= 0 && m_difficultyIndex < static_cast<int>(m_chartInfo.difficulties.size()))
+        ? sakura::game::FormatDifficultyBadge(
+            m_chartInfo.difficulties[m_difficultyIndex].name,
+            m_chartInfo.difficulties[m_difficultyIndex].level)
+        : std::string{};
     renderer.DrawText(m_fontSmall, diffBadge, 0.036f, 0.050f, 0.016f, gold);
 
     const char* modes[] = { "LIVE · 正式演奏", "PRACTICE · 自由练习", "AUTO · 自动演示", "REPLAY · 回放" };
@@ -1212,6 +1448,17 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
     }
     renderer.DrawText(m_fontSmall, feverActive ? "✦ SAKURA BLOOM · 满开" : "BLOOM",
         0.530f, 0.060f, 0.0115f, feverActive ? gold : dim, TextAlign::Center);
+
+    if (m_retryTracker.GetCount() > 0)
+    {
+        const NormRect retryRect{ 0.37f, 0.095f, 0.26f, 0.032f };
+        const std::string retryText = "再按 " + std::to_string(m_retryTracker.GetRemaining()) +
+            " 次 R 确认重开 (" + std::to_string(m_retryTracker.GetCount()) + "/3)";
+        renderer.DrawSoftShadow(retryRect, 0.016f, 0.010f, { 250, 216, 157, 82 }, 0.0f, 8);
+        sakura::ui::VisualStyle::DrawBadgePill(
+            renderer, retryRect, retryText, m_fontSmall, 0.015f,
+            { 54, 36, 70, 236 }, { 255, 228, 164, 240 }, { 255, 242, 198, 255 });
+    }
 
     std::ostringstream score, accuracy;
     score << std::setw(7) << std::setfill('0') << m_session.Score().GetScore();
@@ -1294,7 +1541,7 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         renderer.DrawText(m_fontSmall, "EARLY", 0.556f, 0.949f, 0.013f, dim, TextAlign::Right);
         renderer.DrawText(m_fontSmall, "LATE", 0.824f, 0.949f, 0.013f, dim);
     }
-    renderer.DrawText(m_fontSmall, "Esc 暂停  ·  R 重开", 0.966f, 0.950f, 0.015f, dim, TextAlign::Right);
+    renderer.DrawText(m_fontSmall, "Esc 暂停  ·  连按3次 R 重开", 0.966f, 0.950f, 0.015f, dim, TextAlign::Right);
 }
 
 // ── RenderCountdown ───────────────────────────────────────────────────────────
@@ -1331,8 +1578,108 @@ void SceneGame::RenderCountdown(sakura::core::Renderer& renderer)
 // ── RenderJudgeFlashes ────────────────────────────────────────────────────────
 void SceneGame::RenderJudgeFlashes(sakura::core::Renderer& renderer)
 {
-    if (m_fontSmall == sakura::core::INVALID_HANDLE) return;
     const bool reduced = sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false);
+
+    if (!m_hitShockwaves.empty())
+    {
+        const float sw = std::max(1.0f, static_cast<float>(renderer.GetScreenWidth()));
+        const float sh = std::max(1.0f, static_cast<float>(renderer.GetScreenHeight()));
+        const float shortEdge = std::min(sw, sh);
+        const float sxAspect = shortEdge / sw;
+        const float syAspect = shortEdge / sh;
+
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        for (const auto& w : m_hitShockwaves)
+        {
+            const float maxT = std::max(0.001f, w.maxTime);
+            const float p = std::clamp(1.0f - w.timer / maxT, 0.0f, 1.0f);
+            const float easeOut3 = sakura::utils::EaseOutCubic(p);
+            const float easeOut2 = 1.0f - (1.0f - p) * (1.0f - p);
+            const float fade = std::clamp(1.0f - p, 0.0f, 1.0f);
+            const float fadeSq = fade * fade;
+            const float synScale = w.isSynergy ? 1.25f : 1.0f;
+
+            if (w.isKeyboard)
+            {
+                const float rOuter = (0.016f + 0.048f * easeOut3) * synScale;
+                const float rInner = (0.009f + 0.030f * easeOut2) * synScale;
+                renderer.DrawRingGradient(w.x, JUDGE_LINE_Y, rOuter * 0.72f, rOuter,
+                    w.color.WithAlpha(static_cast<uint8_t>(185.0f * fade)),
+                    w.color.WithAlpha(0), 40);
+                renderer.DrawCircleOutline(w.x, JUDGE_LINE_Y, rOuter,
+                    { 255, 248, 228, static_cast<uint8_t>(220.0f * fade) }, 0.0020f, 40);
+                renderer.DrawCircleOutline(w.x, JUDGE_LINE_Y, rInner,
+                    w.color.WithAlpha(static_cast<uint8_t>(195.0f * fadeSq)), 0.0015f, 36);
+
+                const float baseHalfW = ((w.lane == sakura::game::kThumbLaneIndex)
+                    ? (TRACK_W * 0.42f)
+                    : (LANE_W * 0.36f)) * (0.55f + 0.45f * fade);
+                const float pillarH = 0.24f * (0.72f + 0.28f * easeOut3);
+                const float topY = std::max(0.0f, JUDGE_LINE_Y - pillarH);
+                const sakura::core::Color baseAura = w.color.WithAlpha(static_cast<uint8_t>(165.0f * fadeSq));
+                const sakura::core::Color topZero  = w.color.WithAlpha(0);
+                renderer.DrawQuad(
+                    { w.x - baseHalfW * 0.65f, topY },
+                    { w.x + baseHalfW * 0.65f, topY },
+                    { w.x + baseHalfW, JUDGE_LINE_Y },
+                    { w.x - baseHalfW, JUDGE_LINE_Y },
+                    topZero, topZero, baseAura, baseAura);
+
+                const float coreHalfW = std::max(0.0035f, baseHalfW * 0.28f);
+                const float coreTopY = std::max(0.0f, JUDGE_LINE_Y - pillarH * 0.90f);
+                const sakura::core::Color coreBase{ 255, 250, 236, static_cast<uint8_t>(215.0f * fadeSq) };
+                const sakura::core::Color coreZero{ 255, 250, 236, 0 };
+                renderer.DrawQuad(
+                    { w.x - coreHalfW * 0.40f, coreTopY },
+                    { w.x + coreHalfW * 0.40f, coreTopY },
+                    { w.x + coreHalfW, JUDGE_LINE_Y },
+                    { w.x - coreHalfW, JUDGE_LINE_Y },
+                    coreZero, coreZero, coreBase, coreBase);
+            }
+            else
+            {
+                const float rOuter = (0.020f + 0.066f * easeOut3) * synScale;
+                const float rInner = (0.011f + 0.040f * easeOut2) * synScale;
+                renderer.DrawRingGradient(w.x, w.y, rOuter * 0.76f, rOuter,
+                    w.color.WithAlpha(static_cast<uint8_t>(190.0f * fade)),
+                    w.color.WithAlpha(0), 48);
+                renderer.DrawCircleOutline(w.x, w.y, rOuter,
+                    { 255, 248, 230, static_cast<uint8_t>(225.0f * fade) }, 0.0022f, 48);
+                renderer.DrawCircleOutline(w.x, w.y, rInner,
+                    w.color.WithAlpha(static_cast<uint8_t>(205.0f * fadeSq)), 0.0016f, 44);
+
+                const float starLen = (0.038f + 0.028f * easeOut3) * (0.45f + 0.55f * fade) * synScale;
+                const float starWaist = 0.0056f * fade * synScale;
+                const sakura::core::Color starCore{ 255, 250, 236, static_cast<uint8_t>(235.0f * fadeSq) };
+                const sakura::core::Color starTip = w.color.WithAlpha(0);
+
+                renderer.DrawQuad(
+                    { w.x - starLen * sxAspect, w.y },
+                    { w.x, w.y - starWaist * syAspect },
+                    { w.x + starLen * sxAspect, w.y },
+                    { w.x, w.y + starWaist * syAspect },
+                    starTip, starCore, starTip, starCore);
+                renderer.DrawQuad(
+                    { w.x, w.y - starLen * syAspect },
+                    { w.x + starWaist * sxAspect, w.y },
+                    { w.x, w.y + starLen * syAspect },
+                    { w.x - starWaist * sxAspect, w.y },
+                    starTip, starCore, starTip, starCore);
+
+                const float diamondR = 0.013f * fade * synScale;
+                const sakura::core::Color dMid = w.color.WithAlpha(static_cast<uint8_t>(185.0f * fadeSq));
+                renderer.DrawQuad(
+                    { w.x, w.y - diamondR * syAspect },
+                    { w.x + diamondR * sxAspect, w.y },
+                    { w.x, w.y + diamondR * syAspect },
+                    { w.x - diamondR * sxAspect, w.y },
+                    starCore, dMid, starCore, dMid);
+            }
+        }
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    }
+
+    if (m_fontSmall == sakura::core::INVALID_HANDLE) return;
 
     for (const auto& flash : m_judgeFlashes)
     {

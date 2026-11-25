@@ -312,14 +312,20 @@ def deploy_production_server(target_tag: str) -> None:
 
     ctx = ssl.create_default_context()
     for _ in range(15):
+        payload = None
         try:
             with urllib.request.urlopen(public_health, timeout=6.0, context=ctx) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="replace"))
-                if payload.get("ok") is True and payload.get("version") == target_tag:
-                    print(f"[autopilot] Verified production server healthy at {public_health}: {payload}", flush=True)
-                    return
         except Exception:
-            pass
+            probe = subprocess.run(["curl", "-fsSL", "--max-time", "6", public_health], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if probe.returncode == 0 and probe.stdout.strip():
+                try:
+                    payload = json.loads(probe.stdout)
+                except Exception:
+                    payload = None
+        if isinstance(payload, dict) and payload.get("ok") is True and payload.get("version") == target_tag:
+            print(f"[autopilot] Verified production server healthy at {public_health}: {payload}", flush=True)
+            return
         time.sleep(2.0)
     raise RuntimeError(f"Production server at {public_health} did not report version={target_tag!r} after SSH deploy.")
 

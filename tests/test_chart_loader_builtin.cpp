@@ -20,12 +20,8 @@ struct ExpectedDifficulty
     const char* chartFile;
     const char* difficultyName;
     double      level;
-    int         keyboardNotes;
-    int         holdNotes;
-    int         mouseNotes;
     int         minTimingPoints;
     int         minSvPoints;
-    int         minSliderNotes;
 };
 
 struct ExpectedChart
@@ -44,18 +40,18 @@ constexpr std::array<ExpectedChart, 6> kOfficialCharts{{
 }};
 
 constexpr std::array<ExpectedDifficulty, 12> kOfficialDifficulties{{
-    { "tutorial_song",  "easy.json",   "Easy",   1.0,  20,  0,   0, 1, 0,  0 },
-    { "spring_breeze",  "normal.json", "Normal", 3.0,  32,  4,   8, 1, 0,  0 },
-    { "spring_breeze",  "hard.json",   "Hard",   5.5,  56, 11,  24, 1, 0,  1 },
-    { "cherry_blossom", "normal.json", "Normal", 4.0,  38,  5,  12, 1, 0,  0 },
-    { "cherry_blossom", "hard.json",   "Hard",   7.0,  65, 16,  35, 1, 0,  1 },
-    { "cherry_blossom", "expert.json", "Expert",10.0, 125, 31,  75, 1, 4,  1 },
-    { "digital_dream",  "hard.json",   "Hard",   8.5,  60, 60,  60, 1, 0, 60 },
-    { "digital_dream",  "expert.json", "Expert",12.0, 160, 40,  90, 4, 3,  1 },
-    { "sakura_storm",   "expert.json", "Expert",14.0, 200, 50, 120, 5, 7,  1 },
-    { "sakura_breath",  "normal.json", "Normal", 4.0, 246, 13,  74, 1, 1, 10 },
-    { "sakura_breath",  "hard.json",   "Hard",   7.5, 505, 14, 173, 1, 1, 20 },
-    { "sakura_breath",  "expert.json", "Expert",10.5, 837, 14, 286, 1,10, 44 },
+    { "tutorial_song",  "easy.json",   "Easy",    1.0, 1, 0 },
+    { "spring_breeze",  "normal.json", "Normal",  3.0, 1, 0 },
+    { "spring_breeze",  "hard.json",   "Hard",    5.5, 1, 0 },
+    { "cherry_blossom", "normal.json", "Normal",  4.0, 1, 0 },
+    { "cherry_blossom", "hard.json",   "Hard",    7.0, 1, 0 },
+    { "cherry_blossom", "expert.json", "Expert", 10.0, 1, 3 },
+    { "digital_dream",  "hard.json",   "Hard",    8.5, 1, 0 },
+    { "digital_dream",  "expert.json", "Expert", 12.0, 1, 3 },
+    { "sakura_storm",   "expert.json", "Expert", 14.0, 1, 3 },
+    { "sakura_breath",  "normal.json", "Normal",  4.0, 1, 0 },
+    { "sakura_breath",  "hard.json",   "Hard",    7.5, 1, 0 },
+    { "sakura_breath",  "expert.json", "Expert", 10.5, 1, 4 },
 }};
 
 const ChartInfo* FindChart(const std::vector<ChartInfo>& charts, const char* chartId)
@@ -89,7 +85,7 @@ TEST_CASE("官方测试谱面可被扫描到", "[charts][scan]")
         const ChartInfo* chart = FindChart(charts, expected.chartId);
         REQUIRE(chart != nullptr);
         REQUIRE(chart->folderPath == std::string(SAKURA_SOURCE_DIR) + "/resources/charts/" + expected.chartId);
-        REQUIRE(chart->version == 2);
+        REQUIRE((chart->version == 2 || chart->version == 3));
         REQUIRE(chart->musicFile == expected.musicFile);
         REQUIRE(chart->coverFile == "cover.png");
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
@@ -132,8 +128,11 @@ TEST_CASE("内置谱面难度与音符元数据保持一致", "[charts][load]")
         auto data = loader.LoadChartData(chart->folderPath + "/" + diff->chartFile);
         REQUIRE(data.has_value());
         REQUIRE(loader.ValidateChartData(*data));
+        REQUIRE(diff->noteCount > 0);
         REQUIRE(static_cast<int>(data->keyboardNotes.size()) == diff->noteCount);
         REQUIRE(static_cast<int>(data->mouseNotes.size()) == diff->mouseNoteCount);
+        REQUIRE(static_cast<int>(data->timingPoints.size()) >= expected.minTimingPoints);
+        REQUIRE(static_cast<int>(data->svPoints.size()) >= expected.minSvPoints);
 
         const int holdCount = static_cast<int>(std::count_if(data->keyboardNotes.begin(), data->keyboardNotes.end(),
             [](const KeyboardNote& note) { return note.type == NoteType::Hold; }));
@@ -141,8 +140,11 @@ TEST_CASE("内置谱面难度与音符元数据保持一致", "[charts][load]")
             [](const MouseNote& note) { return note.type == NoteType::Slider; }));
 
         REQUIRE(holdCount == diff->holdCount);
-        if(chart->id!="tutorial_song"){REQUIRE(holdCount>0);REQUIRE(sliderCount>0);}
-        REQUIRE(!data->timingPoints.empty());
+        if (chart->id != "tutorial_song")
+        {
+            REQUIRE(holdCount > 0);
+            REQUIRE(sliderCount > 0);
+        }
         REQUIRE(static_cast<int>(data->keyboardNotes.size() + data->mouseNotes.size())
             == diff->noteCount + diff->mouseNoteCount);
     }

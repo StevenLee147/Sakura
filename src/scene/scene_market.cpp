@@ -8,6 +8,7 @@
 #include "core/paths.h"
 #include "core/resource_manager.h"
 #include "game/chart_loader.h"
+#include "game/chart_utils.h"
 #include "ui/toast.h"
 #include "ui/visual_style.h"
 #include "utils/logger.h"
@@ -485,9 +486,10 @@ void SceneMarket::OnRender(Renderer& r)
             c.artist + "  ·  谱师 " + c.charter + "  ·  " + FmtFloat(c.bpm, 0) + " BPM",
             card.x + 0.020f, y + 0.052f, 0.016f, 0.255f, kDim);
 
+        auto fmtLv = [](float lv) { const int t = static_cast<int>(std::lround(lv * 10.0f)); return (t % 10 == 0) ? std::to_string(t / 10) : (std::to_string(t / 10) + "." + std::to_string(t % 10)); };
         const std::string lvStr = (std::abs(c.maxLevel - c.minLevel) < 0.05f)
-            ? ("Lv." + FmtFloat(c.maxLevel, 1))
-            : ("Lv." + FmtFloat(c.minLevel, 0) + "~" + FmtFloat(c.maxLevel, 0));
+            ? ("Lv." + fmtLv(c.maxLevel))
+            : ("Lv." + fmtLv(c.minLevel) + "~" + fmtLv(c.maxLevel));
         VisualStyle::DrawBadgePill(r, { card.x + card.width - 0.105f, y + 0.012f, 0.092f, 0.026f },
             lvStr, m_font, 0.0135f,
             sel ? Color{ 104, 64, 98, 220 } : Color{ 36, 44, 74, 195 },
@@ -559,7 +561,7 @@ void SceneMarket::OnRender(Renderer& r)
             const auto& d = c.difficulties[i];
             const float pillW = 0.102f;
             VisualStyle::DrawBadgePill(r, { 0.515f + i * 0.108f, 0.450f, pillW, 0.034f },
-                d.name + " " + FmtFloat(d.level, 1), m_font, 0.0145f,
+                d.name + " Lv." + sakura::game::FormatDifficultyLevel(d.level), m_font, 0.0145f,
                 { 36, 42, 72, 210 }, { 246, 178, 206, 145 }, kPink);
         }
 

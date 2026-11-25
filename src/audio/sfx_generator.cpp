@@ -75,13 +75,20 @@ bool SfxGenerator::WriteWav(std::string_view path,
             env *= static_cast<float>(i) / static_cast<float>(attackSamples);
         }
 
-        noiseState=noiseState*1664525u+1013904223u;
-        const float noise=(static_cast<float>((noiseState>>16)&65535)/32767.5f-1);
-        phase+=kTwoPi*frequency*(drum?0.40f+0.85f*std::exp(-t*90):1.0f)/SAMPLE_RATE;
-        env*=std::exp(-t*(soft?45.0f:drum?65.0f:55.0f));
-        const float body=std::sin(phase)+(soft?0.04f:0.18f)*std::sin(phase*2.76f);
-        const float sample=env*(body*0.74f+noise*(drum?0.40f:0.20f)*std::exp(-t*280));
-        samples[i] = static_cast<int16_t>(sample * 32767.0f);
+        noiseState = noiseState * 1664525u + 1013904223u;
+        const float noise = (static_cast<float>((noiseState >> 16) & 65535) / 32767.5f - 1.0f);
+        const float pitchSnap = drum ? (0.42f + 1.05f * std::exp(-t * 115.0f)) : (1.0f + 0.36f * std::exp(-t * 210.0f));
+        phase += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
+        const float bodyEnv = env * std::exp(-t * (soft ? 42.0f : drum ? 58.0f : 48.0f));
+        const float clickFreq = soft ? 2100.0f : (drum ? 1650.0f : 3150.0f);
+        const float transientClick = std::sin(kTwoPi * clickFreq * t) * std::exp(-t * 520.0f) * (soft ? 0.28f : 0.48f);
+        const float transientNoise = noise * std::exp(-t * 460.0f) * (drum ? 0.52f : (soft ? 0.20f : 0.36f));
+        const float body = std::sin(phase)
+                         + (soft ? 0.14f : 0.28f) * std::sin(phase * 2.0f)
+                         + (soft ? 0.06f : 0.22f) * std::sin(phase * 2.76f);
+        const float rawSample = bodyEnv * body * 0.78f + amplitude * (transientClick + transientNoise);
+        const float saturated = std::tanh(rawSample * 1.42f) * 0.92f;
+        samples[i] = static_cast<int16_t>(std::clamp(saturated, -1.0f, 1.0f) * 32767.0f);
     }
 
     // 写入 WAV 文件

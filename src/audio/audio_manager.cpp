@@ -590,11 +590,11 @@ void AudioManager::SetPlaybackSpeed(float speed)
 
 bool AudioManager::LoadHitsoundSet(std::string_view name)
 {
-    // 先生成合成音效（若不存在）
-    SfxGenerator::GenerateDefaults(sakura::core::Paths::User("cache/sfx-v2"));
+    // 先生成 v3 多瞬态清脆合成音效（升级缓存目录确保老存档立即获得新版打击音）
+    SfxGenerator::GenerateDefaults(sakura::core::Paths::User("cache/sfx-v3"));
 
     m_hitsoundSetName = std::string(name);
-    std::string base = sakura::core::Paths::User("cache/sfx-v2/" + m_hitsoundSetName + "/");
+    std::string base = sakura::core::Paths::User("cache/sfx-v3/" + m_hitsoundSetName + "/");
 
     m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = base + "tap.wav";
     m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = base + "hold_start.wav";
@@ -609,7 +609,7 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_judgeSFXPaths[4] = base + "miss.wav";
 
     // UI 音效统一放 ui/
-    std::string ui = sakura::core::Paths::User("cache/sfx-v2/ui/");
+    std::string ui = sakura::core::Paths::User("cache/sfx-v3/ui/");
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]   = ui + "button_hover.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]   = ui + "button_click.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]    = ui + "transition.wav";

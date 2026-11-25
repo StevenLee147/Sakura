@@ -101,8 +101,22 @@ void SceneSelect::Filter() {
 void SceneSelect::Select(int index,int difficulty) {
     if(index<0 || index>=static_cast<int>(m_charts.size())) return;
     const bool changed=index!=m_selected;
+    std::string prevDiffName;
+    float prevDiffLevel = 0.0f;
+    const bool hadPrev = (m_selected >= 0 && m_selected < static_cast<int>(m_charts.size()) &&
+                          m_difficulty >= 0 && m_difficulty < static_cast<int>(m_charts[m_selected].difficulties.size()));
+    if (hadPrev) {
+        prevDiffName  = m_charts[m_selected].difficulties[m_difficulty].name;
+        prevDiffLevel = m_charts[m_selected].difficulties[m_difficulty].level;
+    }
     m_selected=index; const auto& c=m_charts[index];
-    m_difficulty=std::clamp(difficulty>=0?difficulty:(changed?0:m_difficulty),0,static_cast<int>(c.difficulties.size())-1);
+    int targetDiff = difficulty;
+    if (targetDiff < 0) {
+        if (!changed) targetDiff = m_difficulty;
+        else if (hadPrev) targetDiff = ResolveMatchingDifficultyIndex(c, prevDiffName, prevDiffLevel);
+        else targetDiff = 0;
+    }
+    m_difficulty=std::clamp(targetDiff,0,static_cast<int>(c.difficulties.size())-1);
     if(changed) {
         sakura::audio::AudioManager::GetInstance().FadeOutMusic(150); m_previewTimer=0; m_previewPlaying=false;
         ResourceManager::GetInstance().UnloadTexture(m_cover);
@@ -192,7 +206,7 @@ void SceneSelect::BuildDetail() {
     for(int i=first;i<std::min(first+4,count);++i) {
         const float width=0.425f/std::min(count,4);
         m_detailButtons.push_back(Button({0.515f+(i%4)*width,0.473f,width-0.008f,0.035f},
-            c.difficulties[i].name+" "+Number(c.difficulties[i].level,0),[this,i]{Select(m_selected,i);},i==m_difficulty));
+            c.difficulties[i].name+" Lv."+FormatDifficultyLevel(c.difficulties[i].level),[this,i]{Select(m_selected,i);},i==m_difficulty));
     }
     if(count>4){
         m_detailButtons.push_back(Button({0.817f,0.429f,0.055f,0.032f},"‹",[this,count]{Select(m_selected,(m_difficulty+count-1)%count);}));
@@ -355,9 +369,18 @@ void SceneSelect::OnRender(Renderer& r) {
         VisualStyle::DrawTextFit(r,m_font,c.title,cardRect.x+0.046f,y+0.011f,0.028f,0.275f,white);
         VisualStyle::DrawTextFit(r,m_font,c.artist+"  ·  "+Number(c.bpm,0)+" BPM",cardRect.x+0.046f,y+0.052f,0.017f,0.275f,dim);
 
-        const auto& topDiff=c.difficulties.back();
-        VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.088f,y+0.014f,0.074f,0.026f},
-            "Lv."+Number(topDiff.level,0),m_font,0.014f,
+        int dispDiffIdx = static_cast<int>(c.difficulties.size()) - 1;
+        if (selected) {
+            dispDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(c.difficulties.size()) - 1);
+        } else if (m_selected >= 0 && m_selected < static_cast<int>(m_charts.size())) {
+            const auto& curChart = m_charts[m_selected];
+            const int curDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(curChart.difficulties.size()) - 1);
+            dispDiffIdx = ResolveMatchingDifficultyIndex(
+                c, curChart.difficulties[curDiffIdx].name, curChart.difficulties[curDiffIdx].level);
+        }
+        const auto& cardDiff = c.difficulties[dispDiffIdx];
+        VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.124f,y+0.014f,0.110f,0.026f},
+            cardDiff.name+" Lv."+FormatDifficultyLevel(cardDiff.level),m_font,0.0132f,
             selected?Color{104,64,98,220}:Color{36,44,74,195},
             selected?gold:Color{174,184,218,95},selected?gold:pink);
         r.DrawText(m_font,std::to_string(c.difficulties.size())+" 谱面",cardRect.x+cardRect.width-0.016f,y+0.056f,0.015f,dim,TextAlign::Right);

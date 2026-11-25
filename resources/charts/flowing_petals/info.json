@@ -22,31 +22,31 @@
       "name": "Normal",
       "level": 5.0,
       "chart_file": "normal.json",
-      "note_count": 326,
-      "hold_count": 19,
+      "note_count": 313,
+      "hold_count": 7,
       "mouse_note_count": 102,
-      "thumb_count": 14,
+      "thumb_count": 13,
       "synergy_count": 0
     },
     {
       "name": "Hard",
       "level": 8.5,
       "chart_file": "hard.json",
-      "note_count": 616,
-      "hold_count": 22,
+      "note_count": 626,
+      "hold_count": 3,
       "mouse_note_count": 190,
-      "thumb_count": 16,
-      "synergy_count": 85
+      "thumb_count": 19,
+      "synergy_count": 83
     },
     {
       "name": "Expert",
       "level": 12.0,
       "chart_file": "expert.json",
-      "note_count": 968,
-      "hold_count": 13,
+      "note_count": 955,
+      "hold_count": 1,
       "mouse_note_count": 296,
-      "thumb_count": 17,
-      "synergy_count": 118
+      "thumb_count": 27,
+      "synergy_count": 120
     }
   ]
 }

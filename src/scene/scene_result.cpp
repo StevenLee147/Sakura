@@ -361,7 +361,7 @@ void SceneResult::OnRender(sakura::core::Renderer& r)
     VisualStyle::DrawBadgePill(r,{0.04f,0.032f,0.165f,0.026f},"PERFORMANCE RECORD",m_fontUI,0.013f,
         Color{48,36,70,static_cast<uint8_t>(205*a0)},Color{250,216,157,static_cast<uint8_t>(160*a0)},gold.WithAlpha(static_cast<uint8_t>(255*a0)));
     r.DrawText(m_fontUI,"PERFORMANCE / 演奏结算",0.04f,0.062f,0.038f,white.WithAlpha(static_cast<uint8_t>(255*a0)));
-    VisualStyle::DrawTextFit(r,m_fontUI,m_result.chartTitle+"   ·   "+m_result.difficulty+"  Lv."+number(m_result.difficultyLevel,0),0.04f,0.114f,0.023f,0.82f,dim.WithAlpha(static_cast<uint8_t>(240*a0)));
+    VisualStyle::DrawTextFit(r,m_fontUI,m_result.chartTitle+"   ·   "+sakura::game::FormatDifficultyBadge(m_result.difficulty, m_result.difficultyLevel),0.04f,0.114f,0.023f,0.82f,dim.WithAlpha(static_cast<uint8_t>(240*a0)));
 
     // ── 左侧评级印章与总分琉璃卡片 ───────────────────────────────────────────
     VisualStyle::DrawGlassCard(r,{0.04f,0.185f,0.40f,0.68f},
@@ -510,10 +510,10 @@ void SceneResult::RenderDetailOverlay(sakura::core::Renderer& r)
     VisualStyle::DrawGlassCard(r, {0.035f, 0.045f, 0.930f, 0.910f},
         {20, 24, 46, 244}, {12, 16, 32, 248}, {250, 216, 157, 195}, {168, 158, 214, 85}, 0.018f, 0.55f);
 
-    r.DrawText(m_fontUI, "PERFORMANCE TELEMETRY / 深度演奏分析报告", 0.060f, 0.064f, 0.025f, white);
+    r.DrawText(m_fontUI, "PERFORMANCE TELEMETRY / 深度报告  ·  " + sakura::game::FormatDifficultyBadge(m_result.difficulty, m_result.difficultyLevel), 0.060f, 0.064f, 0.023f, white);
     const double ur = m_deviation * 10.0;
     r.DrawText(m_fontUI, "Unstable Rate (UR)  " + fmt(ur, 1) + "   ·   均值偏差 " + fmt(m_meanError, 1) + " ms",
-        0.520f, 0.070f, 0.018f, gold);
+        0.545f, 0.070f, 0.0175f, gold);
     if (m_btnCloseDetail) m_btnCloseDetail->Render(r);
     VisualStyle::DrawGildedDivider(r, 0.055f, 0.945f, 0.116f, 0.72f);
 

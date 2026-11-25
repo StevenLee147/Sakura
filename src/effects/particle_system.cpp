@@ -149,21 +149,21 @@ ParticleConfig ClickSpark()
 ParticleConfig HitBurst(sakura::core::Color color)
 {
     ParticleConfig cfg;
-    cfg.spreadX      =  0.012f;
-    cfg.spreadY      =  0.012f;
-    cfg.vxMin        = -0.34f;
-    cfg.vxMax        =  0.34f;
-    cfg.vyMin        = -0.44f;
-    cfg.vyMax        = -0.06f;
+    cfg.spreadX      =  0.014f;
+    cfg.spreadY      =  0.010f;
+    cfg.vxMin        = -0.54f;
+    cfg.vxMax        =  0.54f;
+    cfg.vyMin        = -0.62f;
+    cfg.vyMax        =  0.16f;
     cfg.ax           =  0.0f;
-    cfg.ay           =  0.34f;
-    cfg.sizeMin      =  0.007f;
-    cfg.sizeMax      =  0.017f;
-    cfg.sizeEndMult  =  0.12f;
-    cfg.rotSpeedMin  = -300.0f;
-    cfg.rotSpeedMax  =  300.0f;
-    cfg.lifeMin      =  0.20f;
-    cfg.lifeMax      =  0.48f;
+    cfg.ay           =  0.42f;
+    cfg.sizeMin      =  0.009f;
+    cfg.sizeMax      =  0.022f;
+    cfg.sizeEndMult  =  0.10f;
+    cfg.rotSpeedMin  = -380.0f;
+    cfg.rotSpeedMax  =  380.0f;
+    cfg.lifeMin      =  0.22f;
+    cfg.lifeMax      =  0.52f;
     cfg.colorStart   = {
         static_cast<uint8_t>(std::min(255, color.r + 35)),
         static_cast<uint8_t>(std::min(255, color.g + 35)),

@@ -23,7 +23,7 @@
       "level": 2.5,
       "chart_file": "easy.json",
       "note_count": 66,
-      "hold_count": 3,
+      "hold_count": 5,
       "mouse_note_count": 20,
       "thumb_count": 3,
       "synergy_count": 0
@@ -33,7 +33,7 @@
       "level": 4.5,
       "chart_file": "normal.json",
       "note_count": 117,
-      "hold_count": 2,
+      "hold_count": 7,
       "mouse_note_count": 35,
       "thumb_count": 4,
       "synergy_count": 0
@@ -42,11 +42,11 @@
       "name": "Hard",
       "level": 7.0,
       "chart_file": "hard.json",
-      "note_count": 177,
-      "hold_count": 6,
+      "note_count": 186,
+      "hold_count": 2,
       "mouse_note_count": 54,
-      "thumb_count": 4,
-      "synergy_count": 24
+      "thumb_count": 6,
+      "synergy_count": 22
     }
   ]
 }

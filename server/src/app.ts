@@ -99,7 +99,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.2.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.3.0";
 
   app.use("*", cors());
 

@@ -21,17 +21,17 @@
       "name": "Hard",
       "level": 8.5,
       "chart_file": "hard.json",
-      "note_count": 244,
-      "hold_count": 9,
-      "mouse_note_count": 64
+      "note_count": 277,
+      "hold_count": 20,
+      "mouse_note_count": 78
     },
     {
       "name": "Expert",
       "level": 12.0,
       "chart_file": "expert.json",
-      "note_count": 412,
-      "hold_count": 9,
-      "mouse_note_count": 92
+      "note_count": 384,
+      "hold_count": 19,
+      "mouse_note_count": 109
     }
   ]
 }

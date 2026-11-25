@@ -23,7 +23,7 @@
       "level": 4.5,
       "chart_file": "normal.json",
       "note_count": 255,
-      "hold_count": 17,
+      "hold_count": 15,
       "mouse_note_count": 76,
       "thumb_count": 11,
       "synergy_count": 0
@@ -32,21 +32,21 @@
       "name": "Hard",
       "level": 7.5,
       "chart_file": "hard.json",
-      "note_count": 467,
-      "hold_count": 20,
+      "note_count": 532,
+      "hold_count": 15,
       "mouse_note_count": 140,
-      "thumb_count": 18,
-      "synergy_count": 65
+      "thumb_count": 19,
+      "synergy_count": 64
     },
     {
       "name": "Expert",
       "level": 10.5,
       "chart_file": "expert.json",
-      "note_count": 707,
-      "hold_count": 18,
+      "note_count": 723,
+      "hold_count": 17,
       "mouse_note_count": 216,
-      "thumb_count": 21,
-      "synergy_count": 104
+      "thumb_count": 28,
+      "synergy_count": 97
     }
   ]
 }
