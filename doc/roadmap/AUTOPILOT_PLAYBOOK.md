@@ -12,7 +12,8 @@
 2. 严格按照对应版本的 roadmap 规范完成全部代码、资源与单测（遵循 0.0~1.0 归一化布局与绝不简化原则，兼顾 Windows MSVC 与 ci-linux 单测）。
 3. 中间提交统一设置 VERSION_HOOK_BUMP=no-bump 防止弹窗阻塞；每完成一个里程碑版本的功能与测试后，调用 python scripts/autopilot_release.py 执行本地 Release 编译、CTest、--smoke-test、发行打包、非交互式升版打 Tag、直推 main 与 Tag、并阻塞等待远端 GitHub Actions 成功创建 GitHub Release 且校验发行资产。
 4. 若本地测试或远端 GitHub Actions 失败，立即读取错误日志原地修复并重跑，严禁跳过或禁用功能。
-5. 当前版本 GitHub Release 验证通过后，不要停下询问我，立即自动进入下一个版本的开发与发布，直至 v1.2.0 正式发布并验收通过。
+5. 每个正式版本 GitHub Release 验证通过后，脚本会自动通过免密 SSH 将最新 server/ 部署至 steven-lee.tech (/srv/sakura-online) 并校验 https://steven-lee.tech:233/api/v1/health 版本号一致。
+6. 当前版本全链路验收通过后，不要停下询问我，立即自动进入下一个版本的开发与发布，直至 v2.0.0 正式发布并验收通过。
 ```
 
 ---
@@ -21,15 +22,15 @@
 
 仓库使用 `.githooks/pre-commit` + `scripts/sync_repo_version.py` 维护版本同步，每次提交时若未传入 `VERSION_HOOK_BUMP` 会弹出 GUI 选择框阻塞自动化。因此**必须严格按照下表传入通道与升级参数**：
 
-| 序号 | 目标 Tag | 升级前通道动作 | `VERSION_HOOK_BUMP` | 核心规格文档 | 远端 Release 必检产物 |
+| 序号 | 目标 Tag | 升级前通道动作 | `VERSION_HOOK_BUMP` | 核心规格文档 | 远端必检产物与线上探针 |
 |------|----------|----------------|---------------------|--------------|------------------------|
-| 1 | `v0.8.0-alpha` | `alpha` | `minor` | `V0_8_SYNERGY_AND_SONGS.md` | `Sakura-v0.8.0-alpha-win64.zip` |
-| 2 | `v0.8.1-alpha` | `alpha` | `patch` | `V0_8_SYNERGY_AND_SONGS.md` | `Sakura-v0.8.1-alpha-win64.zip` |
-| 3 | `v0.9.0-beta` | `beta` | `minor` | `V0_9_PRO_TOOLS_AND_BGA.md` | `Sakura-v0.9.0-beta-win64.zip` |
-| 4 | `v0.9.1-beta` | `beta` | `patch` | `V0_9_PRO_TOOLS_AND_BGA.md` | `Sakura-v0.9.1-beta-win64.zip` |
-| 5 | `v1.0.0` | `stable` (`clear`) | `major` | `V1_0_OFFICIAL_RELEASE.md` | `Sakura-v1.0.0-win64.zip` + `Sakura-v1.0.0-win64-setup.exe` |
-| 6 | `v1.1.0` | `stable` (`clear`) | `minor` | `V1_1_1_2_ONLINE_ECOSYSTEM.md` | `Sakura-v1.1.0-win64.zip` + `Sakura-v1.1.0-win64-setup.exe` |
-| 7 | `v1.2.0` | `stable` (`clear`) | `minor` | `V1_1_1_2_ONLINE_ECOSYSTEM.md` | `Sakura-v1.2.0-win64.zip` + `Sakura-v1.2.0-win64-setup.exe` |
+| 1~7 | `v0.8.0-alpha` ~ `v1.2.0` | 已发布归档 | — | `V0_8` ~ `V1_1_1_2` | ✅ 已全部发布上线 |
+| 8 | `v1.3.0` | `stable` (`clear`) | `minor` | `V1_3_GAMEPLAY_FEEL_AND_RECHART.md` | 双产物 + SHA256 + `:233` `v1.3.0` |
+| 9 | `v1.4.0` | `stable` (`clear`) | `minor` | `V1_4_COURSE_DAILY_AND_COLLECTIONS.md` | 双产物 + SHA256 + `:233` `v1.4.0` |
+| 10 | `v1.5.0` | `stable` (`clear`) | `minor` | `V1_5_SKINS_AND_STAGE_V4.md` | 双产物 + SHA256 + `:233` `v1.5.0` |
+| 11 | `v1.6.0` | `stable` (`clear`) | `minor` | `V1_6_GHOST_AND_MULTIPLAYER.md` | 双产物 + SHA256 + `:233` `v1.6.0` |
+| 12 | `v1.7.0` | `stable` (`clear`) | `minor` | `V1_7_PHIRA_CONVERTER_AND_VOL4.md` | 双产物 + SHA256 + `:233` `v1.7.0` |
+| 13 | `v2.0.0` | `stable` (`clear`) | `major` | `V2_0_SELF_UPDATER_AND_CAREER.md` | 双产物 + SHA256 + `:233` `v2.0.0` |
 
 ---
 

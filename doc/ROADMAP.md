@@ -44,19 +44,37 @@ v1.1.0       (在线生态一期：内建 Hono 双模服务端 + WinHTTP 网络�
       │
       ▼
 v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工房一键发布 + 多端云同步)
+      │
+      ▼
+v1.3.0       (核心手感重塑：全场景小数等级统一 + 3xR防误触 + 锁线消残影强打击感 + 同押多压提示 + Δt自适应重制全曲库)
+      │
+      ▼
+v1.4.0       (竞技挑战进阶：樱华道场段位认定6阶考级 + 继承血槽称号徽章 + 全球每日挑战榜 + 命名多曲单)
+      │
+      ▼
+v1.5.0       (视听演出进化：SkinManager 4套内置皮肤与打击音包 + Chart v4 舞台脉冲滤镜演出与双语同步歌词)
+      │
+      ▼
+v1.6.0       (同场竞速联机：PB/线上回放幽灵对手实时分差与幽灵光标 + SceneArena 在线多人房间对战)
+      │
+      ▼
+v1.7.0       (生态互通扩充：Phira .pez / osu! .osz / SM .sm 双区智能谱面转换器 + 原创曲包 Vol.04 6首新曲)
+      │
+      ▼
+v2.0.0       (2.0 终极收官：游戏内静默流式热更新原子自重启 + B30/R10 Sakura Rating 与高清 PNG 生涯名片导出)
 ```
 
 | 版本 | 通道 | 阶段主题 | 核心交付物 | 状态 |
 |------|------|----------|------------|------|
-| v0.1 ~ v0.5 | dev/alpha | Phase 0~4 基建至内容 | 核心引擎、双区玩法、工房、教程、成就、PP、统计 | ✅ 已完成 |
-| v0.6 ~ v0.7.0 | alpha | Phase 5~6 回放与琉璃焕新 | 确定性 PlaySession、回放、设置、夜樱琉璃视觉、离线录制与 ZIP 打包 | ✅ 已完成 |
-| v0.8.0-alpha | alpha | 核心玩法进化 (Chart v3) | 空格大拇指横梁、跨区连携 Link Note、樱绽组合技、Fever 满开槽、教程第 6 课 | ✅ 已完成 |
-| v0.8.1-alpha | alpha | 官方曲包扩充 | 通用 STFT/HPSS 自动制谱与封面生成管线、`download/songs` 8 首三难度新曲 | ✅ 已完成 |
-| v0.9.0-beta | beta | 专业工具链与深度分析 | WSOLA 变速不变调、全屏结算分析覆盖层、工房波形/SV曲线、`.sakura` 拖拽导入导出 | ✅ 已完成 |
-| v0.9.1-beta | beta | 视听打磨与准正式版压测 | Media Foundation 原生 MP4 背景视频、F3 性能与延迟叠层、音频时钟抗漂移、多分辨率压测 | ✅ 已完成 |
-| v1.0.0 | stable | 正式版双形态发行 | `installer/sakura.iss` 安装器、CI 双产物（Setup EXE + 便携 ZIP）、全曲定级与正式版文档 | ✅ 已完成 |
-| v1.1.0 | stable | 在线生态一期：排行与更新 | `server/` 双模后端、`src/net/` WinHTTP、GitHub 自动检查更新、账号体系与全球排行榜 | ✅ 已完成 |
-| v1.2.0 | stable | 在线生态二期：市场与云同步 | `SceneMarket` 在线谱面市场（搜索/评分/一键下载）、工房直传发布、多端幂等云存档同步 | ✅ 已完成 |
+| v0.1 ~ v0.7.0 | dev/alpha | Phase 0~6 基建至琉璃焕新 | 核心引擎、双区玩法、确定性回放、夜樱琉璃视觉、离线录制 | ✅ 已完成 |
+| v0.8.0 ~ v0.9.1 | alpha/beta | Chart v3、WSOLA 与 MP4 舞台 | 空格横梁、组合技、曲包、WSOLA 变速、深度结算、MP4 BGA | ✅ 已完成 |
+| v1.0.0 ~ v1.2.0 | stable | 双产物正式发行与在线生态 | Inno Setup 双产物、双模后端、排行榜、谱面市场、云同步 | ✅ 已完成 |
+| v1.3.0 | stable | 核心手感重塑与全曲库重制 | 难度/小数等级统一、3xR重开、消除左手下落残影、强打击特效音效、多压/跨区同押提示、Δt自适应重制15曲 | ⏳ 待发布 |
+| v1.4.0 | stable | 樱华道场段位、日榜与曲单 | `SceneCourse` 多曲连奏段位考核（继承血槽+称号徽章）、每日挑战榜、命名多曲单收藏夹 | ⏳ 待发布 |
+| v1.5.0 | stable | 自定义皮肤包与 Chart v4 演出 | 落地 `skin_path`（4套内置皮肤+打击音包）、Chart v4 舞台演出事件与时间轴双语歌词 | ⏳ 待发布 |
+| v1.6.0 | stable | 幽灵伴跑竞速与在线多人对战 | 单人 PB/线上回放实时分差条与幽灵光标、`SceneArena` 多人建房同步竞技与领奖台 | ⏳ 待发布 |
+| v1.7.0 | stable | Phira/osu!/SM 转换与曲包 Vol.04 | 原生解析 Phira `.pez` (Official/RPE)、`.osz`、`.sm` 转双区谱面、6首原创曲包 Vol.04 | ⏳ 待发布 |
+| v2.0.0 | stable | 静默热更新自重启与 B30 生涯名片 | 后台流式下载+SHA256校验+PowerShell原子热替换自重启、B30/R10 Rating 与高清 PNG 名片导出 | ⏳ 待发布 |
 
 ---
 
@@ -66,10 +84,10 @@ v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工
 
 | 文件 | 说明 |
 |------|------|
-| [roadmap/AUTOPILOT_PLAYBOOK.md](roadmap/AUTOPILOT_PLAYBOOK.md) | 无人值守连续更新+发布执行协议、CI 自愈策略与一键续跑 Prompt |
-| [../scripts/autopilot_release.py](../scripts/autopilot_release.py) | 非交互式本地构建/单测/冒烟/打包/升版打标/远端 GitHub Release 验证脚本 |
+| [roadmap/AUTOPILOT_PLAYBOOK.md](roadmap/AUTOPILOT_PLAYBOOK.md) | 无人值守连续更新+发布+线上服 SSH 自动部署协议与一键续跑 Prompt |
+| [../scripts/autopilot_release.py](../scripts/autopilot_release.py) | 非交互式本地门禁、升版打标、GitHub Release 监控与 `steven-lee.tech` 生产服同步脚本 |
 
-### 分版本实施规范 (v0.8 → v1.2)
+### 分版本实施规范 (v0.8 → v2.0)
 
 | 文件 | 覆盖版本 | 内容 |
 |------|----------|------|
@@ -77,6 +95,12 @@ v1.2.0       (在线生态二期：游戏内在线谱面市场 SceneMarket + 工
 | [roadmap/V0_9_PRO_TOOLS_AND_BGA.md](roadmap/V0_9_PRO_TOOLS_AND_BGA.md) | `v0.9.0-beta`、`v0.9.1-beta` | WSOLA 变速不变调、全屏详细结算报告、工房 v3、`.sakura` 包与 MP4 视频舞台 |
 | [roadmap/V1_0_OFFICIAL_RELEASE.md](roadmap/V1_0_OFFICIAL_RELEASE.md) | `v1.0.0` | Inno Setup 安装器、双产物 GitHub Release 流水线、全量回归与正式版定稿 |
 | [roadmap/V1_1_1_2_ONLINE_ECOSYSTEM.md](roadmap/V1_1_1_2_ONLINE_ECOSYSTEM.md) | `v1.1.0`、`v1.2.0` | 内建 Hono 双模后端、WinHTTP 客户端、自动更新、全球排行榜、谱面市场与云同步 |
+| [roadmap/V1_3_GAMEPLAY_FEEL_AND_RECHART.md](roadmap/V1_3_GAMEPLAY_FEEL_AND_RECHART.md) | `v1.3.0` | 小数等级统一、`R`键三连防误触、消除下落残影、强打击感视听、同押提示与 Δt 自适应谱面重制 |
+| [roadmap/V1_4_COURSE_DAILY_AND_COLLECTIONS.md](roadmap/V1_4_COURSE_DAILY_AND_COLLECTIONS.md) | `v1.4.0` | 樱华道场段位认定、继承血槽称号徽章、每日挑战日榜与命名多曲单 |
+| [roadmap/V1_5_SKINS_AND_STAGE_V4.md](roadmap/V1_5_SKINS_AND_STAGE_V4.md) | `v1.5.0` | 自定义皮肤与打击音包系统、Chart Format v4 舞台演出事件与双语歌词 |
+| [roadmap/V1_6_GHOST_AND_MULTIPLAYER.md](roadmap/V1_6_GHOST_AND_MULTIPLAYER.md) | `v1.6.0` | 幽灵对手实时分差与幽灵光标、`SceneArena` 在线多人对战房间 |
+| [roadmap/V1_7_PHIRA_CONVERTER_AND_VOL4.md](roadmap/V1_7_PHIRA_CONVERTER_AND_VOL4.md) | `v1.7.0` | Phira `.pez` / osu! `.osz` / SM `.sm` 智能双区谱面转换器与曲包 Vol.04 |
+| [roadmap/V2_0_SELF_UPDATER_AND_CAREER.md](roadmap/V2_0_SELF_UPDATER_AND_CAREER.md) | `v2.0.0` | 游戏内静默下载热更新自重启、B30/R10 Rating 潜力值与生涯名片 PNG 导出 |
 
 ### 历史归档与参考文档
 

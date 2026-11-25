@@ -29,6 +29,12 @@ ROADMAP_RELEASES = [
     {"tag": "v1.0.0", "channel": "stable", "bump": "major", "spec": "doc/roadmap/V1_0_OFFICIAL_RELEASE.md"},
     {"tag": "v1.1.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_1_1_2_ONLINE_ECOSYSTEM.md"},
     {"tag": "v1.2.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_1_1_2_ONLINE_ECOSYSTEM.md"},
+    {"tag": "v1.3.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_3_GAMEPLAY_FEEL_AND_RECHART.md"},
+    {"tag": "v1.4.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_4_COURSE_DAILY_AND_COLLECTIONS.md"},
+    {"tag": "v1.5.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_5_SKINS_AND_STAGE_V4.md"},
+    {"tag": "v1.6.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_6_GHOST_AND_MULTIPLAYER.md"},
+    {"tag": "v1.7.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_7_PHIRA_CONVERTER_AND_VOL4.md"},
+    {"tag": "v2.0.0", "channel": "stable", "bump": "major", "spec": "doc/roadmap/V2_0_SELF_UPDATER_AND_CAREER.md"},
 ]
 
 
@@ -240,7 +246,86 @@ def watch_remote_release(target_tag: str) -> None:
     raise RuntimeError(f"GitHub Release {target_tag} missing or has no uploaded assets.")
 
 
+def sync_server_version(target_tag: str) -> None:
+    pkg_file = REPO / "server" / "package.json"
+    if not pkg_file.is_file():
+        return
+    semver = target_tag[1:] if target_tag.startswith("v") else target_tag
+    pkg_data = json.loads(pkg_file.read_text(encoding="utf-8"))
+    if pkg_data.get("version") != semver:
+        pkg_data["version"] = semver
+        pkg_file.write_text(json.dumps(pkg_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    app_ts = REPO / "server" / "src" / "app.ts"
+    if app_ts.is_file():
+        import re
+        raw = app_ts.read_text(encoding="utf-8")
+        updated = re.sub(
+            r'(process\.env\.SAKURA_LATEST_VERSION\s*\|\|\s*")v[^"]+(")',
+            rf'\g<1>{target_tag}\g<2>',
+            raw,
+        )
+        if updated != raw:
+            app_ts.write_text(updated, encoding="utf-8")
+
+
+def deploy_production_server(target_tag: str) -> None:
+    import io
+    import ssl
+    import tarfile
+    import urllib.request
+
+    server_dir = REPO / "server"
+    if not (server_dir / "package.json").is_file():
+        return
+    ssh_host = os.environ.get("SAKURA_DEPLOY_SSH_HOST", "sakura-prod")
+    public_health = os.environ.get("SAKURA_PUBLIC_HEALTH_URL", "https://steven-lee.tech:233/api/v1/health")
+
+    npm_exe = "npm.cmd" if os.name == "nt" else "npm"
+    run([npm_exe, "--prefix", "server", "run", "build"])
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for item_name in ("package.json", "package-lock.json", "tsconfig.json", "deploy-systemd.sh", "src", "dist"):
+            p = server_dir / item_name
+            if p.exists():
+                tf.add(str(p), arcname=item_name)
+    archive_bytes = buf.getvalue()
+
+    remote_cmd = (
+        "set -euo pipefail; "
+        "mkdir -p /srv/sakura-online; "
+        "tar -xzf - -C /srv/sakura-online; "
+        "sed -i 's/\\r$//' /srv/sakura-online/deploy-systemd.sh; "
+        "chmod +x /srv/sakura-online/deploy-systemd.sh; "
+        f"if [ -f /etc/systemd/system/sakura-online.service ]; then "
+        f"sed -i 's/^Environment=SAKURA_LATEST_VERSION=.*/Environment=SAKURA_LATEST_VERSION={target_tag}/' /etc/systemd/system/sakura-online.service || true; "
+        "systemctl daemon-reload || true; fi; "
+        "bash /srv/sakura-online/deploy-systemd.sh"
+    )
+    print(f"[autopilot] Deploying server ({target_tag}) to {ssh_host}:/srv/sakura-online ...", flush=True)
+    subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15", ssh_host, remote_cmd],
+        input=archive_bytes,
+        cwd=REPO,
+        check=True,
+    )
+
+    ctx = ssl.create_default_context()
+    for _ in range(15):
+        try:
+            with urllib.request.urlopen(public_health, timeout=6.0, context=ctx) as resp:
+                payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if payload.get("ok") is True and payload.get("version") == target_tag:
+                    print(f"[autopilot] Verified production server healthy at {public_health}: {payload}", flush=True)
+                    return
+        except Exception:
+            pass
+        time.sleep(2.0)
+    raise RuntimeError(f"Production server at {public_health} did not report version={target_tag!r} after SSH deploy.")
+
+
 def perform_release(args: argparse.Namespace) -> int:
+    sync_server_version(args.target_tag)
     if not args.skip_verify:
         verify_local()
 
@@ -262,6 +347,8 @@ def perform_release(args: argparse.Namespace) -> int:
     run(["git", "push", "origin", "main"])
     run(["git", "push", "origin", args.target_tag])
     watch_remote_release(args.target_tag)
+    if not args.skip_deploy_server:
+        deploy_production_server(args.target_tag)
     return 0
 
 
@@ -269,18 +356,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", action="store_true", help="Show current version and roadmap release status")
     parser.add_argument("--verify-local", action="store_true", help="Run CMake Release build, CTest, smoke-test, and packaging")
-    parser.add_argument("--release", action="store_true", help="Verify, bump version, tag, push, and await GitHub Release")
-    parser.add_argument("--target-tag", type=str, help="Expected release tag, e.g. v0.8.0-alpha")
-    parser.add_argument("--channel", choices=["dev", "alpha", "beta", "rc", "stable"], default="alpha")
+    parser.add_argument("--deploy-server", type=str, metavar="TAG", help="Deploy server/ to production SSH target and verify health")
+    parser.add_argument("--release", action="store_true", help="Verify, bump version, tag, push, await GitHub Release, and deploy server")
+    parser.add_argument("--target-tag", type=str, help="Expected release tag, e.g. v1.3.0")
+    parser.add_argument("--channel", choices=["dev", "alpha", "beta", "rc", "stable"], default="stable")
     parser.add_argument("--bump", choices=["patch", "minor", "major"], default="minor")
     parser.add_argument("--message", type=str, default="")
     parser.add_argument("--skip-verify", action="store_true", help="Skip local build/test gate before committing")
+    parser.add_argument("--skip-deploy-server", action="store_true", help="Skip SSH deployment to production server")
     args = parser.parse_args()
 
     if args.status:
         return show_status()
     if args.verify_local:
         verify_local()
+        return 0
+    if args.deploy_server:
+        deploy_production_server(args.deploy_server)
         return 0
     if args.release:
         if not args.target_tag or not args.message:
