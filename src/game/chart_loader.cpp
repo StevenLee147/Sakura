@@ -87,7 +87,7 @@ std::optional<ChartInfo> ChartLoader::LoadChartInfo(const std::string& infoJsonP
 
     // 版本检查
     int version = SafeGet<int>(j, "version", 1);
-    if (version < 1 || version > 3)
+    if (version < 1 || version > 4)
     {
         LOG_WARN("info.json 版本 {} 未知，尝试兼容加载", version);
     }
@@ -214,8 +214,17 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
     if (!j.is_object()) return std::nullopt;
     for (const char* key : {"keyboard_notes", "mouse_notes", "timing_points", "sv_points"})
         if (j.contains(key) && (!j[key].is_array() || j[key].size() > 100000)) return std::nullopt;
+    if (j.contains("stage_events") && (!j["stage_events"].is_array() || j["stage_events"].size() > 10000))
+        return std::nullopt;
+    if (j.contains("lyrics") && (!j["lyrics"].is_array() || j["lyrics"].size() > 5000))
+        return std::nullopt;
     ChartData data;
-    data.version = SafeGet<int>(j, "version", 1);
+    int version = SafeGet<int>(j, "version", 1);
+    if (version < 1 || version > 4)
+    {
+        LOG_WARN("谱面数据版本 {} 未知，尝试兼容加载", version);
+    }
+    data.version = version;
 
     // ── 时间点 ──────────────────────────────────────────────────────────────
 
@@ -318,6 +327,45 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
         }
     }
 
+    // ── 舞台演出事件 (Chart v4) ───────────────────────────────────────────────
+
+    if (j.contains("stage_events") && j["stage_events"].is_array())
+    {
+        for (const auto& ev : j["stage_events"])
+        {
+            if (!ev.is_object()) return std::nullopt;
+            StageEvent event;
+            event.time      = SafeGet<int>(ev, "time", 0);
+            event.duration  = SafeGet<int>(ev, "duration", 600);
+            event.type      = SafeGet<std::string>(ev, "type", "pulse");
+            event.intensity = SafeGet<float>(ev, "intensity", 0.5f);
+            if (ev.contains("color") && ev["color"].is_array() && ev["color"].size() >= 3 &&
+                ev["color"][0].is_number() && ev["color"][1].is_number() && ev["color"][2].is_number())
+            {
+                event.colorR = std::clamp(ev["color"][0].get<int>(), 0, 255);
+                event.colorG = std::clamp(ev["color"][1].get<int>(), 0, 255);
+                event.colorB = std::clamp(ev["color"][2].get<int>(), 0, 255);
+            }
+            data.stageEvents.push_back(std::move(event));
+        }
+    }
+
+    // ── 同步歌词 (Chart v4) ───────────────────────────────────────────────────
+
+    if (j.contains("lyrics") && j["lyrics"].is_array())
+    {
+        for (const auto& ly : j["lyrics"])
+        {
+            if (!ly.is_object()) return std::nullopt;
+            LyricLine line;
+            line.time    = SafeGet<int>(ly, "time", 0);
+            line.endTime = SafeGet<int>(ly, "end_time", line.time + 2500);
+            line.text    = SafeGet<std::string>(ly, "text", "");
+            line.subText = SafeGet<std::string>(ly, "sub_text", "");
+            data.lyrics.push_back(std::move(line));
+        }
+    }
+
     // ── 按时间排序 ────────────────────────────────────────────────────────────
 
     std::stable_sort(data.timingPoints.begin(), data.timingPoints.end(),
@@ -332,11 +380,19 @@ std::optional<ChartData> ChartLoader::LoadChartData(const std::string& chartJson
     std::stable_sort(data.mouseNotes.begin(), data.mouseNotes.end(),
               [](const MouseNote& a, const MouseNote& b) { return a.time < b.time; });
 
-    LOG_INFO("加载谱面数据成功: 键盘音符={}, 鼠标音符={}, 时间点={}, SV点={}",
+    std::stable_sort(data.stageEvents.begin(), data.stageEvents.end(),
+              [](const StageEvent& a, const StageEvent& b) { return a.time < b.time; });
+
+    std::stable_sort(data.lyrics.begin(), data.lyrics.end(),
+              [](const LyricLine& a, const LyricLine& b) { return a.time < b.time; });
+
+    LOG_INFO("加载谱面数据成功: 键盘音符={}, 鼠标音符={}, 时间点={}, SV点={}, 舞台事件={}, 歌词={}",
              data.keyboardNotes.size(),
              data.mouseNotes.size(),
              data.timingPoints.size(),
-             data.svPoints.size());
+             data.svPoints.size(),
+             data.stageEvents.size(),
+             data.lyrics.size());
 
     if (!ValidateChartData(data)) return std::nullopt;
     return data;
@@ -383,7 +439,8 @@ bool ChartLoader::ValidateChartData(const ChartData& data) const
 {
     constexpr int maxTime = 3600000;
     auto position = [](float value) { return std::isfinite(value) && value >= 0 && value <= 1; };
-    if (data.keyboardNotes.size() + data.mouseNotes.size() > 100000 || data.timingPoints.empty()) return false;
+    if (data.keyboardNotes.size() + data.mouseNotes.size() > 100000 || data.timingPoints.empty() ||
+        data.stageEvents.size() > 10000 || data.lyrics.size() > 5000) return false;
     int previous = -1;
     for (const auto& note : data.keyboardNotes)
     {
@@ -417,6 +474,22 @@ bool ChartLoader::ValidateChartData(const ChartData& data) const
         if (point.time < previous || point.time > maxTime || !std::isfinite(point.speed) ||
             point.speed <= 0 || point.speed > 10) return false;
         previous = point.time;
+    }
+    previous = -1;
+    for (const auto& ev : data.stageEvents)
+    {
+        if (ev.time < previous || ev.time < 0 || ev.time > maxTime ||
+            ev.duration < 0 || ev.duration > maxTime ||
+            !std::isfinite(ev.intensity) || ev.intensity < 0.0f || ev.intensity > 4.0f ||
+            ev.type.empty()) return false;
+        previous = ev.time;
+    }
+    previous = -1;
+    for (const auto& line : data.lyrics)
+    {
+        if (line.time < previous || line.time < 0 || line.time > maxTime ||
+            line.endTime < line.time || line.endTime > maxTime + 60000) return false;
+        previous = line.time;
     }
     return true;
 }

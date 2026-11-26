@@ -3,6 +3,7 @@
 #include "sfx_generator.h"
 #include "utils/logger.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -10,6 +11,7 @@
 #include <numbers>
 #include <vector>
 #include <string>
+#include <string_view>
 
 namespace sakura::audio
 {
@@ -17,6 +19,34 @@ namespace sakura::audio
 namespace
 {
 constexpr float kTwoPi = std::numbers::pi_v<float> * 2.0f;
+
+enum class SynthProfile
+{
+    Default,
+    Soft,
+    Drum,
+    Cyber,
+    Pure,
+    Ukiyo,
+};
+
+SynthProfile DetectSynthProfile(std::string_view path)
+{
+    const std::string dirName = std::filesystem::path(path).parent_path().filename().string();
+    if (dirName == "cyber")   return SynthProfile::Cyber;
+    if (dirName == "pure")    return SynthProfile::Pure;
+    if (dirName == "ukiyo")   return SynthProfile::Ukiyo;
+    if (dirName == "drum")    return SynthProfile::Drum;
+    if (dirName == "soft")    return SynthProfile::Soft;
+    if (dirName == "default" || dirName == "ui") return SynthProfile::Default;
+
+    if (path.find("cyber") != std::string_view::npos) return SynthProfile::Cyber;
+    if (path.find("pure")  != std::string_view::npos) return SynthProfile::Pure;
+    if (path.find("ukiyo") != std::string_view::npos) return SynthProfile::Ukiyo;
+    if (path.find("drum")  != std::string_view::npos) return SynthProfile::Drum;
+    if (path.find("soft")  != std::string_view::npos) return SynthProfile::Soft;
+    return SynthProfile::Default;
+}
 }
 
 // ── WAV 文件写入辅助 ──────────────────────────────────────────────────────────
@@ -47,46 +77,121 @@ bool SfxGenerator::WriteWav(std::string_view path,
     constexpr int   CHANNELS    = 1;
     constexpr int   BITS        = 16;
 
-    int numSamples = (SAMPLE_RATE * durationMs) / 1000;
+    int numSamples = std::max(1, (SAMPLE_RATE * durationMs) / 1000);
     std::vector<int16_t> samples(numSamples);
 
-    int fadeStart = static_cast<int>(numSamples * (1.0f - fadeRatio));
+    const float clampedFade = std::clamp(fadeRatio, 0.0f, 1.0f);
+    int fadeStart = static_cast<int>(numSamples * (1.0f - clampedFade));
 
-    uint32_t noiseState=static_cast<uint32_t>(frequency*79);
-    float phase=0;
-    const bool drum=path.find("drum")!=std::string_view::npos;
-    const bool soft=path.find("soft")!=std::string_view::npos;
+    const SynthProfile profile = DetectSynthProfile(path);
+    uint32_t noiseState = static_cast<uint32_t>(frequency * 79.0f) ^ (static_cast<uint32_t>(profile) * 2654435761u);
+    float phase      = 0.0f;
+    float chirpPhase = 0.0f;
+    float prevNoise  = 0.0f;
+
+    const int attackSamples = std::max(1, SAMPLE_RATE / (profile == SynthProfile::Pure ? 3000 : 2000));
+
     for (int i = 0; i < numSamples; ++i)
     {
         float t   = static_cast<float>(i) / SAMPLE_RATE;
         float env = amplitude;
 
         // 末尾淡出包络
-        if (i >= fadeStart)
+        if (i >= fadeStart && numSamples > fadeStart)
         {
             float fadeT = static_cast<float>(i - fadeStart) /
                           static_cast<float>(numSamples - fadeStart);
             env *= (1.0f - fadeT);
         }
-        // 首部短暂冲击包络（前 5ms）
-        int attackSamples = SAMPLE_RATE / 2000;
+        // 首部极短冲击斜坡（抑制 0 点直流跳变）
         if (i < attackSamples)
         {
             env *= static_cast<float>(i) / static_cast<float>(attackSamples);
         }
 
         noiseState = noiseState * 1664525u + 1013904223u;
-        const float noise = (static_cast<float>((noiseState >> 16) & 65535) / 32767.5f - 1.0f);
-        const float pitchSnap = drum ? (0.42f + 1.05f * std::exp(-t * 115.0f)) : (1.0f + 0.36f * std::exp(-t * 210.0f));
-        phase += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
-        const float bodyEnv = env * std::exp(-t * (soft ? 42.0f : drum ? 58.0f : 48.0f));
-        const float clickFreq = soft ? 2100.0f : (drum ? 1650.0f : 3150.0f);
-        const float transientClick = std::sin(kTwoPi * clickFreq * t) * std::exp(-t * 520.0f) * (soft ? 0.28f : 0.48f);
-        const float transientNoise = noise * std::exp(-t * 460.0f) * (drum ? 0.52f : (soft ? 0.20f : 0.36f));
-        const float body = std::sin(phase)
-                         + (soft ? 0.14f : 0.28f) * std::sin(phase * 2.0f)
-                         + (soft ? 0.06f : 0.22f) * std::sin(phase * 2.76f);
-        const float rawSample = bodyEnv * body * 0.78f + amplitude * (transientClick + transientNoise);
+        const float noise = (static_cast<float>((noiseState >> 16) & 65535u) / 32767.5f - 1.0f);
+
+        float rawSample = 0.0f;
+        switch (profile)
+        {
+            case SynthProfile::Cyber:
+            {
+                // Neon Cyber-Pulse: 明亮 FM + 奇次方波泛音电子瞬态与高频科技感啁啾
+                const float pitchSnap = 1.0f + 0.85f * std::exp(-t * 340.0f);
+                phase      += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
+                chirpPhase += kTwoPi * (2200.0f + 2600.0f * std::exp(-t * 420.0f)) / SAMPLE_RATE;
+
+                const float bodyEnv = env * std::exp(-t * 62.0f);
+                const float fmIndex = 1.35f * std::exp(-t * 95.0f) + 0.28f;
+                const float fmMod   = std::sin(phase * 2.0f) * fmIndex;
+                const float body    = 0.72f * std::sin(phase + fmMod)
+                                    + 0.26f * std::sin(phase * 3.0f)
+                                    + 0.14f * std::sin(phase * 5.0f);
+                const float transientClick = std::sin(chirpPhase) * std::exp(-t * 580.0f) * 0.56f;
+                const float transientNoise = noise * std::exp(-t * 680.0f) * 0.28f;
+                rawSample = bodyEnv * body * 0.80f + amplitude * (transientClick + transientNoise);
+                break;
+            }
+            case SynthProfile::Pure:
+            {
+                // Esports Pure: 极短促紧凑机械轴/木鱼清脆点按，快速衰减零低频浑浊
+                const float pitchSnap = 1.0f + 0.18f * std::exp(-t * 420.0f);
+                phase += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
+
+                const float bodyEnv = env * std::exp(-t * 135.0f);
+                const float body    = 0.78f * std::sin(phase)
+                                    + 0.34f * std::sin(phase * 2.42f)
+                                    + 0.16f * std::sin(phase * 3.85f);
+                const float transientClick = (0.46f * std::sin(kTwoPi * 2850.0f * t)
+                                            + 0.30f * std::sin(kTwoPi * 4600.0f * t)) * std::exp(-t * 950.0f);
+                const float hpNoise        = (noise - prevNoise) * 0.5f;
+                const float transientNoise = hpNoise * std::exp(-t * 1100.0f) * 0.44f;
+                rawSample = bodyEnv * body * 0.82f + amplitude * (transientClick + transientNoise);
+                break;
+            }
+            case SynthProfile::Ukiyo:
+            {
+                // Ukiyo Jade-Gold: 温润竹韵古筝/太鼓泛音共鸣与木质拨弦瞬态
+                const float pitchSnap = 0.98f + 0.28f * std::exp(-t * 150.0f);
+                phase += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
+
+                const float bodyEnv = env * std::exp(-t * 38.0f);
+                const float body    = 0.76f * std::sin(phase)
+                                    + 0.32f * std::sin(phase * 2.0f)
+                                    + 0.18f * std::sin(phase * 3.0f)
+                                    + 0.14f * std::sin(phase * 4.12f) * std::exp(-t * 85.0f)
+                                    + 0.22f * std::sin(phase * 0.5f) * std::exp(-t * 70.0f);
+                const float transientClick = (0.44f * std::sin(kTwoPi * 1180.0f * t)
+                                            + 0.22f * std::sin(kTwoPi * 2320.0f * t)) * std::exp(-t * 440.0f);
+                const float woodyNoise     = (noise + prevNoise) * 0.5f;
+                const float transientNoise = woodyNoise * std::exp(-t * 380.0f) * 0.34f;
+                rawSample = bodyEnv * body * 0.78f + amplitude * (transientClick + transientNoise);
+                break;
+            }
+            case SynthProfile::Drum:
+            case SynthProfile::Soft:
+            case SynthProfile::Default:
+            default:
+            {
+                const bool drum = (profile == SynthProfile::Drum);
+                const bool soft = (profile == SynthProfile::Soft);
+                const float pitchSnap = drum ? (0.42f + 1.05f * std::exp(-t * 115.0f))
+                                             : (1.0f + 0.36f * std::exp(-t * 210.0f));
+                phase += kTwoPi * frequency * pitchSnap / SAMPLE_RATE;
+                const float bodyEnv        = env * std::exp(-t * (soft ? 42.0f : drum ? 58.0f : 48.0f));
+                const float clickFreq      = soft ? 2100.0f : (drum ? 1650.0f : 3150.0f);
+                const float transientClick = std::sin(kTwoPi * clickFreq * t) * std::exp(-t * 520.0f) * (soft ? 0.28f : 0.48f);
+                const float transientNoise = noise * std::exp(-t * 460.0f) * (drum ? 0.52f : (soft ? 0.20f : 0.36f));
+                const float body           = std::sin(phase)
+                                           + (soft ? 0.14f : 0.28f) * std::sin(phase * 2.0f)
+                                           + (soft ? 0.06f : 0.22f) * std::sin(phase * 2.76f);
+                rawSample = bodyEnv * body * 0.78f + amplitude * (transientClick + transientNoise);
+                break;
+            }
+        }
+
+        prevNoise = noise;
         const float saturated = std::tanh(rawSample * 1.42f) * 0.92f;
         samples[i] = static_cast<int16_t>(std::clamp(saturated, -1.0f, 1.0f) * 32767.0f);
     }
@@ -129,25 +234,35 @@ bool SfxGenerator::WriteSweepWav(std::string_view path,
     if (std::filesystem::exists(path)) return true;
 
     constexpr int SAMPLE_RATE = 44100;
-    int numSamples = (SAMPLE_RATE * durationMs) / 1000;
+    int numSamples = std::max(1, (SAMPLE_RATE * durationMs) / 1000);
     std::vector<int16_t> samples(numSamples);
 
+    const SynthProfile profile = DetectSynthProfile(path);
     float phase = 0.0f;
     int   fadeStart = static_cast<int>(numSamples * 0.7f);
 
     for (int i = 0; i < numSamples; ++i)
     {
         float t    = static_cast<float>(i) / static_cast<float>(numSamples);
+        float tSec = static_cast<float>(i) / static_cast<float>(SAMPLE_RATE);
         float freq = freqStart + (freqEnd - freqStart) * t;
         float env  = amplitude;
-        if (i >= fadeStart)
+        if (i >= fadeStart && numSamples > fadeStart)
         {
             float ft = static_cast<float>(i - fadeStart) /
                        static_cast<float>(numSamples - fadeStart);
             env *= (1.0f - ft);
         }
         phase += kTwoPi * freq / static_cast<float>(SAMPLE_RATE);
-        samples[i] = static_cast<int16_t>(env * std::sinf(phase) * 32767.0f);
+        float wave = std::sin(phase);
+        if (profile == SynthProfile::Cyber)
+            wave = 0.76f * std::sin(phase + 0.55f * std::sin(phase * 2.0f)) + 0.24f * std::sin(phase * 3.0f);
+        else if (profile == SynthProfile::Pure)
+            wave = (0.80f * std::sin(phase) + 0.20f * std::sin(phase * 2.42f)) * std::exp(-tSec * 85.0f);
+        else if (profile == SynthProfile::Ukiyo)
+            wave = 0.80f * std::sin(phase) + 0.20f * std::sin(phase * 2.0f);
+
+        samples[i] = static_cast<int16_t>(std::clamp(env * wave, -1.0f, 1.0f) * 32767.0f);
     }
 
     std::filesystem::path fsPath(path);
@@ -177,28 +292,43 @@ void SfxGenerator::GenerateDefaults(std::string_view basePath)
 
     // ── Hitsound Sets ─────────────────────────────────────────────────────────
 
-    struct SetDef { const char* dir; float tap; float hold; float circle; };
-    SetDef sets[] = {
-        { "default", 880.0f, 660.0f, 1100.0f },
-        { "soft",    660.0f, 528.0f,  880.0f },
-        { "drum",    220.0f, 180.0f,  440.0f },
+    struct SetDef
+    {
+        const char* dir;
+        float tap;
+        float hold;
+        float circle;
+        int   tapMs;
+        int   holdMs;
+        int   tickMs;
+        int   circleMs;
+        int   sliderMs;
+    };
+    const SetDef sets[] = {
+        { "default",  880.0f, 660.0f, 1100.0f, 50, 80, 20, 40, 60 },
+        { "soft",     660.0f, 528.0f,  880.0f, 50, 80, 20, 40, 60 },
+        { "drum",     220.0f, 180.0f,  440.0f, 50, 80, 20, 40, 60 },
+        { "cyber",   1240.0f, 960.0f, 1480.0f, 44, 70, 18, 38, 52 },
+        { "pure",    1040.0f, 780.0f, 1320.0f, 32, 36, 16, 32, 36 },
+        { "ukiyo",    520.0f, 390.0f,  780.0f, 58, 88, 22, 48, 64 },
     };
 
-    for (auto& s : sets)
+    for (const auto& s : sets)
     {
+        const bool isPure = (std::string_view(s.dir) == "pure");
         std::string d = base + "/" + s.dir + "/";
-        WriteWav(d + "tap.wav",          s.tap,    50,  0.6f, 0.5f);
-        WriteWav(d + "hold_start.wav",   s.hold,   80,  0.5f, 0.4f);
-        WriteWav(d + "hold_tick.wav",    s.hold,   20,  0.3f, 0.2f);
-        WriteWav(d + "circle.wav",       s.circle, 40,  0.6f, 0.5f);
-        WriteSweepWav(d + "slider_start.wav", s.hold, s.tap, 60, 0.5f);
+        WriteWav(d + "tap.wav",               s.tap,    s.tapMs,    0.6f, 0.5f);
+        WriteWav(d + "hold_start.wav",        s.hold,   s.holdMs,   0.5f, 0.4f);
+        WriteWav(d + "hold_tick.wav",         s.hold,   s.tickMs,   0.3f, 0.2f);
+        WriteWav(d + "circle.wav",            s.circle, s.circleMs, 0.6f, 0.5f);
+        WriteSweepWav(d + "slider_start.wav", s.hold,   s.tap,      s.sliderMs, 0.5f);
 
         // 判定音效也放在各 set 目录
-        WriteWav(d + "perfect.wav",  1320.0f, 80,  0.7f, 0.4f);
-        WriteWav(d + "great.wav",    1100.0f, 70,  0.6f, 0.4f);
-        WriteWav(d + "good.wav",      880.0f, 60,  0.5f, 0.4f);
-        WriteWav(d + "bad.wav",       440.0f, 50,  0.4f, 0.3f);
-        WriteWav(d + "miss.wav",      220.0f, 80,  0.4f, 0.2f);
+        WriteWav(d + "perfect.wav",  1320.0f, isPure ? 42 : 80, 0.7f, 0.4f);
+        WriteWav(d + "great.wav",    1100.0f, isPure ? 38 : 70, 0.6f, 0.4f);
+        WriteWav(d + "good.wav",      880.0f, isPure ? 34 : 60, 0.5f, 0.4f);
+        WriteWav(d + "bad.wav",       440.0f, isPure ? 32 : 50, 0.4f, 0.3f);
+        WriteWav(d + "miss.wav",      220.0f, isPure ? 44 : 80, 0.4f, 0.2f);
     }
 
     // ── UI 音效 ────────────────────────────────────────────────────────────────

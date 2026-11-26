@@ -187,6 +187,10 @@ public:
     void RawRemoveMouseNote(int index);
     void RawModifyMouseNote(int index, const sakura::game::MouseNote& note);
 
+    // Chart v4 舞台演出事件与双语歌词操作
+    void AddStageEvent(const sakura::game::StageEvent& ev);
+    void AddLyricLine(const sakura::game::LyricLine& line);
+
 private:
     sakura::game::ChartInfo m_chartInfo;
     sakura::game::ChartData m_chartData;

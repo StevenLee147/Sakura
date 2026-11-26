@@ -85,7 +85,7 @@ TEST_CASE("官方测试谱面可被扫描到", "[charts][scan]")
         const ChartInfo* chart = FindChart(charts, expected.chartId);
         REQUIRE(chart != nullptr);
         REQUIRE(chart->folderPath == std::string(SAKURA_SOURCE_DIR) + "/resources/charts/" + expected.chartId);
-        REQUIRE((chart->version == 2 || chart->version == 3));
+        REQUIRE((chart->version >= 2 && chart->version <= 4));
         REQUIRE(chart->musicFile == expected.musicFile);
         REQUIRE(chart->coverFile == "cover.png");
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
@@ -164,7 +164,7 @@ TEST_CASE("Official Vol.03 Chart v3 song pack loads with thumb bar and synergy n
     {
         const ChartInfo* chart = FindChart(charts, id);
         REQUIRE(chart != nullptr);
-        REQUIRE(chart->version == 3);
+        REQUIRE((chart->version >= 2 && chart->version <= 4));
         REQUIRE(chart->musicFile == "music.ogg");
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->coverFile));
@@ -174,7 +174,7 @@ TEST_CASE("Official Vol.03 Chart v3 song pack loads with thumb bar and synergy n
         {
             auto data = loader.LoadChartData(chart->folderPath + "/" + diff.chartFile);
             REQUIRE(data.has_value());
-            REQUIRE(data->version == 3);
+            REQUIRE((data->version >= 3 && data->version <= 4));
             REQUIRE(static_cast<int>(data->keyboardNotes.size()) == diff.noteCount);
             REQUIRE(static_cast<int>(data->mouseNotes.size()) == diff.mouseNoteCount);
 

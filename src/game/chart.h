@@ -29,6 +29,27 @@ struct SVPoint
     std::string easing = "linear"; // 缓动方式（linear/ease_in/ease_out 等）
 };
 
+// StageEvent — 舞台镜头/氛围演出事件 (Chart v4)
+struct StageEvent
+{
+    int         time      = 0;       // 触发时间（毫秒）
+    int         duration  = 600;     // 持续时长（毫秒）
+    std::string type      = "pulse"; // pulse | vignette | tint | petal_burst
+    float       intensity = 0.5f;    // 强度（0.0 ~ 2.0）
+    int         colorR    = 246;
+    int         colorG    = 178;
+    int         colorB    = 206;
+};
+
+// LyricLine — 双语时间轴同步歌词 (Chart v4)
+struct LyricLine
+{
+    int         time    = 0;   // 起始时间（毫秒）
+    int         endTime = 0;   // 结束时间（毫秒）
+    std::string text;          // 原文歌词
+    std::string subText;       // 副行译文/注音（可选）
+};
+
 // ── 难度信息 ──────────────────────────────────────────────────────────────────
 
 struct DifficultyInfo
@@ -77,6 +98,8 @@ struct ChartData
     std::vector<SVPoint>      svPoints;       // SV 变化点列表（按 time 升序）
     std::vector<KeyboardNote> keyboardNotes;  // 键盘端音符（按 time 升序）
     std::vector<MouseNote>    mouseNotes;     // 鼠标端音符（按 time 升序）
+    std::vector<StageEvent>   stageEvents;    // 舞台演出事件列表 (Chart v4)
+    std::vector<LyricLine>    lyrics;         // 时间轴双语歌词列表 (Chart v4)
 };
 
 // ── 游戏结果 ──────────────────────────────────────────────────────────────────

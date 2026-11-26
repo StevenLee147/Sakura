@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "timing_points": [
     {
       "time": 0,
@@ -6183,6 +6183,109 @@
           0.241
         ]
       ]
+    }
+  ],
+  "stage_events": [
+    {
+      "time": 2114,
+      "duration": 850,
+      "type": "pulse",
+      "intensity": 0.55,
+      "color": [252, 198, 222]
+    },
+    {
+      "time": 15826,
+      "duration": 3400,
+      "type": "tint",
+      "intensity": 0.45,
+      "color": [178, 224, 255]
+    },
+    {
+      "time": 29538,
+      "duration": 1700,
+      "type": "vignette",
+      "intensity": 0.52,
+      "color": [138, 152, 232]
+    },
+    {
+      "time": 43250,
+      "duration": 850,
+      "type": "pulse",
+      "intensity": 0.7,
+      "color": [255, 224, 168]
+    },
+    {
+      "time": 54550,
+      "duration": 6850,
+      "type": "petal_burst",
+      "intensity": 1.6,
+      "color": [255, 186, 216]
+    },
+    {
+      "time": 84386,
+      "duration": 3400,
+      "type": "tint",
+      "intensity": 0.5,
+      "color": [246, 178, 206]
+    },
+    {
+      "time": 118686,
+      "duration": 2400,
+      "type": "vignette",
+      "intensity": 0.6,
+      "color": [164, 132, 226]
+    },
+    {
+      "time": 132400,
+      "duration": 6850,
+      "type": "petal_burst",
+      "intensity": 1.85,
+      "color": [255, 212, 230]
+    },
+    {
+      "time": 194114,
+      "duration": 1700,
+      "type": "pulse",
+      "intensity": 0.65,
+      "color": [255, 234, 182]
+    }
+  ],
+  "lyrics": [
+    {
+      "time": 2971,
+      "end_time": 14800,
+      "text": "夜色凝成弦上的一滴露水",
+      "sub_text": "夜露が弦の上で静かに煌めく · Night dew glimmers upon the string"
+    },
+    {
+      "time": 15826,
+      "end_time": 28600,
+      "text": "万千星火在寂静深处屏息",
+      "sub_text": "幾千の星火が静寂の奥で息を潜める"
+    },
+    {
+      "time": 29538,
+      "end_time": 53200,
+      "text": "只等疾风掠过心弦的那一拍",
+      "sub_text": "疾風が心の弦を鳴らすその一拍を待っている"
+    },
+    {
+      "time": 54550,
+      "end_time": 82000,
+      "text": "刹那芳华，在夜空尽数盛开",
+      "sub_text": "刹那の花が夜空いっぱいに咲き誇る"
+    },
+    {
+      "time": 118686,
+      "end_time": 131500,
+      "text": "穿越流光交织的绯色风暴",
+      "sub_text": "流光が織りなす緋色の嵐を駆け抜けて"
+    },
+    {
+      "time": 132400,
+      "end_time": 168000,
+      "text": "将这一瞬花绽铭刻成永恒",
+      "sub_text": "この一瞬の満開を永遠へと刻み込む"
     }
   ]
 }

@@ -145,6 +145,49 @@ void SceneEditor::OnEnter()
     m_btnPublish->SetTextAlign(sakura::core::TextAlign::Center);
     sakura::ui::VisualStyle::ApplyButton(m_btnPublish.get(),sakura::ui::ButtonVariant::Primary);
     m_btnPublish->SetOnClick([this]{DoPublishMarket();});
+
+    m_nextStageEventType = 0;
+    m_btnAddStageEvent = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.430f, 0.874f, 0.148f, 0.030f }, "+演出", m_fontUI, 0.0160f);
+    m_btnAddStageEvent->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAddStageEvent->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAddStageEvent.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnAddStageEvent->SetOnClick([this]()
+    {
+        static constexpr std::array<const char*, 4> kTypes = {
+            "pulse", "petal_burst", "tint", "vignette"
+        };
+        const int t = std::max(0, m_core.QuantizeTime(m_core.GetCurrentTimeMs()));
+        sakura::game::StageEvent ev;
+        ev.time      = t;
+        ev.duration  = 800;
+        ev.type      = kTypes[static_cast<std::size_t>(m_nextStageEventType % 4)];
+        ev.intensity = 0.65f;
+        ++m_nextStageEventType;
+        m_core.AddStageEvent(ev);
+        sakura::ui::ToastManager::Instance().Show(
+            "已添加舞台演出: " + ev.type + " (" + std::to_string(t) + " ms)",
+            sakura::ui::ToastType::Success);
+    });
+
+    m_btnAddLyric = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.588f, 0.874f, 0.152f, 0.030f }, "+歌词", m_fontUI, 0.0160f);
+    m_btnAddLyric->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnAddLyric->SetTextPadding(0.0f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnAddLyric.get(), sakura::ui::ButtonVariant::Secondary);
+    m_btnAddLyric->SetOnClick([this]()
+    {
+        const int t = std::max(0, m_core.QuantizeTime(m_core.GetCurrentTimeMs()));
+        sakura::game::LyricLine line;
+        line.time    = t;
+        line.endTime = t + 3000;
+        line.text    = "樱花随节拍飘落";
+        line.subText = "Petals fall with the rhythm";
+        m_core.AddLyricLine(line);
+        sakura::ui::ToastManager::Instance().Show(
+            "已添加双语歌词 (" + std::to_string(t) + " ms)",
+            sakura::ui::ToastType::Success);
+    });
     UpdateToolButtons();
 }
 
@@ -693,6 +736,8 @@ void SceneEditor::OnUpdate(float dt)
     if(m_btnProperties)m_btnProperties->Update(dt);
     if(m_btnExport)m_btnExport->Update(dt);
     if(m_btnPublish)m_btnPublish->Update(dt);
+    if(m_btnAddStageEvent)m_btnAddStageEvent->Update(dt);
+    if(m_btnAddLyric)m_btnAddLyric->Update(dt);
     m_recoveryTimer+=dt;
     if(m_recoveryTimer>=45){
         m_recoveryTimer=0;
@@ -881,36 +926,36 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
         const auto& n = m_core.GetChartData().keyboardNotes[selIdx];
         renderer.DrawText(m_fontSmall,
             "已选键盘音符 #" + std::to_string(selIdx),
-            px, 0.742f, 0.0175f, palette.accent, sakura::core::TextAlign::Center);
+            px, 0.739f, 0.0165f, palette.accent, sakura::core::TextAlign::Center);
         renderer.DrawText(m_fontSmall,
             "时间: " + std::to_string(n.time) + " ms   ·   轨道: " + std::to_string(n.lane + 1),
-            px, 0.768f, 0.017f, palette.text, sakura::core::TextAlign::Center);
+            px, 0.762f, 0.016f, palette.text, sakura::core::TextAlign::Center);
         renderer.DrawText(m_fontSmall,
             "持续时长: " + std::to_string(n.duration) + " ms",
-            px, 0.794f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
+            px, 0.785f, 0.016f, palette.textDim, sakura::core::TextAlign::Center);
     }
     else if (selMouse >= 0 && selMouse < static_cast<int>(m_core.GetChartData().mouseNotes.size()))
     {
         const auto& mn = m_core.GetChartData().mouseNotes[selMouse];
         renderer.DrawText(m_fontSmall,
             "已选鼠标音符 #" + std::to_string(selMouse),
-            px, 0.742f, 0.0175f, palette.accent, sakura::core::TextAlign::Center);
+            px, 0.739f, 0.0165f, palette.accent, sakura::core::TextAlign::Center);
         std::ostringstream posSS;
         posSS << "时间: " << mn.time << " ms   ·   坐标 ("
               << std::fixed << std::setprecision(2) << mn.x << ", " << mn.y << ")";
         renderer.DrawText(m_fontSmall, posSS.str(),
-            px, 0.768f, 0.017f, palette.text, sakura::core::TextAlign::Center);
+            px, 0.762f, 0.016f, palette.text, sakura::core::TextAlign::Center);
         renderer.DrawText(m_fontSmall,
             mn.type == sakura::game::NoteType::Slider
                 ? ("Slider 时长: " + std::to_string(mn.sliderDuration) + " ms")
                 : "类型: Hit Circle",
-            px, 0.794f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
+            px, 0.785f, 0.016f, palette.textDim, sakura::core::TextAlign::Center);
     }
     else
     {
         const auto& info = m_core.GetChartInfo();
         sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontSmall,
-            "曲名: " + info.title, 0.440f, 0.742f, 0.017f, 0.290f, palette.text);
+            "曲名: " + info.title, 0.440f, 0.739f, 0.016f, 0.290f, palette.text);
 
         const int kbCount    = static_cast<int>(m_core.GetChartData().keyboardNotes.size());
         const int mouseCount = static_cast<int>(m_core.GetChartData().mouseNotes.size());
@@ -918,7 +963,7 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
             "BPM " + std::to_string(static_cast<int>(info.bpm))
             + "   ·   KB " + std::to_string(kbCount)
             + " / Mouse " + std::to_string(mouseCount),
-            px, 0.768f, 0.017f, palette.textDim, sakura::core::TextAlign::Center);
+            px, 0.762f, 0.016f, palette.textDim, sakura::core::TextAlign::Center);
 
         const int curMs = m_core.GetCurrentTimeMs();
         const float bpm = m_core.GetBpmAt(curMs);
@@ -929,21 +974,32 @@ void SceneEditor::RenderPropertyPanel(sakura::core::Renderer& renderer)
                << std::setw(3) << std::setfill('0') << (std::abs(curMs) % 1000)
                << "s   ·   当前 BPM " << static_cast<int>(bpm);
         renderer.DrawText(m_fontSmall, timeSS.str(),
-            px, 0.795f, 0.017f, palette.accent, sakura::core::TextAlign::Center);
+            px, 0.785f, 0.016f, palette.accent, sakura::core::TextAlign::Center);
     }
-    if (m_btnProperties) m_btnProperties->Render(renderer);
-    if (m_btnExport)     m_btnExport->Render(renderer);
-    if (m_btnPublish)    m_btnPublish->Render(renderer);
 
-    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.870f, 0.45f);
+    const int stageCount = static_cast<int>(m_core.GetChartData().stageEvents.size());
+    const int lyricCount = static_cast<int>(m_core.GetChartData().lyrics.size());
+    renderer.DrawText(m_fontSmall,
+        "演出 " + std::to_string(stageCount) + "   ·   歌词 " + std::to_string(lyricCount),
+        px, 0.808f, 0.0150f,
+        sakura::core::Color{ 126, 220, 240, 232 },
+        sakura::core::TextAlign::Center);
+
+    if (m_btnProperties)    m_btnProperties->Render(renderer);
+    if (m_btnExport)        m_btnExport->Render(renderer);
+    if (m_btnPublish)       m_btnPublish->Render(renderer);
+    if (m_btnAddStageEvent) m_btnAddStageEvent->Render(renderer);
+    if (m_btnAddLyric)      m_btnAddLyric->Render(renderer);
+
+    sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.435f, 0.735f, 0.910f, 0.45f);
     renderer.DrawText(m_fontSmall, "1-4 工具  ·  第5轨 SP=拇指轨  ·  Space 播放",
-        px, 0.878f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+        px, 0.916f, 0.0135f, palette.textMuted, sakura::core::TextAlign::Center);
     renderer.DrawText(m_fontSmall, "L 联动  ·  G 协同  ·  B/V 节点  ·  Ctrl+M 镜像",
-        px, 0.901f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+        px, 0.934f, 0.0135f, palette.textMuted, sakura::core::TextAlign::Center);
     renderer.DrawText(m_fontSmall, "Ctrl+Z/Y 撤销重做  ·  Ctrl+S 保存  ·  F5/F8 试玩",
-        px, 0.924f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+        px, 0.952f, 0.0135f, palette.textMuted, sakura::core::TextAlign::Center);
     renderer.DrawText(m_fontSmall, "点击左侧时间尺或右侧全曲轴可快速跳转",
-        px, 0.947f, 0.0145f, palette.textMuted, sakura::core::TextAlign::Center);
+        px, 0.970f, 0.0135f, palette.textMuted, sakura::core::TextAlign::Center);
 }
 
 // ── HandleOverviewAxisEvent ─────────────────────────────────────────────────
@@ -1020,6 +1076,36 @@ void SceneEditor::RenderOverviewAxis(sakura::core::Renderer& renderer)
 
     int totalMs = m_core.GetTotalDurationMs();
     if (totalMs <= 0) totalMs = 10000;
+
+    // Chart v4 舞台演出事件缩略刻度（青色微光刻度）
+    for (const auto& ev : m_core.GetChartData().stageEvents)
+    {
+        const float progress = static_cast<float>(ev.time) / static_cast<float>(totalMs);
+        const float evY      = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        if (evY < OVERVIEW_Y + 0.006f || evY > OVERVIEW_Y + OVERVIEW_H - 0.010f) continue;
+
+        renderer.DrawFilledRect(
+            { OVERVIEW_X + 0.004f, evY - 0.0008f, OVERVIEW_W - 0.008f, 0.0016f },
+            { 92, 222, 242, 42 });
+        renderer.DrawFilledRect(
+            { OVERVIEW_X + 0.003f, evY - 0.0016f, 0.010f, 0.0032f },
+            { 92, 222, 242, 185 });
+    }
+
+    // Chart v4 同步歌词缩略刻度（暖金微光刻度）
+    for (const auto& ly : m_core.GetChartData().lyrics)
+    {
+        const float progress = static_cast<float>(ly.time) / static_cast<float>(totalMs);
+        const float lyY      = OVERVIEW_Y + OVERVIEW_H - progress * OVERVIEW_H;
+        if (lyY < OVERVIEW_Y + 0.006f || lyY > OVERVIEW_Y + OVERVIEW_H - 0.010f) continue;
+
+        renderer.DrawFilledRect(
+            { OVERVIEW_X + 0.004f, lyY - 0.0008f, OVERVIEW_W - 0.008f, 0.0016f },
+            { 246, 202, 108, 38 });
+        renderer.DrawFilledRect(
+            { OVERVIEW_X + OVERVIEW_W - 0.013f, lyY - 0.0016f, 0.010f, 0.0032f },
+            { 246, 202, 108, 195 });
+    }
 
     // 4K 键盘音符缩略点（左侧 62% 宽度）
     const auto& notes = m_core.GetChartData().keyboardNotes;
@@ -1399,6 +1485,8 @@ void SceneEditor::OnEvent(const SDL_Event& event)
     if(m_btnProperties && m_btnProperties->HandleEvent(event))return;
     if(m_btnExport && m_btnExport->HandleEvent(event))return;
     if(m_btnPublish && m_btnPublish->HandleEvent(event))return;
+    if(m_btnAddStageEvent && m_btnAddStageEvent->HandleEvent(event))return;
+    if(m_btnAddLyric && m_btnAddLyric->HandleEvent(event))return;
     if (HandleOverviewAxisEvent(event))
         return;
 

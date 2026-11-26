@@ -1,0 +1,27 @@
+{
+  "id": "neon_cyber",
+  "name": "霓虹赛博 · Neon Cyber-Pulse",
+  "author": "Sakura Studio",
+  "description": "电光青紫高对比度赛博灯带与电子合成瞬态打击音",
+  "hitsound_set": "cyber",
+  "outer_gem_top": [255, 68, 204, 248],
+  "outer_gem_bot": [172, 28, 148, 238],
+  "inner_gem_top": [56, 246, 255, 248],
+  "inner_gem_bot": [18, 148, 218, 238],
+  "thumb_gem_top": [196, 255, 92, 248],
+  "thumb_gem_bot": [72, 224, 188, 238],
+  "chord_color": [188, 255, 118, 242],
+  "judge_line": [96, 248, 255, 248],
+  "circle_color": [64, 242, 255, 255],
+  "slider_core": [255, 84, 214, 242],
+  "slider_edge": [56, 246, 255, 212],
+  "approach_start": [255, 76, 212, 228],
+  "approach_end": [64, 248, 255, 242],
+  "judge_colors": [
+    [112, 252, 255, 255],
+    [255, 98, 224, 255],
+    [182, 255, 108, 255],
+    [255, 174, 76, 255],
+    [255, 68, 108, 255]
+  ]
+}

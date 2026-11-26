@@ -16,6 +16,7 @@
 #include "ui/toast.h"
 #include "ui/visual_style.h"
 #include "game/chart_utils.h"
+#include "core/skin_manager.h"
 #include "core/theme.h"
 #include "audio/audio_visualizer.h"
 #include "game/approach_visuals.h"
@@ -43,6 +44,41 @@ sakura::core::Color ToCoreColor(const sakura::game::GuidanceColor& color)
 {
     return { color.r, color.g, color.b, color.a };
 }
+
+sakura::core::Color ToCoreColor(const sakura::core::SkinColor& color)
+{
+    return { color.r, color.g, color.b, color.a };
+}
+
+sakura::core::Color ToCoreColor(const sakura::core::SkinColor& color, uint8_t alpha)
+{
+    return { color.r, color.g, color.b, alpha };
+}
+
+sakura::core::Color ScaleSkinAlpha(const sakura::core::SkinColor& color, float alphaScale)
+{
+    return {
+        color.r,
+        color.g,
+        color.b,
+        static_cast<uint8_t>(std::clamp(static_cast<float>(color.a) * alphaScale, 0.0f, 255.0f))
+    };
+}
+
+sakura::core::Color LerpSkinColor(const sakura::core::SkinColor& a,
+                                  const sakura::core::SkinColor& b,
+                                  float t,
+                                  uint8_t alpha)
+{
+    const float clamped = std::clamp(t, 0.0f, 1.0f);
+    const auto lerpCh = [clamped](uint8_t c0, uint8_t c1) -> uint8_t {
+        return static_cast<uint8_t>(std::clamp(
+            std::round(static_cast<float>(c0) + (static_cast<float>(c1) - static_cast<float>(c0)) * clamped),
+            0.0f, 255.0f));
+    };
+    return { lerpCh(a.r, b.r), lerpCh(a.g, b.g), lerpCh(a.b, b.b), alpha };
+}
+
 }
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
@@ -66,6 +102,12 @@ void SceneGame::OnEnter()
     auto& rm = sakura::core::ResourceManager::GetInstance();
     m_fontHUD   = rm.GetDefaultFontHandle();
     m_fontSmall = rm.GetDefaultFontHandle();
+
+    sakura::core::SkinManager::GetInstance().ScanSkins();
+    sakura::core::SkinManager::GetInstance().LoadActiveFromConfig();
+    sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(
+        sakura::core::Config::GetInstance().Get<std::string>(
+            "audio.hitsound", sakura::core::SkinManager::GetInstance().GetActiveSkin().hitsoundSet));
 
     // 背景系统初始化（优先谱面背景，其次使用封面高斯模糊背景）
     {
@@ -173,6 +215,7 @@ void SceneGame::OnEnter()
     m_judgePulsePhase = 0.0f;
     m_chromaTimer     = 0.0f;
     m_comboPopTimer   = 0.0f;
+    m_stagePetalAccum = 0.0f;
     m_lastCheckedCombo = 0;
     m_lastFeverCount   = 0;
     m_lanePulse.fill(0.0f);
@@ -518,6 +561,36 @@ void SceneGame::OnUpdate(float dt)
     }
 
     // ── 背景视频 + 粒子 + 特效更新 ────────────────────────────────────────────
+    if (m_gameState.IsPlaying())
+    {
+        const auto stageVis = sakura::game::EvaluateStageVisuals(
+            m_gameState.GetChartData(),
+            now,
+            sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false));
+        if (stageVis.petalRateMult > 1.05f &&
+            sakura::core::Config::GetInstance().Get<bool>("graphics.particles", true))
+        {
+            m_stagePetalAccum += dt * (stageVis.petalRateMult - 1.0f) * 6.0f;
+            int spawned = 0;
+            while (m_stagePetalAccum >= 1.0f && spawned < 12)
+            {
+                m_stagePetalAccum -= 1.0f;
+                ++spawned;
+                const float emitX = 0.05f + 0.90f * std::fmod(
+                    m_judgePulsePhase * 0.618034f + static_cast<float>(spawned) * 0.273f, 1.0f);
+                const bool useFg = ((spawned + (now / 97)) % 3 == 0);
+                m_particles.Emit(
+                    emitX,
+                    -0.02f,
+                    1,
+                    useFg ? sakura::effects::ParticlePresets::SakuraPetalForeground()
+                          : sakura::effects::ParticlePresets::SakuraPetalMidground());
+            }
+            if (m_stagePetalAccum > 4.0f)
+                m_stagePetalAccum = 0.0f;
+        }
+    }
+
     m_videoRenderer.Update(
         std::max(0.0, static_cast<double>(m_gameState.GetCurrentTime()) / 1000.0),
         sakura::core::Config::GetInstance().Get<bool>("visual.bga_enabled", true));
@@ -718,13 +791,14 @@ const char* SceneGame::JudgeResultText(sakura::game::JudgeResult r)
 
 sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 {
+    const auto& skin = sakura::core::SkinManager::GetInstance().GetActiveSkin();
     switch (r)
     {
-    case sakura::game::JudgeResult::Perfect: return { 252, 220, 154, 255 };   // 香槟鎏金
-    case sakura::game::JudgeResult::Great:   return { 138, 214, 248, 255 };   // 天青冰蓝
-    case sakura::game::JudgeResult::Good:    return { 154, 228, 188, 255 };   // 翠玉薄荷
-    case sakura::game::JudgeResult::Bad:     return { 244, 184, 132, 255 };   // 暖珀
-    case sakura::game::JudgeResult::Miss:    return { 238, 118, 142, 255 };   // 绯红
+    case sakura::game::JudgeResult::Perfect: return ToCoreColor(skin.judgeColors[0]);
+    case sakura::game::JudgeResult::Great:   return ToCoreColor(skin.judgeColors[1]);
+    case sakura::game::JudgeResult::Good:    return ToCoreColor(skin.judgeColors[2]);
+    case sakura::game::JudgeResult::Bad:     return ToCoreColor(skin.judgeColors[3]);
+    case sakura::game::JudgeResult::Miss:    return ToCoreColor(skin.judgeColors[4]);
     default:                                  return sakura::core::Color::White;
     }
 }
@@ -733,6 +807,7 @@ sakura::core::Color SceneGame::JudgeResultColor(sakura::game::JudgeResult r)
 void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 {
     const auto& cfg = sakura::core::Config::GetInstance();
+    const bool reducedMotion = cfg.Get<bool>("graphics.reduced_motion", false);
     const float gameplayDim = std::clamp(cfg.Get<float>("gameplay.background_dim", 0.75f), 0.0f, 1.0f);
     const float visualStageDim = std::clamp(cfg.Get<float>("visual.bg_dim", 0.65f), 0.20f, 0.90f);
     const float dimRatio = std::clamp((gameplayDim + visualStageDim) * 0.5f, 0.20f, 0.92f);
@@ -761,7 +836,45 @@ void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
             { 8, 11, 24, scrimBot });
     }
 
-    if (!cfg.Get<bool>("graphics.reduced_motion", false))
+    if (m_gameState.GetPhase() != sakura::game::GamePhase::Idle)
+    {
+        const auto stageVis = sakura::game::EvaluateStageVisuals(
+            m_gameState.GetChartData(), m_gameState.GetCurrentTime(), reducedMotion);
+        if (stageVis.tintStrength > 0.01f)
+        {
+            const uint8_t tr = static_cast<uint8_t>(std::clamp(stageVis.tintR, 0, 255));
+            const uint8_t tg = static_cast<uint8_t>(std::clamp(stageVis.tintG, 0, 255));
+            const uint8_t tb = static_cast<uint8_t>(std::clamp(stageVis.tintB, 0, 255));
+            const float strength = std::clamp(stageVis.tintStrength, 0.0f, 1.0f);
+            const uint8_t washA = static_cast<uint8_t>(std::min(58.0f, std::round(44.0f * strength)));
+            const uint8_t radialA = static_cast<uint8_t>(std::min(58.0f, std::round(56.0f * strength)));
+
+            renderer.DrawGradientRect(
+                { 0.0f, 0.0f, 1.0f, 1.0f },
+                { tr, tg, tb, washA },
+                { tr, tg, tb, static_cast<uint8_t>(washA * 0.78f) },
+                { tr, tg, tb, static_cast<uint8_t>(washA * 0.55f) },
+                { tr, tg, tb, washA });
+            renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+            renderer.DrawRadialGradient(
+                0.52f, 0.48f, 0.56f, 0.46f,
+                { tr, tg, tb, radialA }, { tr, tg, tb, 0 }, 48);
+            renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+        }
+        if (stageVis.vignetteBoost > 0.01f)
+        {
+            const float vBoost = std::clamp(stageVis.vignetteBoost, 0.0f, 1.0f);
+            const uint8_t edgeA = static_cast<uint8_t>(std::clamp(std::round(136.0f * vBoost), 0.0f, 176.0f));
+            const sakura::core::Color darkEdge{ 4, 6, 16, edgeA };
+            const sakura::core::Color darkZero{ 4, 6, 16, 0 };
+            renderer.DrawGradientRect({ 0.0f, 0.0f, 1.0f, 0.18f }, darkEdge, darkEdge, darkZero, darkZero);
+            renderer.DrawGradientRect({ 0.0f, 0.82f, 1.0f, 0.18f }, darkZero, darkZero, darkEdge, darkEdge);
+            renderer.DrawGradientRect({ 0.0f, 0.0f, 0.12f, 1.0f }, darkEdge, darkZero, darkEdge, darkZero);
+            renderer.DrawGradientRect({ 0.88f, 0.0f, 0.12f, 1.0f }, darkZero, darkEdge, darkZero, darkEdge);
+        }
+    }
+
+    if (!reducedMotion)
     {
         sakura::audio::AudioVisualizer::GetInstance().RenderWave(
             renderer, { 0.0f, 0.805f, 1.0f, 0.105f }, { 246, 178, 206, 42 }, 0.42f);
@@ -772,10 +885,15 @@ void SceneGame::RenderBackground(sakura::core::Renderer& renderer)
 void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
 {
     const auto& cfg = sakura::core::Config::GetInstance();
+    const auto& skin = sakura::core::SkinManager::GetInstance().GetActiveSkin();
     const float opacity = std::clamp(cfg.Get<float>("gameplay.lane_opacity", 0.9f), 0.1f, 1.0f);
     const bool glowOn = cfg.Get<bool>("graphics.glow", true);
     const bool reducedMotion = cfg.Get<bool>("graphics.reduced_motion", false);
     const float pulse = reducedMotion ? 0.5f : (0.5f + 0.5f * std::sin(m_judgePulsePhase * 5.2f));
+    const sakura::game::StageVisualState stageVis =
+        (m_gameState.GetPhase() != sakura::game::GamePhase::Idle)
+            ? sakura::game::EvaluateStageVisuals(m_gameState.GetChartData(), m_gameState.GetCurrentTime(), reducedMotion)
+            : sakura::game::StageVisualState{};
 
     // ── 4K 烟熏琉璃轨道主体 ──────────────────────────────────────────────────
     const sakura::core::NormRect trackCard{ TRACK_X - 0.006f, 0.112f, TRACK_W + 0.012f, 0.812f };
@@ -829,8 +947,8 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
     // ── 轨道外框鎏金边轨 ─────────────────────────────────────────────────────
     renderer.DrawRoundedRectOutlineGradient(
         trackCard, 0.014f,
-        { 250, 216, 157, static_cast<uint8_t>(165 * opacity) },
-        { 246, 178, 206, static_cast<uint8_t>(95 * opacity) }, 0.0018f, 10);
+        ToCoreColor(skin.judgeLine, static_cast<uint8_t>(165 * opacity)),
+        ToCoreColor(skin.outerGemTop, static_cast<uint8_t>(95 * opacity)), 0.0018f, 10);
 
     // ── 按键丝绸光柱（Additive）与键帽底座 ──────────────────────────────────
     for (int i = 0; i < LANE_COUNT; ++i)
@@ -839,8 +957,8 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
         const float cx = x + LANE_W * 0.5f;
         const bool outerLane = (i == 0 || i == LANE_COUNT - 1);
         const sakura::core::Color accent = outerLane
-            ? sakura::core::Color{ 248, 176, 208, 255 }
-            : sakura::core::Color{ 148, 216, 250, 255 };
+            ? ToCoreColor(skin.outerGemTop, 255)
+            : ToCoreColor(skin.innerGemTop, 255);
         const float energy = std::max(m_lanePressed[i] ? 0.88f : 0.0f, m_lanePulse[i]);
 
         if (energy > 0.02f)
@@ -855,7 +973,7 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
             if (glowOn)
             {
                 renderer.DrawRadialGradient(cx, JUDGE_LINE_Y, LANE_W * 0.62f, 0.036f,
-                    { 250, 224, 172, static_cast<uint8_t>(energy * 140.0f) }, accent.WithAlpha(0), 32);
+                    ToCoreColor(skin.judgeLine, static_cast<uint8_t>(energy * 140.0f)), accent.WithAlpha(0), 32);
             }
             renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
         }
@@ -865,17 +983,22 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
         renderer.DrawRoundedRect(receptorRect, 0.005f,
             m_lanePressed[i] ? accent.WithAlpha(185) : sakura::core::Color{ 42, 48, 76, 150 }, true, 6);
         renderer.DrawRoundedRect(receptorRect, 0.005f,
-            m_lanePressed[i] ? sakura::core::Color{ 252, 232, 184, 240 } : sakura::core::Color{ 196, 188, 224, 95 },
+            m_lanePressed[i] ? ToCoreColor(skin.judgeLine, 240) : sakura::core::Color{ 196, 188, 224, 95 },
             false, 6, 0.0012f);
 
+        const sakura::core::Color keyPressBot{
+            static_cast<uint8_t>(accent.r * 0.35f),
+            static_cast<uint8_t>(accent.g * 0.32f),
+            static_cast<uint8_t>(accent.b * 0.44f),
+            210 };
         const sakura::core::NormRect keyCap{ x + 0.012f, 0.864f, LANE_W - 0.024f, 0.032f };
         renderer.DrawRoundedGradientRect(keyCap, 0.007f,
             m_lanePressed[i] ? accent.WithAlpha(165) : sakura::core::Color{ 28, 34, 60, 195 },
             m_lanePressed[i] ? accent.WithAlpha(135) : sakura::core::Color{ 22, 28, 50, 195 },
-            m_lanePressed[i] ? sakura::core::Color{ 86, 56, 92, 210 } : sakura::core::Color{ 18, 22, 42, 215 },
-            m_lanePressed[i] ? sakura::core::Color{ 86, 56, 92, 210 } : sakura::core::Color{ 18, 22, 42, 215 }, 6, true);
+            m_lanePressed[i] ? keyPressBot : sakura::core::Color{ 18, 22, 42, 215 },
+            m_lanePressed[i] ? keyPressBot : sakura::core::Color{ 18, 22, 42, 215 }, 6, true);
         renderer.DrawRoundedRectOutlineGradient(keyCap, 0.007f,
-            m_lanePressed[i] ? sakura::core::Color{ 252, 226, 174, 235 } : sakura::core::Color{ 176, 184, 218, 82 },
+            m_lanePressed[i] ? ToCoreColor(skin.judgeLine, 235) : sakura::core::Color{ 176, 184, 218, 82 },
             { 120, 130, 174, 42 }, 0.0012f, 6);
         renderer.DrawText(m_fontSmall, SDL_GetScancodeName(m_laneKeys[i]),
             cx, 0.869f, 0.0195f,
@@ -887,26 +1010,33 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
     {
         const bool thumbDown = m_lanePressed[sakura::game::kThumbLaneIndex];
         const float thumbEnergy = std::max(thumbDown ? 0.90f : 0.0f, m_lanePulse[sakura::game::kThumbLaneIndex]);
+        const sakura::core::Color thumbTop = ToCoreColor(skin.thumbGemTop, 255);
+        const sakura::core::Color thumbBot = ToCoreColor(skin.thumbGemBot, 255);
         if (thumbEnergy > 0.02f)
         {
             renderer.SetBlendMode(sakura::core::BlendMode::Additive);
             renderer.DrawQuad(
                 { TRACK_X + 0.010f, 0.56f }, { TRACK_X + TRACK_W - 0.010f, 0.56f },
                 { TRACK_X + TRACK_W - 0.002f, JUDGE_LINE_Y }, { TRACK_X + 0.002f, JUDGE_LINE_Y },
-                { 252, 224, 162, 0 }, { 252, 224, 162, 0 },
-                { 252, 224, 162, static_cast<uint8_t>(thumbEnergy * 88.0f * opacity) },
-                { 246, 178, 206, static_cast<uint8_t>(thumbEnergy * 88.0f * opacity) });
+                thumbTop.WithAlpha(0), thumbTop.WithAlpha(0),
+                thumbTop.WithAlpha(static_cast<uint8_t>(thumbEnergy * 88.0f * opacity)),
+                thumbBot.WithAlpha(static_cast<uint8_t>(thumbEnergy * 88.0f * opacity)));
             renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
         }
+        const sakura::core::Color thumbPressDark{
+            static_cast<uint8_t>(thumbBot.r * 0.62f),
+            static_cast<uint8_t>(thumbBot.g * 0.56f),
+            static_cast<uint8_t>(thumbBot.b * 0.60f),
+            215 };
         const sakura::core::NormRect thumbBar{ TRACK_X + 0.012f, 0.901f, TRACK_W - 0.024f, 0.018f };
         renderer.DrawRoundedGradientRect(thumbBar, 0.005f,
-            thumbDown ? sakura::core::Color{ 252, 222, 158, 195 } : sakura::core::Color{ 36, 30, 56, 205 },
-            thumbDown ? sakura::core::Color{ 246, 178, 206, 185 } : sakura::core::Color{ 28, 24, 48, 205 },
-            thumbDown ? sakura::core::Color{ 148, 92, 118, 215 } : sakura::core::Color{ 20, 18, 36, 220 },
-            thumbDown ? sakura::core::Color{ 148, 92, 118, 215 } : sakura::core::Color{ 20, 18, 36, 220 }, 6, true);
+            thumbDown ? thumbTop.WithAlpha(195) : sakura::core::Color{ 36, 30, 56, 205 },
+            thumbDown ? thumbBot.WithAlpha(185) : sakura::core::Color{ 28, 24, 48, 205 },
+            thumbDown ? thumbPressDark : sakura::core::Color{ 20, 18, 36, 220 },
+            thumbDown ? thumbPressDark : sakura::core::Color{ 20, 18, 36, 220 }, 6, true);
         renderer.DrawRoundedRectOutlineGradient(thumbBar, 0.005f,
-            thumbDown ? sakura::core::Color{ 255, 244, 210, 245 } : sakura::core::Color{ 250, 216, 157, 110 },
-            { 246, 178, 206, 55 }, 0.0011f, 6);
+            thumbDown ? sakura::core::Color{ 255, 244, 210, 245 } : thumbTop.WithAlpha(110),
+            thumbBot.WithAlpha(55), 0.0011f, 6);
         renderer.DrawText(m_fontSmall, std::string("SPACE · ") + SDL_GetScancodeName(m_laneKeys[4]),
             TRACK_X + TRACK_W * 0.5f, 0.902f, 0.013f,
             thumbDown ? sakura::core::Color{ 32, 20, 38, 255 } : sakura::core::Color{ 238, 214, 176, 215 },
@@ -915,23 +1045,24 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
 
     // ── 鎏金樱华判定线与菱形端饰 ────────────────────────────────────────────
     const bool feverOn = m_session.Score().IsFeverActive();
+    const sakura::core::Color judgeLineCol = ToCoreColor(skin.judgeLine);
     if (glowOn)
     {
         sakura::effects::GlowEffect::DrawGlowBar(
             renderer, TRACK_X, JUDGE_LINE_Y - 0.003f, TRACK_W, 0.006f,
             feverOn ? sakura::core::Color{ 255, 226, 152, static_cast<uint8_t>(175 + pulse * 65.0f) }
-                    : sakura::core::Color{ 248, 184, 210, static_cast<uint8_t>(135 + pulse * 55.0f) }, 0.010f, 4);
+                    : judgeLineCol.WithAlpha(static_cast<uint8_t>(135 + pulse * 55.0f)), 0.010f, 4);
     }
     renderer.DrawLine(TRACK_X - 0.004f, JUDGE_LINE_Y, TRACK_X + TRACK_W + 0.004f, JUDGE_LINE_Y,
-                      { 252, 224, 168, 245 }, 0.0028f);
+                      judgeLineCol, 0.0028f);
     const float dHalf = 0.0065f;
     for (float endX : { TRACK_X - 0.006f, TRACK_X + TRACK_W + 0.006f })
     {
         renderer.DrawQuad(
             { endX, JUDGE_LINE_Y - dHalf }, { endX + dHalf * 0.65f, JUDGE_LINE_Y },
             { endX, JUDGE_LINE_Y + dHalf }, { endX - dHalf * 0.65f, JUDGE_LINE_Y },
-            { 252, 228, 176, 245 }, { 246, 178, 206, 235 },
-            { 252, 228, 176, 245 }, { 246, 178, 206, 235 });
+            judgeLineCol, ToCoreColor(skin.outerGemTop, 235),
+            judgeLineCol, ToCoreColor(skin.outerGemTop, 235));
     }
 
     // ── 右侧鼠标旋律琉璃舞台框 ───────────────────────────────────────────────
@@ -944,8 +1075,37 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
         { 16, 20, 40, static_cast<uint8_t>(78 * opacity) }, 12, true);
     renderer.DrawRoundedRectOutlineGradient(
         mouseStage, 0.018f,
-        feverOn ? sakura::core::Color{ 255, 228, 158, 185 } : sakura::core::Color{ 250, 216, 157, 92 },
-        feverOn ? sakura::core::Color{ 252, 188, 216, 135 } : sakura::core::Color{ 246, 178, 206, 54 }, 0.0016f, 12);
+        feverOn ? sakura::core::Color{ 255, 228, 158, 185 } : ToCoreColor(skin.judgeLine, 92),
+        feverOn ? sakura::core::Color{ 252, 188, 216, 135 } : ToCoreColor(skin.circleColor, 54), 0.0016f, 12);
+
+    if (stageVis.pulseZoom > 0.01f)
+    {
+        const float pz = std::clamp(stageVis.pulseZoom, 0.0f, 1.0f);
+        const float expand = 0.003f + 0.0085f * pz;
+        const uint8_t auraA = static_cast<uint8_t>(std::clamp(std::round(158.0f * pz * opacity), 0.0f, 220.0f));
+        const uint8_t softA = static_cast<uint8_t>(std::clamp(std::round(78.0f * pz * opacity), 0.0f, 140.0f));
+        const sakura::core::Color pulseTop{
+            static_cast<uint8_t>(std::clamp(stageVis.tintR, 0, 255)),
+            static_cast<uint8_t>(std::clamp(stageVis.tintG, 0, 255)),
+            static_cast<uint8_t>(std::clamp(stageVis.tintB, 0, 255)),
+            auraA };
+        const sakura::core::Color pulseBot = ToCoreColor(skin.judgeLine, static_cast<uint8_t>(auraA * 0.82f));
+        const sakura::core::NormRect trackPulseRect{
+            trackCard.x - expand, trackCard.y - expand,
+            trackCard.width + expand * 2.0f, trackCard.height + expand * 2.0f };
+        const sakura::core::NormRect mousePulseRect{
+            mouseStage.x - expand, mouseStage.y - expand,
+            mouseStage.width + expand * 2.0f, mouseStage.height + expand * 2.0f };
+
+        renderer.SetBlendMode(sakura::core::BlendMode::Additive);
+        renderer.DrawSoftShadow(trackCard, 0.015f, 0.011f + 0.010f * pz, pulseTop.WithAlpha(softA), 0.0f, 10);
+        renderer.DrawRoundedRectOutlineGradient(
+            trackPulseRect, 0.014f + expand, pulseTop, pulseBot, 0.0020f, 10);
+        renderer.DrawSoftShadow(mouseStage, 0.019f, 0.011f + 0.010f * pz, pulseTop.WithAlpha(softA), 0.0f, 12);
+        renderer.DrawRoundedRectOutlineGradient(
+            mousePulseRect, 0.018f + expand, pulseTop, pulseBot, 0.0020f, 12);
+        renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
+    }
 
     const float mcx = MOUSE_X + MOUSE_W * 0.5f;
     const float mcy = MOUSE_Y + MOUSE_H * 0.5f;
@@ -974,6 +1134,14 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 {
     if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
 
+    const auto& skin = sakura::core::SkinManager::GetInstance().GetActiveSkin();
+    const sakura::core::Color chordTop = ToCoreColor(skin.chordColor);
+    const sakura::core::Color chordBot{
+        static_cast<uint8_t>(std::max(0, static_cast<int>(chordTop.r) - 10)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(chordTop.g) - 30)),
+        static_cast<uint8_t>(std::max(0, static_cast<int>(chordTop.b) - 38)),
+        chordTop.a };
+
     const bool glowOn = sakura::core::Config::GetInstance().Get<bool>("graphics.glow", true);
     const int now = m_gameState.GetCurrentTime();
     const float curSv = m_gameState.GetCurrentSVSpeed(now);
@@ -1000,19 +1168,19 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
             renderer.SetBlendMode(sakura::core::BlendMode::Additive);
             renderer.DrawRoundedGradientRect(
                 { tieX0 - 0.003f, chordY - 0.0060f, tieW + 0.006f, 0.0120f }, 0.005f,
-                { 255, 226, 152, static_cast<uint8_t>(92 * vis) },
-                { 255, 226, 152, static_cast<uint8_t>(92 * vis) },
-                { 246, 178, 206, static_cast<uint8_t>(64 * vis) },
-                { 246, 178, 206, static_cast<uint8_t>(64 * vis) }, 6, true);
+                chordTop.WithAlpha(static_cast<uint8_t>(92 * vis)),
+                chordTop.WithAlpha(static_cast<uint8_t>(92 * vis)),
+                chordBot.WithAlpha(static_cast<uint8_t>(64 * vis)),
+                chordBot.WithAlpha(static_cast<uint8_t>(64 * vis)), 6, true);
             renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
         }
 
         renderer.DrawRoundedGradientRect(
             { tieX0, chordY - 0.0026f, tieW, 0.0052f }, 0.0026f,
-            { 255, 238, 180, static_cast<uint8_t>(228 * vis) },
-            { 255, 238, 180, static_cast<uint8_t>(228 * vis) },
-            { 248, 204, 134, static_cast<uint8_t>(216 * vis) },
-            { 248, 204, 134, static_cast<uint8_t>(216 * vis) }, 6, true);
+            chordTop.WithAlpha(static_cast<uint8_t>(228 * vis)),
+            chordTop.WithAlpha(static_cast<uint8_t>(228 * vis)),
+            chordBot.WithAlpha(static_cast<uint8_t>(216 * vis)),
+            chordBot.WithAlpha(static_cast<uint8_t>(216 * vis)), 6, true);
         renderer.DrawLine(
             tieX0 + 0.003f, chordY, tieX1 - 0.003f, chordY,
             { 255, 252, 238, static_cast<uint8_t>(240 * vis) }, 0.0016f);
@@ -1071,16 +1239,16 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
 
         const bool outerLane = (note.lane == 0 || note.lane == LANE_COUNT - 1);
         sakura::core::Color gemTop = isThumb
-            ? sakura::core::Color{ 255, 228, 166, static_cast<uint8_t>(248 * alpha) }
+            ? ScaleSkinAlpha(skin.thumbGemTop, alpha)
             : (outerLane
-                ? sakura::core::Color{ 252, 198, 222, static_cast<uint8_t>(246 * alpha) }
-                : sakura::core::Color{ 178, 228, 255, static_cast<uint8_t>(246 * alpha) });
+                ? ScaleSkinAlpha(skin.outerGemTop, alpha)
+                : ScaleSkinAlpha(skin.innerGemTop, alpha));
         sakura::core::Color gemBot = isThumb
-            ? sakura::core::Color{ 238, 162, 198, static_cast<uint8_t>(238 * alpha) }
+            ? ScaleSkinAlpha(skin.thumbGemBot, alpha)
             : (outerLane
-                ? sakura::core::Color{ 224, 128, 172, static_cast<uint8_t>(236 * alpha) }
-                : sakura::core::Color{ 108, 168, 236, static_cast<uint8_t>(236 * alpha) });
-        sakura::core::Color rimGold{ 252, 228, 174, static_cast<uint8_t>(235 * alpha) };
+                ? ScaleSkinAlpha(skin.outerGemBot, alpha)
+                : ScaleSkinAlpha(skin.innerGemBot, alpha));
+        sakura::core::Color rimGold = ScaleSkinAlpha(skin.chordColor, alpha);
 
         if (judgedMiss)
         {
@@ -1142,8 +1310,8 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
                 };
                 renderer.DrawRoundedRectOutlineGradient(
                     chordFrame, 0.0075f,
-                    { 255, 240, 174, static_cast<uint8_t>(250 * alpha) },
-                    { 252, 204, 122, static_cast<uint8_t>(235 * alpha) },
+                    chordTop.WithAlpha(static_cast<uint8_t>(250 * alpha)),
+                    chordBot.WithAlpha(static_cast<uint8_t>(235 * alpha)),
                     0.0022f, 8);
             }
             break;
@@ -1192,8 +1360,8 @@ void SceneGame::RenderKeyboardNotes(sakura::core::Renderer& renderer)
                 };
                 renderer.DrawRoundedRectOutlineGradient(
                     chordFrame, 0.0075f,
-                    { 255, 240, 174, static_cast<uint8_t>(250 * alpha) },
-                    { 252, 204, 122, static_cast<uint8_t>(235 * alpha) },
+                    chordTop.WithAlpha(static_cast<uint8_t>(250 * alpha)),
+                    chordBot.WithAlpha(static_cast<uint8_t>(235 * alpha)),
                     0.0022f, 8);
             }
 
@@ -1221,7 +1389,7 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
 {
     if (m_gameState.GetPhase() == sakura::game::GamePhase::Idle) return;
 
-    const auto& theme = sakura::core::Theme::GetInstance();
+    const auto& skin = sakura::core::SkinManager::GetInstance().GetActiveSkin();
     const bool glowOn = sakura::core::Config::GetInstance().Get<bool>("graphics.glow", true);
     int now = m_gameState.GetCurrentTime();
     auto activeNotes = m_gameState.GetActiveMouseNotes();
@@ -1383,38 +1551,42 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
         {
             float sx = noteSX;
             float sy = noteSY;
-            auto noteColor = theme.Colors().circleColor;
-            noteColor.a = alpha;
+            sakura::core::Color noteColor = ToCoreColor(skin.circleColor, alpha);
+            const sakura::core::Color circleBright{
+                static_cast<uint8_t>(std::min(255, static_cast<int>(skin.circleColor.r) + 18)),
+                static_cast<uint8_t>(std::min(255, static_cast<int>(skin.circleColor.g) + 28)),
+                static_cast<uint8_t>(std::min(255, static_cast<int>(skin.circleColor.b) + 22)),
+                alpha };
 
             if (glowOn)
             {
                 renderer.SetBlendMode(sakura::core::BlendMode::Additive);
                 renderer.DrawRadialGradient(sx, sy, radius * 1.48f, radius * 1.48f,
-                    { 246, 178, 208, static_cast<uint8_t>(alpha * 0.34f) }, { 246, 178, 208, 0 }, 40);
+                    noteColor.WithAlpha(static_cast<uint8_t>(alpha * 0.34f)), noteColor.WithAlpha(0), 40);
                 renderer.SetBlendMode(sakura::core::BlendMode::Alpha);
             }
 
             renderer.DrawRadialGradient(sx, sy, radius, radius,
-                { 252, 206, 226, static_cast<uint8_t>(alpha * 0.42f) },
+                circleBright.WithAlpha(static_cast<uint8_t>(alpha * 0.42f)),
                 { 48, 34, 68, static_cast<uint8_t>(alpha * 0.30f) }, 48);
             renderer.DrawRingGradient(sx, sy, radius * 0.76f, radius,
-                { 250, 216, 157, static_cast<uint8_t>(alpha * 0.22f) },
-                { 246, 178, 206, static_cast<uint8_t>(alpha * 0.52f) }, 48);
+                ToCoreColor(skin.chordColor, static_cast<uint8_t>(alpha * 0.22f)),
+                noteColor.WithAlpha(static_cast<uint8_t>(alpha * 0.52f)), 48);
             renderer.DrawCircleOutline(sx, sy, radius,
-                { 252, 226, 174, alpha }, 0.0024f, 56);
+                ToCoreColor(skin.chordColor, alpha), 0.0024f, 56);
             renderer.DrawCircleOutline(sx, sy, radius * 0.72f,
-                { 248, 188, 214, static_cast<uint8_t>(alpha * 0.68f) }, 0.0012f, 48);
+                circleBright.WithAlpha(static_cast<uint8_t>(alpha * 0.68f)), 0.0012f, 48);
 
             const float d = radius * 0.22f;
             renderer.DrawQuad(
                 { sx, sy - d }, { sx + d, sy }, { sx, sy + d }, { sx - d, sy },
-                { 255, 244, 224, alpha }, { 248, 192, 216, alpha },
-                { 255, 244, 224, alpha }, { 248, 192, 216, alpha });
+                { 255, 244, 224, alpha }, circleBright,
+                { 255, 244, 224, alpha }, circleBright);
 
             drawGradientApproachRing(
                 sx, sy, radius * scale, 0.0026f, noteColor,
-                { 126, 224, 255, static_cast<uint8_t>(alpha * 0.85f) },
-                { 252, 216, 152, static_cast<uint8_t>(alpha * 0.90f) },
+                { skin.approachStart.r, skin.approachStart.g, skin.approachStart.b, static_cast<uint8_t>(alpha * 0.85f) },
+                { skin.approachEnd.r, skin.approachEnd.g, skin.approachEnd.b, static_cast<uint8_t>(alpha * 0.90f) },
                 static_cast<uint8_t>(alpha * 0.85f), note.time);
             break;
         }
@@ -1450,16 +1622,11 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 {
                     const float u = static_cast<float>(pi) / static_cast<float>(std::max(1, nPts - 1));
                     const float w = radius * (0.82f - 0.14f * u);
-                    const sakura::core::Color cCore{
-                        static_cast<uint8_t>(252 + (142 - 252) * u),
-                        static_cast<uint8_t>(222 + (228 - 222) * u),
-                        static_cast<uint8_t>(164 + (236 - 164) * u),
-                        ribCoreA };
-                    const sakura::core::Color cEdge{
-                        static_cast<uint8_t>(246 + (112 - 246) * u),
-                        static_cast<uint8_t>(174 + (198 - 174) * u),
-                        static_cast<uint8_t>(206 + (236 - 206) * u),
-                        static_cast<uint8_t>(ribAuraA * (1.0f - 0.5f * u)) };
+                    const sakura::core::Color cCore = LerpSkinColor(skin.sliderCore, skin.sliderEdge, u, ribCoreA);
+                    const sakura::core::Color cEdge = LerpSkinColor(
+                        skin.sliderCore, skin.sliderEdge,
+                        std::clamp(u * 0.65f + 0.35f, 0.0f, 1.0f),
+                        static_cast<uint8_t>(ribAuraA * (1.0f - 0.5f * u)));
                     nodes.push_back({ pts[pi].x, pts[pi].y, w, cCore, cEdge });
                 }
                 renderer.DrawRibbonStrip(nodes.data(), static_cast<int>(nodes.size()), true);
@@ -1477,25 +1644,26 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
                 uint8_t wpAlpha = passed ? static_cast<uint8_t>(alpha * 0.28f) : static_cast<uint8_t>(alpha * 0.78f);
 
                 renderer.DrawCircleOutline(spx, spy, isTail ? radius * 0.62f : 0.016f,
-                    { 250, 222, 168, wpAlpha }, 0.0018f, 32);
+                    ToCoreColor(skin.sliderCore, wpAlpha), 0.0018f, 32);
                 if (isNext)
                 {
                     renderer.DrawRingGradient(spx, spy, 0.018f, 0.028f,
-                        { 152, 238, 228, static_cast<uint8_t>(alpha * 0.85f) }, { 152, 238, 228, 0 }, 32);
+                        ToCoreColor(skin.sliderEdge, static_cast<uint8_t>(alpha * 0.85f)),
+                        ToCoreColor(skin.sliderEdge, 0), 32);
                 }
             }
 
             if (!isActive)
             {
-                sakura::core::Color noteColor{ theme.Accent().r, theme.Accent().g, theme.Accent().b, alpha };
+                sakura::core::Color noteColor = ToCoreColor(skin.circleColor, alpha);
                 renderer.DrawRadialGradient(sx, sy, radius, radius,
-                    { 252, 226, 168, static_cast<uint8_t>(alpha * 0.45f) },
+                    ToCoreColor(skin.sliderCore, static_cast<uint8_t>(alpha * 0.45f)),
                     { 42, 54, 76, static_cast<uint8_t>(alpha * 0.30f) }, 48);
-                renderer.DrawCircleOutline(sx, sy, radius, { 252, 228, 174, alpha }, 0.0024f, 56);
+                renderer.DrawCircleOutline(sx, sy, radius, ToCoreColor(skin.sliderCore, alpha), 0.0024f, 56);
                 drawGradientApproachRing(
                     sx, sy, radius * scale, 0.0026f, noteColor,
-                    { 255, 220, 142, static_cast<uint8_t>(alpha * 0.84f) },
-                    { 126, 240, 228, static_cast<uint8_t>(alpha * 0.88f) },
+                    { skin.approachStart.r, skin.approachStart.g, skin.approachStart.b, static_cast<uint8_t>(alpha * 0.84f) },
+                    { skin.approachEnd.r, skin.approachEnd.g, skin.approachEnd.b, static_cast<uint8_t>(alpha * 0.88f) },
                     static_cast<uint8_t>(alpha * 0.84f), note.time);
             }
             else
@@ -1695,6 +1863,66 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         }
         renderer.DrawText(m_fontHUD, std::to_string(combo), cx, 0.238f - (pop - 1.0f) * 0.02f, 0.058f * pop, comboCol, TextAlign::Center);
         renderer.DrawText(m_fontSmall, "C O M B O", cx, 0.316f, 0.016f, dim, TextAlign::Center);
+    }
+
+    // Chart v4 双语时间轴同步歌词
+    if (cfg.Get<bool>("gameplay.show_lyrics", true))
+    {
+        const auto lyric = sakura::game::EvaluateActiveLyric(
+            m_gameState.GetChartData(), m_gameState.GetCurrentTime());
+        if (lyric.active && lyric.opacity > 0.01f && !lyric.text.empty())
+        {
+            const float lyrOp = std::clamp(lyric.opacity, 0.0f, 1.0f);
+            const bool hasSub = !lyric.subText.empty();
+            const float pillH = hasSub ? 0.048f : 0.034f;
+            const NormRect pillRect{ 0.44f, 0.876f, 0.48f, pillH };
+            const float pillCx = pillRect.x + pillRect.width * 0.5f;
+            const float maxTextW = pillRect.width - 0.032f;
+
+            renderer.DrawSoftShadow(
+                pillRect, pillH * 0.5f, 0.008f,
+                { 4, 6, 16, static_cast<uint8_t>(108.0f * lyrOp) }, 0.002f, 10);
+            renderer.DrawRoundedGradientRect(
+                pillRect, pillH * 0.5f,
+                { 20, 22, 44, static_cast<uint8_t>(158.0f * lyrOp) },
+                { 28, 24, 52, static_cast<uint8_t>(148.0f * lyrOp) },
+                { 14, 16, 34, static_cast<uint8_t>(172.0f * lyrOp) },
+                { 18, 20, 40, static_cast<uint8_t>(164.0f * lyrOp) },
+                10, true);
+            renderer.DrawRoundedRectOutlineGradient(
+                pillRect, pillH * 0.5f,
+                { 250, 216, 157, static_cast<uint8_t>(128.0f * lyrOp) },
+                { 246, 178, 206, static_cast<uint8_t>(78.0f * lyrOp) },
+                0.0011f, 10);
+
+            float mainSize = 0.021f;
+            const float measuredMain = renderer.MeasureTextWidth(m_fontHUD, lyric.text, mainSize);
+            if (measuredMain > maxTextW && measuredMain > 0.001f)
+                mainSize *= (maxTextW / measuredMain);
+
+            const Color pearlWhite{ 252, 248, 252, static_cast<uint8_t>(252.0f * lyrOp) };
+            if (hasSub)
+            {
+                float subSize = 0.0145f;
+                const float measuredSub = renderer.MeasureTextWidth(m_fontSmall, lyric.subText, subSize);
+                if (measuredSub > maxTextW && measuredSub > 0.001f)
+                    subSize *= (maxTextW / measuredSub);
+
+                const Color champagnePink{ 250, 206, 184, static_cast<uint8_t>(232.0f * lyrOp) };
+                renderer.DrawText(
+                    m_fontHUD, lyric.text, pillCx, pillRect.y + 0.0045f,
+                    mainSize, pearlWhite, TextAlign::Center);
+                renderer.DrawText(
+                    m_fontSmall, lyric.subText, pillCx, pillRect.y + 0.0275f,
+                    subSize, champagnePink, TextAlign::Center);
+            }
+            else
+            {
+                renderer.DrawText(
+                    m_fontHUD, lyric.text, pillCx, pillRect.y + (pillH - mainSize) * 0.44f,
+                    mainSize, pearlWhite, TextAlign::Center);
+            }
+        }
     }
 
     // 底部歌曲进度丝带

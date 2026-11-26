@@ -156,8 +156,12 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
         for (const auto& n : m_chartData.mouseNotes)
             if (n.linkId > 0 || n.requireLane >= 0) { usesV3 = true; break; }
 
+        const bool usesV4 = (m_chartData.version >= 4)
+                         || !m_chartData.stageEvents.empty()
+                         || !m_chartData.lyrics.empty();
+
         json j;
-        j["version"] = usesV3 ? std::max(3, m_chartData.version) : m_chartData.version;
+        j["version"] = usesV4 ? 4 : (usesV3 ? 3 : m_chartData.version);
 
         // timing_points
         json tpArr = json::array();
@@ -226,8 +230,49 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
         }
         j["mouse_notes"] = std::move(msArr);
 
+        auto sortedStageEvents = m_chartData.stageEvents;
+        if (!sortedStageEvents.empty())
+        {
+            std::stable_sort(sortedStageEvents.begin(), sortedStageEvents.end(),
+                             [](const auto& a, const auto& b) { return a.time < b.time; });
+            json evArr = json::array();
+            for (const auto& ev : sortedStageEvents)
+            {
+                json item;
+                item["time"]      = ev.time;
+                item["duration"]  = ev.duration;
+                item["type"]      = ev.type;
+                item["intensity"] = ev.intensity;
+                item["color"]     = { ev.colorR, ev.colorG, ev.colorB };
+                evArr.push_back(std::move(item));
+            }
+            j["stage_events"] = std::move(evArr);
+        }
+
+        auto sortedLyrics = m_chartData.lyrics;
+        if (!sortedLyrics.empty())
+        {
+            std::stable_sort(sortedLyrics.begin(), sortedLyrics.end(),
+                             [](const auto& a, const auto& b) { return a.time < b.time; });
+            json lyArr = json::array();
+            for (const auto& line : sortedLyrics)
+            {
+                json item;
+                item["time"]     = line.time;
+                item["end_time"] = line.endTime;
+                item["text"]     = line.text;
+                item["sub_text"] = line.subText;
+                lyArr.push_back(std::move(item));
+            }
+            j["lyrics"] = std::move(lyArr);
+        }
+
         auto checked = m_chartData;
-        checked.keyboardNotes = sortedKb; checked.mouseNotes = sortedMs;
+        checked.version = j["version"].get<int>();
+        checked.keyboardNotes = sortedKb;
+        checked.mouseNotes = sortedMs;
+        checked.stageEvents = std::move(sortedStageEvents);
+        checked.lyrics = std::move(sortedLyrics);
         sakura::game::ChartLoader loader;
         if(!loader.ValidateChartData(checked)) return false;
 
@@ -247,10 +292,12 @@ bool EditorCore::SaveChartTo(const std::string& fullPath, bool activate)
             const auto infoPath=p.parent_path()/"info.json";
             json meta;
             if(fs::exists(infoPath)){std::ifstream input(infoPath);meta=json::parse(input);}
-            else meta={{"version",usesV3?3:2},{"id",info.id},{"title",info.title},{"artist",info.artist},{"charter",info.charter},
+            else meta={{"version",usesV4?4:(usesV3?3:2)},{"id",info.id},{"title",info.title},{"artist",info.artist},{"charter",info.charter},
                 {"bpm",info.bpm},{"offset",info.offset},{"music_file",info.musicFile},{"cover_file",info.coverFile},
                 {"background_file",info.backgroundFile},{"preview_time",info.previewTime}};
-            if(usesV3) meta["version"] = std::max(3, meta.value("version", 2));
+            if(usesV4) meta["version"] = std::max(4, meta.value("version", 2));
+            else if(usesV3) meta["version"] = std::max(3, meta.value("version", 2));
+            info.version = meta.value("version", info.version);
             meta["bpm"]=info.bpm;meta["offset"]=info.offset;meta["title"]=info.title;meta["artist"]=info.artist;
             meta["difficulties"]=json::array();
             for(const auto& diff:info.difficulties)meta["difficulties"].push_back({{"name",diff.name},{"level",diff.level},
@@ -474,6 +521,10 @@ int EditorCore::GetTotalDurationMs() const
         maxTime = std::max(maxTime, n.time + n.duration);
     for (const auto& n : m_chartData.mouseNotes)
         maxTime = std::max(maxTime, n.time + n.sliderDuration);
+    for (const auto& ev : m_chartData.stageEvents)
+        maxTime = std::max(maxTime, ev.time + std::max(0, ev.duration));
+    for (const auto& line : m_chartData.lyrics)
+        maxTime = std::max(maxTime, std::max(line.time, line.endTime));
     return maxTime + 2000;
 }
 
@@ -729,5 +780,33 @@ void EditorCore::RawModifyMouseNote(int index, const sakura::game::MouseNote& no
     auto& notes = m_chartData.mouseNotes;
     if (index < 0 || index >= static_cast<int>(notes.size())) return;
     notes[index] = note;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Chart v4 舞台演出事件与双语歌词操作
+// ═════════════════════════════════════════════════════════════════════════════
+
+void EditorCore::AddStageEvent(const sakura::game::StageEvent& ev)
+{
+    auto& events = m_chartData.stageEvents;
+    auto it = std::upper_bound(events.begin(), events.end(), ev,
+        [](const sakura::game::StageEvent& a, const sakura::game::StageEvent& b) {
+            return a.time < b.time;
+        });
+    events.insert(it, ev);
+    m_dirty = true;
+    LOG_DEBUG("[EditorCore] 添加舞台演出事件: time={} type={}", ev.time, ev.type);
+}
+
+void EditorCore::AddLyricLine(const sakura::game::LyricLine& line)
+{
+    auto& lyrics = m_chartData.lyrics;
+    auto it = std::upper_bound(lyrics.begin(), lyrics.end(), line,
+        [](const sakura::game::LyricLine& a, const sakura::game::LyricLine& b) {
+            return a.time < b.time;
+        });
+    lyrics.insert(it, line);
+    m_dirty = true;
+    LOG_DEBUG("[EditorCore] 添加双语歌词: time={} endTime={}", line.time, line.endTime);
 }
 } // namespace sakura::editor

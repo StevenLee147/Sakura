@@ -133,6 +133,7 @@ private:
     float m_judgePulsePhase = 0.0f;               // 判定线脉冲相位
     float m_chromaTimer     = 0.0f;               // 色差计时（>0=激活）
     float m_comboPopTimer   = 0.0f;               // 连击数字弹跳计时
+    float m_stagePetalAccum = 0.0f;               // 舞台花瓣爆发累积器 (Chart v4)
     int   m_lastCheckedCombo = 0;                 // 上帧连击数（用于里程碑检测）
     int   m_lastFeverCount   = 0;
 

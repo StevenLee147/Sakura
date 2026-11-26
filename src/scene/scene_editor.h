@@ -101,6 +101,9 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     bool m_publishing = false;
     std::unique_ptr<sakura::ui::Button> m_btnProperties,m_btnExport,m_btnPublish,m_propertyApply,m_propertyCancel;
+    std::unique_ptr<sakura::ui::Button> m_btnAddStageEvent;
+    std::unique_ptr<sakura::ui::Button> m_btnAddLyric;
+    int m_nextStageEventType = 0;
     void DoExportSakura();
     void DoPublishMarket();
     void OpenProperties();

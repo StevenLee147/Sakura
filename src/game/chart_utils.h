@@ -69,4 +69,27 @@ std::vector<CrossZoneSyncPair> FindCrossZoneSyncPairs(std::span<const KeyboardNo
                                                       std::span<const MouseNote> msNotes,
                                                       int toleranceMs = 8);
 
+// Chart v4 stage presentation & synchronized bilingual lyrics evaluation
+struct StageVisualState
+{
+    float pulseZoom     = 0.0f; // 0.0 ~ 1.0 normalized pulse envelope (0 when reducedMotion)
+    float vignetteBoost = 0.0f; // 0.0 ~ 1.0 additional edge vignette
+    float tintStrength  = 0.0f; // 0.0 ~ 1.0 ambient tint blend
+    int   tintR         = 246;
+    int   tintG         = 178;
+    int   tintB         = 206;
+    float petalRateMult = 1.0f; // >= 1.0 petal burst multiplier
+};
+
+struct ActiveLyricState
+{
+    bool        active  = false;
+    float       opacity = 0.0f; // 0.0 ~ 1.0 smooth fade-in / fade-out
+    std::string text;
+    std::string subText;
+};
+
+StageVisualState EvaluateStageVisuals(const ChartData& chart, int nowMs, bool reducedMotion = false);
+ActiveLyricState EvaluateActiveLyric(const ChartData& chart, int nowMs);
+
 } // namespace sakura::game

@@ -5,6 +5,7 @@
 #include "audio/audio_manager.h"
 #include "core/config.h"
 #include "core/paths.h"
+#include "core/skin_manager.h"
 #include "core/theme.h"
 #include "data/database.h"
 #include "ui/visual_style.h"
@@ -101,7 +102,23 @@ void SceneSettings::AddChoice(int page, const std::string& title, const std::str
 {
     auto choiceLabels=labels;auto choiceValues=values;
     int selected = 0;
-    const auto current = key=="display.resolution" ? nlohmann::json::array({Config::GetInstance().Get<int>("display.window_width",1600),Config::GetInstance().Get<int>("display.window_height",900)}) : Config::GetInstance().Get<nlohmann::json>(key);
+    nlohmann::json current;
+    if (key == "display.resolution")
+    {
+        current = nlohmann::json::array({Config::GetInstance().Get<int>("display.window_width",1600),Config::GetInstance().Get<int>("display.window_height",900)});
+    }
+    else if (key == "graphics.skin_path")
+    {
+        std::string curSkin = Config::GetInstance().Get<std::string>(key, "moonlit_sakura");
+        if (curSkin.empty()) curSkin = "moonlit_sakura";
+        if (const auto* matched = SkinManager::GetInstance().FindSkin(curSkin))
+            curSkin = matched->id;
+        current = curSkin;
+    }
+    else
+    {
+        current = Config::GetInstance().Get<nlohmann::json>(key);
+    }
     for (int i = 0; i < static_cast<int>(values.size()); ++i) if (values[i] == current) selected = i;
     if(key=="display.resolution" && std::find(choiceValues.begin(),choiceValues.end(),current)==choiceValues.end()){
         selected=static_cast<int>(choiceValues.size());choiceValues.push_back(current);
@@ -121,6 +138,33 @@ void SceneSettings::AddChoice(int page, const std::string& title, const std::str
         {
             sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(values[index].get<std::string>());
             sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::Tap);
+        }
+        if (key == "graphics.skin_path")
+        {
+            SkinManager::GetInstance().SetActiveSkin(values[index].get<std::string>());
+            const std::string& hitsoundSet = SkinManager::GetInstance().GetActiveSkin().hitsoundSet;
+            Config::GetInstance().Set("audio.hitsound", hitsoundSet);
+            sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(hitsoundSet);
+            sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::Tap);
+            static constexpr std::string_view kHitsoundSets[] = {"default", "cyber", "pure", "ukiyo", "soft", "drum"};
+            for (auto& row : m_pages[1])
+            {
+                if (row.title == "打击音色")
+                {
+                    if (auto* hsDropdown = dynamic_cast<Dropdown*>(row.control.get()))
+                    {
+                        for (int hsIdx = 0; hsIdx < 6; ++hsIdx)
+                        {
+                            if (hitsoundSet == kHitsoundSets[hsIdx])
+                            {
+                                hsDropdown->SetSelectedIndex(hsIdx);
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
         }
         m_dirty = true;
     });
@@ -143,6 +187,7 @@ void SceneSettings::BuildPages()
     AddSlider(0, "轨道不透明度", "调整键盘区域与背景的对比", "gameplay.lane_opacity", 0.2f, 1, 0.05f);
     AddToggle(0, "判定偏差", "显示 EARLY / LATE 和实时偏差条", "gameplay.show_hit_error");
     AddToggle(0, "连击数字", "在舞台中显示当前连击", "gameplay.show_combo");
+    AddToggle(0, "双语同步歌词", "在舞台底部展示 Chart v4 时间轴歌词", "gameplay.show_lyrics");
     AddToggle(0, "变速锁定音高", "练习与回放变速时采用 WSOLA 保持原调", "audio.pitch_lock");
     AddAction(0, "练习与自动演示", "在曲库选择模式、速度与练习区间", "前往曲库", [this]
     { if (Save()) m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::Fade, 0.25f); });
@@ -154,7 +199,9 @@ void SceneSettings::BuildPages()
     AddToggle(1, "打击音效", "界面提示音仍由音效音量控制", "audio.hitsounds_enabled");
     AddAction(1, "节拍校准", "跟随节拍按空格，测量设备与操作延迟", "开始校准", [this]
     { if (Save()) m_manager.SwitchScene(std::make_unique<SceneCalibration>(m_manager), TransitionType::Fade, 0.25f); });
-    AddChoice(1, "打击音色", "选择后播放试听", "audio.hitsound", {"清脆 / Default", "轻柔 / Soft", "鼓点 / Drum"}, {"default", "soft", "drum"});
+    AddChoice(1, "打击音色", "选择后播放试听", "audio.hitsound",
+        {"墨樱晶石 / Default", "霓虹电音 / Cyber", "竞技极简 / Pure", "浮世竹韵 / Ukiyo", "轻柔 / Soft", "鼓点 / Drum"},
+        {"default", "cyber", "pure", "ukiyo", "soft", "drum"});
     AddToggle(1, "判定提示音", "额外播放 Perfect / Great 等判定音色", "audio.judgment_sounds");
 
     for (int i = 0; i < 7; ++i)
@@ -183,6 +230,26 @@ void SceneSettings::BuildPages()
     AddChoice(3, "帧率上限", "垂直同步启用时受显示器刷新率限制", "display.fps_limit",
         {"60 FPS", "120 FPS", "144 FPS", "165 FPS", "240 FPS", "360 FPS", "480 FPS", "不限制"}, {60,120,144,165,240,360,480,0});
 
+    {
+        auto& skinMgr = SkinManager::GetInstance();
+        skinMgr.ScanSkins();
+        std::vector<std::string> skinLabels;
+        std::vector<nlohmann::json> skinValues;
+        for (const auto& skin : skinMgr.GetAvailableSkins())
+        {
+            skinLabels.push_back(skin.name.empty() ? skin.id : skin.name);
+            skinValues.push_back(skin.id);
+        }
+        if (skinLabels.empty())
+        {
+            for (const auto& skin : SkinManager::GetBuiltinPresets())
+            {
+                skinLabels.push_back(skin.name.empty() ? skin.id : skin.name);
+                skinValues.push_back(skin.id);
+            }
+        }
+        AddChoice(4, "舞台皮肤主题", "实时切换音符晶石、滑条配色与专属打击音包", "graphics.skin_path", skinLabels, skinValues);
+    }
     AddToggle(4, "樱花与命中粒子", "飘落花瓣、击打碎光与连击庆祝", "graphics.particles");
     AddToggle(4, "柔光", "音符、轨道和界面的辉光", "graphics.glow");
     AddToggle(4, "屏幕震动", "仅在连击中断时提供轻微反馈", "graphics.shake");
@@ -320,6 +387,9 @@ void SceneSettings::OnExit()
     if (m_dirty)
     {
         Config::GetInstance().Restore(m_saved);
+        std::string savedSkin = Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura");
+        if (savedSkin.empty()) savedSkin = "moonlit_sakura";
+        SkinManager::GetInstance().SetActiveSkin(savedSkin);
         SyncAudio();
         sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound", "default"));
     }
@@ -343,14 +413,17 @@ void SceneSettings::ShowModal(int kind)
     m_modalButtons.push_back(MakeButton({0.29f,0.59f,0.13f,0.05f}, "取消", m_font, [this] { m_modal = 0; m_closeRequested=false; }));
     if (kind == 1)
         m_modalButtons.push_back(MakeButton({0.44f,0.59f,0.13f,0.05f}, "放弃修改", m_font, [this]
-        { if(m_closeRequested){Config::GetInstance().Restore(m_saved);m_dirty=false;SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::Fade, 0.25f); }));
+        { if(m_closeRequested){Config::GetInstance().Restore(m_saved);std::string savedSkin=Config::GetInstance().Get<std::string>("graphics.skin_path","moonlit_sakura");if(savedSkin.empty())savedSkin="moonlit_sakura";SkinManager::GetInstance().SetActiveSkin(savedSkin);m_dirty=false;SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::Fade, 0.25f); }));
     m_modalButtons.push_back(MakeButton({0.59f,0.59f,0.13f,0.05f}, kind == 1 ? "保存并返回" : "确认", m_font, [this, kind]
     {
         if (kind == 1) { if (Save()) { m_modal = 0; if(m_closeRequested){SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else Back(); } }
         if (kind == 2)
         {
             Config::GetInstance().ResetToDefaults(); m_dirty = true; m_modal = 0;
-            SyncAudio(); BuildPages();
+            SkinManager::GetInstance().SetActiveSkin(Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura"));
+            SyncAudio();
+            sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound", "default"));
+            BuildPages();
         }
         if (kind == 3) { RestoreBackup(); m_modal = 0; }
     }));
@@ -413,6 +486,9 @@ void SceneSettings::RestoreBackup()
         Config::GetInstance().Restore(settings);
         if(!Config::GetInstance().SaveForce())throw std::runtime_error("设置无法写入");
         m_saved=Config::GetInstance().GetRoot();m_dirty=false;
+        std::string restoredSkin = Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura");
+        if (restoredSkin.empty()) restoredSkin = "moonlit_sakura";
+        SkinManager::GetInstance().SetActiveSkin(restoredSkin);
         SyncAudio(); BuildPages();
         sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound","default"));
         std::error_code cleanup;std::filesystem::remove_all(staging,cleanup);

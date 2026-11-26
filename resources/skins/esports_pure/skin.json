@@ -1,0 +1,27 @@
+{
+  "id": "esports_pure",
+  "name": "竞技极简 · Esports Pure",
+  "author": "Sakura Studio",
+  "description": "赛事级高辨识纯色无干扰几何视效与干脆机械木鱼打击音",
+  "hitsound_set": "pure",
+  "outer_gem_top": [248, 250, 255, 252],
+  "outer_gem_bot": [198, 208, 228, 244],
+  "inner_gem_top": [112, 198, 255, 252],
+  "inner_gem_bot": [68, 138, 224, 244],
+  "thumb_gem_top": [255, 212, 84, 252],
+  "thumb_gem_bot": [228, 158, 42, 244],
+  "chord_color": [255, 226, 118, 246],
+  "judge_line": [244, 248, 255, 250],
+  "circle_color": [255, 196, 92, 255],
+  "slider_core": [246, 250, 255, 244],
+  "slider_edge": [112, 198, 255, 216],
+  "approach_start": [148, 214, 255, 232],
+  "approach_end": [255, 214, 96, 246],
+  "judge_colors": [
+    [255, 222, 98, 255],
+    [118, 206, 255, 255],
+    [136, 236, 176, 255],
+    [252, 172, 92, 255],
+    [248, 92, 98, 255]
+  ]
+}

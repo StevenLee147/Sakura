@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "timing_points": [
     {
       "time": 0,
@@ -892,6 +892,96 @@
       "x": 0.781,
       "y": 0.306,
       "type": "circle"
+    }
+  ],
+  "stage_events": [
+    {
+      "time": 1726,
+      "duration": 960,
+      "type": "pulse",
+      "intensity": 0.48,
+      "color": [252, 198, 222]
+    },
+    {
+      "time": 6081,
+      "duration": 2400,
+      "type": "tint",
+      "intensity": 0.4,
+      "color": [246, 178, 212]
+    },
+    {
+      "time": 13823,
+      "duration": 960,
+      "type": "pulse",
+      "intensity": 0.58,
+      "color": [178, 228, 255]
+    },
+    {
+      "time": 21565,
+      "duration": 1920,
+      "type": "vignette",
+      "intensity": 0.5,
+      "color": [126, 168, 236]
+    },
+    {
+      "time": 29306,
+      "duration": 3870,
+      "type": "petal_burst",
+      "intensity": 1.45,
+      "color": [255, 210, 228]
+    },
+    {
+      "time": 38016,
+      "duration": 2400,
+      "type": "tint",
+      "intensity": 0.55,
+      "color": [255, 224, 168]
+    },
+    {
+      "time": 45758,
+      "duration": 4800,
+      "type": "petal_burst",
+      "intensity": 1.7,
+      "color": [252, 182, 212]
+    },
+    {
+      "time": 52532,
+      "duration": 1450,
+      "type": "pulse",
+      "intensity": 0.65,
+      "color": [255, 232, 196]
+    }
+  ],
+  "lyrics": [
+    {
+      "time": 2210,
+      "end_time": 9200,
+      "text": "晨光拂过沉睡的枝梢",
+      "sub_text": "Morning light brushes the sleeping boughs"
+    },
+    {
+      "time": 9952,
+      "end_time": 17200,
+      "text": "第一瓣绯樱在风中苏醒",
+      "sub_text": "The first crimson petal awakens on the breeze"
+    },
+    {
+      "time": 17694,
+      "end_time": 28500,
+      "text": "指尖涟漪点亮静谧夜色",
+      "sub_text": "Ripples at your fingertips illuminate the quiet night"
+    },
+    {
+      "time": 29306,
+      "end_time": 44800,
+      "text": "漫天春色随心跳一同绽放",
+      "sub_text": "Springtime skies burst into bloom with every heartbeat"
+    },
+    {
+      "time": 45758,
+      "end_time": 55800,
+      "text": "化作流光，奔向初醒的黎明",
+      "sub_text": "Turning into streaming light toward the waking dawn"
     }
   ]
 }

@@ -1,12 +1,12 @@
-# Sakura-樱 谱面格式规范 v3（100% 向后兼容 v1 / v2）
+# Sakura-樱 谱面格式规范 v4（100% 向后兼容 v1 / v2 / v3）
 
-> 在 v2 基础上扩展第 5 轨 Space 樱枝横梁 (`lane = 4`)、跨区连携同押 (`link_id`)、樱绽组合技修饰 (`require_lane`)、可选 MP4/WebM 动态视频舞台 (`video_file`) 以及 `.sakura` 标准 PKZIP 单文件分发包。
+> 在 v3（第 5 轨 Space 樱枝横梁 `lane = 4`、跨区连携同押 `link_id`、樱绽组合技修饰 `require_lane`、可选 MP4/WebM 动态视频舞台 `video_file`、`.sakura` PKZIP 单文件分发包）基础上，新增 **舞台镜头/氛围演出事件 (`stage_events`)** 与 **双语时间轴同步歌词 (`lyrics`)**，同时不改变音符判定与回放哈希。
 
 ## 谱面目录与 `.sakura` 包结构
 
 ```
 resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
-├── info.json              # 谱面元信息（version: 3，兼容 1/2）
+├── info.json              # 谱面元信息（version: 4，兼容 1/2/3）
 ├── easy.json              # Easy 难度谱面数据（可选）
 ├── normal.json            # Normal 难度谱面数据
 ├── hard.json              # Hard 难度谱面数据
@@ -72,7 +72,7 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `version` | int | 是 | 格式版本号，当前为 2 |
+| `version` | int | 是 | 格式版本号，当前推荐为 `4`（完全兼容 `1 / 2 / 3 / 4`） |
 | `id` | string | 是 | 唯一标识符 |
 | `title` | string | 是 | 曲目名称 |
 | `artist` | string | 是 | 曲师/歌手 |
@@ -92,11 +92,13 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | string | 是 | 难度名称（Easy/Normal/Hard/Expert 或自定义） |
-| `level` | int | 是 | 难度等级（1-15） |
+| `level` | float | 是 | 难度等级（1.0–15.0，支持小数定数如 `7.5`） |
 | `chart_file` | string | 是 | 对应的谱面数据文件 |
 | `note_count` | int | 否 | 键盘端音符总数 |
 | `hold_count` | int | 否 | Hold 音符总数 |
 | `mouse_note_count` | int | 否 | 鼠标端音符总数 |
+| `thumb_count` | int | 否 | 空格樱枝横梁音符数（Chart v3+） |
+| `synergy_count` | int | 否 | 跨区连携/组合技音符数（Chart v3+） |
 
 ---
 
@@ -173,6 +175,32 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
                 [0.5, 0.6]
             ]
         }
+    ],
+
+    "stage_events": [
+        {
+            "time": 1000,
+            "duration": 800,
+            "type": "pulse",
+            "intensity": 0.55,
+            "color": [252, 198, 222]
+        },
+        {
+            "time": 12000,
+            "duration": 4000,
+            "type": "petal_burst",
+            "intensity": 1.5,
+            "color": [255, 186, 216]
+        }
+    ],
+
+    "lyrics": [
+        {
+            "time": 2000,
+            "end_time": 8500,
+            "text": "晨光拂过沉睡的枝梢",
+            "sub_text": "Morning light brushes the sleeping boughs"
+        }
     ]
 }
 ```
@@ -202,9 +230,10 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `time` | int | 是 | 触发时间（毫秒） |
-| `lane` | int | 是 | 轨道编号（0-3，对应 A/S/D/F） |
+| `lane` | int | 是 | 轨道编号（`0`–`3` 对应 A/S/D/F，`4` 对应空格樱枝横梁） |
 | `type` | string | 是 | 音符类型：`"tap"` / `"hold"` |
 | `duration` | int | Hold 专用 | Hold 音符持续时间（毫秒） |
+| `link_id` | int | 否 | 跨区连携同押组 ID（`> 0` 时与相同 `link_id` 鼠标音符配对，v3+） |
 
 ### mouse_notes — 鼠标端音符
 
@@ -216,6 +245,31 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
 | `type` | string | 是 | 音符类型：`"circle"` / `"slider"` |
 | `slider_duration` | int | Slider 专用 | Slider 持续时间（毫秒） |
 | `slider_path` | float[][] | Slider 专用 | Slider 曲线路径点 [[x, y], ...] |
+| `link_id` | int | 否 | 跨区连携同押组 ID（v3+） |
+| `require_lane` | int | 否 | 樱绽组合技修饰键（`-1` 无，`0`–`4` 对应左区五键，`5` 对应鼠标右键，v3+） |
+
+### stage_events — 舞台镜头与氛围演出事件（Chart v4）
+
+按 `time` 非递减排列（`ValidateChartData` 会拒绝负数时间、逆序事件、非法时长或越界强度）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `time` | int | 是 | 事件触发时间（毫秒，`>= 0`，按升序排列） |
+| `duration` | int | 否 | 持续时长（毫秒，`> 0`，默认 `600`） |
+| `type` | string | 是 | 事件类型：`"pulse"`（节拍镜头微缩放脉冲）/ `"vignette"`（边缘暗角律动）/ `"tint"`（舞台氛围色调柔染）/ `"petal_burst"`（副歌漫天樱瓣雨速率倍增） |
+| `intensity` | float | 否 | 强度（`0.0 ~ 2.0`，默认 `0.5`；开启「减少动态效果」时 `pulse` 镜头缩放强制置 `0.0`） |
+| `color` | int[3] | 否 | RGB 色调 `[r, g, b]`（`0`–`255`，主要供 `"tint"` 等氛围染色使用，默认 `[246, 178, 206]`） |
+
+### lyrics — 双语时间轴同步歌词（Chart v4）
+
+在演奏界面底部通栏上方按时间轴平滑淡入、驻留与淡出显示（可在设置中独立开关）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `time` | int | 是 | 本句歌词起始时间（毫秒，`>= 0`） |
+| `end_time` | int | 是 | 本句歌词结束时间（毫秒，`> time`） |
+| `text` | string | 是 | 主行歌词文本（如中文原词） |
+| `sub_text` | string | 否 | 副行译文或日/英双语对照（可选） |
 
 ---
 
@@ -236,3 +290,4 @@ resources/charts/{chart_id}/   （或打包为单文件 {chart_id}.sakura）
 | v1 | 初始版本，chart.json + mousechart.json + info.json 分离 |
 | v2 | 合并键盘/鼠标音符到单文件，新增 timing_points / sv_points / 多难度支持 |
 | v3 | 向后兼容扩展：新增 `lane = 4` 空格樱枝横梁、`link_id` 跨区连携同押、`require_lane` 樱绽键鼠组合技 |
+| v4 | 向后兼容扩展：新增 `stage_events`（`pulse` / `vignette` / `tint` / `petal_burst` 舞台氛围演出）与 `lyrics` 双语时间轴同步歌词 |

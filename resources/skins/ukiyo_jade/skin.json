@@ -1,0 +1,27 @@
+{
+  "id": "ukiyo_jade",
+  "name": "浮世金翠 · Ukiyo Jade-Gold",
+  "author": "Sakura Studio",
+  "description": "东方青玉翡翠与鎏金朱砂古风配色及竹韵太鼓打击音",
+  "hitsound_set": "ukiyo",
+  "outer_gem_top": [148, 238, 202, 248],
+  "outer_gem_bot": [74, 168, 138, 238],
+  "inner_gem_top": [252, 232, 178, 248],
+  "inner_gem_bot": [206, 162, 96, 238],
+  "thumb_gem_top": [255, 176, 122, 248],
+  "thumb_gem_bot": [214, 92, 78, 238],
+  "chord_color": [248, 218, 146, 242],
+  "judge_line": [244, 214, 148, 246],
+  "circle_color": [126, 232, 192, 255],
+  "slider_core": [248, 222, 158, 242],
+  "slider_edge": [118, 226, 188, 208],
+  "approach_start": [148, 238, 202, 228],
+  "approach_end": [252, 212, 136, 240],
+  "judge_colors": [
+    [252, 218, 132, 255],
+    [138, 236, 198, 255],
+    [186, 232, 154, 255],
+    [242, 168, 108, 255],
+    [226, 98, 92, 255]
+  ]
+}

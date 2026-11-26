@@ -233,6 +233,12 @@ export function validateSakuraPackage(zipBuf: Buffer, customDescription = ""): V
   const description = (customDescription || (typeof info.description === "string" ? info.description : typeof info.source === "string" ? info.source : "")).trim().slice(0, 500);
   const bpm = Number(info.bpm ?? 120);
 
+  if (info.version !== undefined && info.version !== null) {
+    const infoVersion = Number(info.version);
+    if (!Number.isInteger(infoVersion) || infoVersion < 1 || infoVersion > 4) {
+      throw new Error("info.json version must be in 1..4.");
+    }
+  }
   if (!title) throw new Error("info.json requires a non-empty title.");
   if (!Number.isFinite(bpm) || bpm <= 0 || bpm > 1000) {
     throw new Error("info.json bpm must be in (0, 1000].");
@@ -284,6 +290,69 @@ export function validateSakuraPackage(zipBuf: Buffer, customDescription = ""): V
       chartJson = JSON.parse(chartRaw.toString("utf8")) as Record<string, unknown>;
     } catch {
       throw new Error(`Invalid JSON in difficulty '${chartFile}'.`);
+    }
+
+    if (chartJson.version !== undefined && chartJson.version !== null) {
+      const chartVersion = Number(chartJson.version);
+      if (!Number.isInteger(chartVersion) || chartVersion < 1 || chartVersion > 4) {
+        throw new Error(`Unsupported chart version in '${chartFile}'.`);
+      }
+    }
+
+    if (chartJson.stage_events !== undefined && chartJson.stage_events !== null) {
+      if (!Array.isArray(chartJson.stage_events) || chartJson.stage_events.length > 10000) {
+        throw new Error(`Invalid stage_events in '${chartFile}'.`);
+      }
+      for (const rawEv of chartJson.stage_events) {
+        if (!rawEv || typeof rawEv !== "object" || Array.isArray(rawEv)) {
+          throw new Error(`Invalid stage_event in '${chartFile}'.`);
+        }
+        const ev = rawEv as Record<string, unknown>;
+        const time = Number(ev.time ?? 0);
+        const dur = Number(ev.duration ?? 600);
+        const type = ev.type === undefined || ev.type === null ? "pulse" : typeof ev.type === "string" ? ev.type : "";
+        const intensity = Number(ev.intensity ?? 0.5);
+        if (
+          !Number.isFinite(time) || time < 0 || time > 3600000 ||
+          !Number.isFinite(dur) || dur < 0 || dur > 3600000 ||
+          !Number.isFinite(intensity) || intensity < 0 || intensity > 4 ||
+          !type
+        ) {
+          throw new Error(`Invalid stage_event in '${chartFile}'.`);
+        }
+        if (ev.color !== undefined && ev.color !== null) {
+          if (
+            !Array.isArray(ev.color) || ev.color.length < 3 ||
+            !Number.isFinite(Number(ev.color[0])) ||
+            !Number.isFinite(Number(ev.color[1])) ||
+            !Number.isFinite(Number(ev.color[2]))
+          ) {
+            throw new Error(`Invalid stage_event color in '${chartFile}'.`);
+          }
+        }
+      }
+    }
+
+    if (chartJson.lyrics !== undefined && chartJson.lyrics !== null) {
+      if (!Array.isArray(chartJson.lyrics) || chartJson.lyrics.length > 5000) {
+        throw new Error(`Invalid lyrics in '${chartFile}'.`);
+      }
+      for (const rawLy of chartJson.lyrics) {
+        if (!rawLy || typeof rawLy !== "object" || Array.isArray(rawLy)) {
+          throw new Error(`Invalid lyric entry in '${chartFile}'.`);
+        }
+        const line = rawLy as Record<string, unknown>;
+        const time = Number(line.time ?? 0);
+        const endTime = Number(line.end_time ?? time + 2500);
+        if (
+          !Number.isFinite(time) || time < 0 || time > 3600000 ||
+          !Number.isFinite(endTime) || endTime < time || endTime > 3660000 ||
+          (line.text !== undefined && line.text !== null && typeof line.text !== "string") ||
+          (line.sub_text !== undefined && line.sub_text !== null && typeof line.sub_text !== "string")
+        ) {
+          throw new Error(`Invalid lyric entry in '${chartFile}'.`);
+        }
+      }
     }
 
     const kbNotes = Array.isArray(chartJson.keyboard_notes) ? chartJson.keyboard_notes : [];

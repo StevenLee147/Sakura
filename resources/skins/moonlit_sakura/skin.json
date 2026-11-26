@@ -1,0 +1,27 @@
+{
+  "id": "moonlit_sakura",
+  "name": "墨樱流光 · Moonlit Ink-Sakura",
+  "author": "Sakura Studio",
+  "description": "经典夜樱粉金琉璃配色与清脆晶石打击音",
+  "hitsound_set": "default",
+  "outer_gem_top": [252, 198, 222, 246],
+  "outer_gem_bot": [224, 128, 172, 236],
+  "inner_gem_top": [178, 228, 255, 246],
+  "inner_gem_bot": [108, 168, 236, 236],
+  "thumb_gem_top": [255, 228, 166, 248],
+  "thumb_gem_bot": [238, 162, 198, 238],
+  "chord_color": [255, 234, 172, 240],
+  "judge_line": [252, 224, 168, 245],
+  "circle_color": [246, 178, 208, 255],
+  "slider_core": [252, 222, 164, 240],
+  "slider_edge": [142, 228, 236, 200],
+  "approach_start": [126, 224, 255, 225],
+  "approach_end": [252, 216, 152, 235],
+  "judge_colors": [
+    [255, 224, 150, 255],
+    [142, 222, 252, 255],
+    [154, 232, 192, 255],
+    [246, 186, 134, 255],
+    [238, 118, 138, 255]
+  ]
+}

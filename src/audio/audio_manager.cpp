@@ -11,6 +11,7 @@
 #include "time_stretcher.h"
 #include "core/config.h"
 #include "core/paths.h"
+#include "core/skin_manager.h"
 #include <algorithm>
 #include <cmath>
 #include "utils/logger.h"
@@ -590,36 +591,73 @@ void AudioManager::SetPlaybackSpeed(float speed)
 
 bool AudioManager::LoadHitsoundSet(std::string_view name)
 {
-    // 先生成 v3 多瞬态清脆合成音效（升级缓存目录确保老存档立即获得新版打击音）
-    SfxGenerator::GenerateDefaults(sakura::core::Paths::User("cache/sfx-v3"));
+    // 生成 v4 六套主题合成音效（升级缓存目录确保全部 6 套打击音干净生成）
+    const std::string cacheRoot   = sakura::core::Paths::User("cache/sfx-v4");
+    const std::string defaultBase = sakura::core::Paths::User("cache/sfx-v4/default/");
+    SfxGenerator::GenerateDefaults(cacheRoot);
 
-    m_hitsoundSetName = std::string(name);
-    std::string base = sakura::core::Paths::User("cache/sfx-v3/" + m_hitsoundSetName + "/");
+    const std::string requestedName(name);
+    bool useRequestedDir = false;
+    std::string requestedBase = defaultBase;
+    if (!requestedName.empty() && requestedName != "." && requestedName != ".." && requestedName != "ui")
+    {
+        std::filesystem::path candidateDir = std::filesystem::path(cacheRoot) / requestedName;
+        std::error_code ec;
+        if (std::filesystem::is_directory(candidateDir, ec))
+        {
+            useRequestedDir = true;
+            requestedBase   = sakura::core::Paths::User("cache/sfx-v4/" + requestedName + "/");
+        }
+    }
 
-    m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = base + "tap.wav";
-    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = base + "hold_start.wav";
-    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldTick)]    = base + "hold_tick.wav";
-    m_hitsoundPaths[static_cast<int>(HitsoundType::Circle)]      = base + "circle.wav";
-    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderStart)] = base + "slider_start.wav";
+    m_hitsoundSetName = useRequestedDir ? requestedName : "default";
+    if (!useRequestedDir && !requestedName.empty() && requestedName != "default")
+    {
+        LOG_WARN("[AudioManager] 未知或缺失 hitsound set '{}'，回退至 default", requestedName);
+    }
 
-    m_judgeSFXPaths[0] = base + "perfect.wav";
-    m_judgeSFXPaths[1] = base + "great.wav";
-    m_judgeSFXPaths[2] = base + "good.wav";
-    m_judgeSFXPaths[3] = base + "bad.wav";
-    m_judgeSFXPaths[4] = base + "miss.wav";
+    auto& skinMgr = sakura::core::SkinManager::GetInstance();
+    auto resolveWavPath = [&](std::string_view fileName) -> std::string
+    {
+        std::string customPath = skinMgr.ResolveCustomHitsoundFile(fileName);
+        if (!customPath.empty())
+            return customPath;
+
+        if (useRequestedDir)
+        {
+            std::string candidate = requestedBase + std::string(fileName);
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec))
+                return candidate;
+        }
+
+        return defaultBase + std::string(fileName);
+    };
+
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = resolveWavPath("tap.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = resolveWavPath("hold_start.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldTick)]    = resolveWavPath("hold_tick.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Circle)]      = resolveWavPath("circle.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderStart)] = resolveWavPath("slider_start.wav");
+
+    m_judgeSFXPaths[0] = resolveWavPath("perfect.wav");
+    m_judgeSFXPaths[1] = resolveWavPath("great.wav");
+    m_judgeSFXPaths[2] = resolveWavPath("good.wav");
+    m_judgeSFXPaths[3] = resolveWavPath("bad.wav");
+    m_judgeSFXPaths[4] = resolveWavPath("miss.wav");
 
     // UI 音效统一放 ui/
-    std::string ui = sakura::core::Paths::User("cache/sfx-v3/ui/");
-    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]   = ui + "button_hover.wav";
-    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]   = ui + "button_click.wav";
-    m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]    = ui + "transition.wav";
-    m_uiSFXPaths[static_cast<int>(UISFXType::ResultScore)]   = ui + "result_score.wav";
-    m_uiSFXPaths[static_cast<int>(UISFXType::ResultGrade)]   = ui + "result_grade.wav";
-    m_uiSFXPaths[static_cast<int>(UISFXType::Toast)]         = ui + "toast.wav";
+    std::string ui = sakura::core::Paths::User("cache/sfx-v4/ui/");
+    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]     = ui + "button_hover.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]     = ui + "button_click.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]      = ui + "transition.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ResultScore)]     = ui + "result_score.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::ResultGrade)]     = ui + "result_grade.wav";
+    m_uiSFXPaths[static_cast<int>(UISFXType::Toast)]           = ui + "toast.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationBeat)] = ui + "calibration_beat.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationHit)]  = ui + "calibration_hit.wav";
 
-    LOG_INFO("[AudioManager] 已加载 hitsound set: {}", name);
+    LOG_INFO("[AudioManager] 已加载 hitsound set: {} (requested={})", m_hitsoundSetName, name);
     for (const auto& path : m_hitsoundPaths) CacheSFX(path);
     for (const auto& path : m_judgeSFXPaths) CacheSFX(path);
     for (const auto& path : m_uiSFXPaths) CacheSFX(path);

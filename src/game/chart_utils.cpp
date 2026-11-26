@@ -213,4 +213,100 @@ std::vector<CrossZoneSyncPair> FindCrossZoneSyncPairs(std::span<const KeyboardNo
     return pairs;
 }
 
+StageVisualState EvaluateStageVisuals(const ChartData& chart, int nowMs, bool reducedMotion)
+{
+    constexpr float kPi = 3.14159265358979323846f;
+    StageVisualState state;
+    float bestTintRaw = 0.0f;
+
+    for (const auto& ev : chart.stageEvents)
+    {
+        const int span = std::max(1, ev.duration);
+        if (nowMs < ev.time || nowMs > ev.time + span)
+            continue;
+        if (!std::isfinite(ev.intensity) || ev.intensity <= 0.0f)
+            continue;
+
+        const float progress = std::clamp(static_cast<float>(nowMs - ev.time) / static_cast<float>(span), 0.0f, 1.0f);
+        if (ev.type == "pulse")
+        {
+            const float inv = 1.0f - progress;
+            const float env = inv * inv * inv;
+            if (!reducedMotion)
+                state.pulseZoom = std::max(state.pulseZoom, std::clamp(ev.intensity * env, 0.0f, 1.0f));
+        }
+        else
+        {
+            const float env = std::clamp(std::sin(progress * kPi), 0.0f, 1.0f);
+            if (ev.type == "vignette")
+            {
+                state.vignetteBoost = std::max(state.vignetteBoost, std::clamp(ev.intensity * env, 0.0f, 1.0f));
+            }
+            else if (ev.type == "tint")
+            {
+                const float rawTint = ev.intensity * env;
+                if (rawTint > bestTintRaw)
+                {
+                    bestTintRaw = rawTint;
+                    state.tintStrength = std::clamp(rawTint, 0.0f, 1.0f);
+                    state.tintR = std::clamp(ev.colorR, 0, 255);
+                    state.tintG = std::clamp(ev.colorG, 0, 255);
+                    state.tintB = std::clamp(ev.colorB, 0, 255);
+                }
+            }
+            else if (ev.type == "petal_burst")
+            {
+                state.petalRateMult = std::max(
+                    state.petalRateMult,
+                    1.0f + std::clamp(ev.intensity, 0.0f, 3.0f) * env * 2.5f);
+            }
+        }
+    }
+
+    if (reducedMotion)
+        state.pulseZoom = 0.0f;
+    return state;
+}
+
+ActiveLyricState EvaluateActiveLyric(const ChartData& chart, int nowMs)
+{
+    ActiveLyricState state;
+    const LyricLine* best = nullptr;
+    for (const auto& line : chart.lyrics)
+    {
+        if (line.time <= nowMs && nowMs <= line.endTime && !line.text.empty())
+        {
+            if (!best || line.time >= best->time)
+                best = &line;
+        }
+    }
+    if (!best)
+        return state;
+
+    state.active  = true;
+    state.text    = best->text;
+    state.subText = best->subText;
+
+    const int span      = std::max(0, best->endTime - best->time);
+    const int fadeInMs  = std::min(180, span / 3);
+    const int fadeOutMs = std::min(220, span / 3);
+    const int elapsed   = nowMs - best->time;
+    const int remaining = best->endTime - nowMs;
+
+    float opacity = 1.0f;
+    if (fadeInMs > 0 && elapsed < fadeInMs)
+    {
+        const float t = std::clamp(static_cast<float>(elapsed) / static_cast<float>(fadeInMs), 0.0f, 1.0f);
+        opacity = t * t * (3.0f - 2.0f * t);
+    }
+    else if (fadeOutMs > 0 && remaining < fadeOutMs)
+    {
+        const float t = std::clamp(static_cast<float>(remaining) / static_cast<float>(fadeOutMs), 0.0f, 1.0f);
+        opacity = t * t * (3.0f - 2.0f * t);
+    }
+
+    state.opacity = std::clamp(opacity, 0.0f, 1.0f);
+    return state;
+}
+
 } // namespace sakura::game
