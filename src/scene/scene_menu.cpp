@@ -3,6 +3,8 @@
 #include "scene_menu.h"
 #include "scene_select.h"
 #include "scene_market.h"
+#include "scene_course.h"
+#include "data/database.h"
 #include "scene_stats.h"
 #include "scene_tutorial.h"
 #include "scene_settings.h"
@@ -491,20 +493,28 @@ void SceneMenu::RefreshAccountCapsuleText()
 {
     if (!m_btnAccountCapsule) return;
     auto& api = sakura::net::APIClient::GetInstance();
+    const auto highest = sakura::data::Database::GetInstance().GetHighestClearedCourse();
+    const std::string badge = (highest && highest->cleared)
+        ? highest->badgeText
+        : api.GetCurrentUser().danBadge;
+    const std::string badgePrefix = badge.empty() ? "" : ("[" + badge + "] ");
+
     if (api.IsAuthenticated())
     {
         const auto user = api.GetCurrentUser();
         const int ppInt = static_cast<int>(std::round(user.totalPP));
-        const std::string tag = (api.GetStatus() == sakura::net::OnlineStatus::Offline ? "○ " : "● ")
+        const std::string tag = badgePrefix
+            + (api.GetStatus() == sakura::net::OnlineStatus::Offline ? "○ " : "● ")
             + user.username + "  ·  " + std::to_string(ppInt) + " PP";
         m_btnAccountCapsule->SetText(tag);
     }
     else
     {
         const auto pending = api.GetPendingScoreCount();
-        m_btnAccountCapsule->SetText(pending > 0
+        const std::string base = pending > 0
             ? ("○ 在线账号 / 待传 " + std::to_string(pending))
-            : "○ 在线账号 / 登录排行榜");
+            : "○ 在线账号 / 登录排行榜";
+        m_btnAccountCapsule->SetText(badgePrefix + base);
     }
 }
 
@@ -533,6 +543,16 @@ void SceneMenu::SetupAccountModal()
     m_btnMarket->SetOnClick([this]()
     {
         m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager), TransitionType::SakuraSweep, 0.42f);
+    });
+
+    m_btnDojo = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.695f, 0.138f, 0.253f, 0.042f },
+        "✦ 樱华道场  /  DAN DOJO", m_fontButton, 0.019f, 0.012f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnDojo.get(), sakura::ui::ButtonVariant::Primary);
+    m_btnDojo->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnDojo->SetOnClick([this]()
+    {
+        m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager), TransitionType::SakuraSweep, 0.42f);
     });
 
     m_inputServerUrl = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.315f, 0.310f, 0.044f }, m_fontButton, 0.020f, 128);
@@ -637,6 +657,7 @@ void SceneMenu::OnExit()
     for (auto& btn : m_buttons) btn.reset();
     m_btnAccountCapsule.reset();
     m_btnMarket.reset();
+    m_btnDojo.reset();
     m_inputServerUrl.reset();
     m_inputUsername.reset();
     m_inputPassword.reset();
@@ -729,8 +750,12 @@ void SceneMenu::OnUpdate(float dt)
     }
 
     RefreshAccountCapsuleText();
-    if (m_btnAccountCapsule) m_btnAccountCapsule->Update(dt);
-    if (m_btnMarket)         m_btnMarket->Update(dt);
+    if (!m_showAccountModal && !m_showEditorMenu && !m_showExitConfirm)
+    {
+        if (m_btnAccountCapsule) m_btnAccountCapsule->Update(dt);
+        if (m_btnMarket)         m_btnMarket->Update(dt);
+        if (m_btnDojo)           m_btnDojo->Update(dt);
+    }
 
     if (m_showAccountModal)
     {
@@ -911,6 +936,7 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         sakura::core::TextAlign::Left);
     if (m_btnAccountCapsule) m_btnAccountCapsule->Render(renderer);
     if (m_btnMarket)         m_btnMarket->Render(renderer);
+    if (m_btnDojo)           m_btnDojo->Render(renderer);
 
     // ── 在线账号登录/访客弹层 ─────────────────────────────────────────────────
     if (m_showAccountModal)
@@ -1449,6 +1475,8 @@ void SceneMenu::OnEvent(const SDL_Event& event)
     if (m_btnAccountCapsule && m_btnAccountCapsule->HandleEvent(event))
         return;
     if (m_btnMarket && m_btnMarket->HandleEvent(event))
+        return;
+    if (m_btnDojo && m_btnDojo->HandleEvent(event))
         return;
 
     // 分发给按钮（带当前 X 偏移做命中测试）

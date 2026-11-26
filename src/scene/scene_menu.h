@@ -122,6 +122,7 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::unique_ptr<sakura::ui::Button> m_btnAccountCapsule;
     std::unique_ptr<sakura::ui::Button> m_btnMarket;
+    std::unique_ptr<sakura::ui::Button> m_btnDojo;
     bool m_showAccountModal = false;
     std::unique_ptr<sakura::ui::TextInput> m_inputServerUrl;
     std::unique_ptr<sakura::ui::TextInput> m_inputUsername;

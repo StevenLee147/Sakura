@@ -33,7 +33,13 @@ bool GameState::Start(const ChartInfo& chartInfo, int difficultyIndex, PlayOptio
     m_chartInfo = chartInfo;
     m_chartData = std::move(*data);
     m_difficultyIndex = difficultyIndex;
-    if(options.mode==PlayMode::Standard)options=PlayOptions{};
+    if (options.mode == PlayMode::Standard)
+    {
+        options.rate = 1.0f;
+        options.startMs = 0;
+        options.endMs = 0;
+        options.loop = false;
+    }
     m_options = options;
     m_options.rate = std::clamp(options.rate, 0.5f, 2.0f);
     m_chartEndMs = ChartEndTime(m_chartData);

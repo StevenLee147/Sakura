@@ -5,6 +5,7 @@
 #include "data/database.h"
 #include "game/achievement_manager.h"
 #include "game/chart_loader.h"
+#include "game/course.h"
 #include "utils/archive.h"
 #include "utils/file_io.h"
 #include "utils/logger.h"
@@ -68,6 +69,41 @@ std::string ReadWholeFileUtf8(const std::string& path)
     oss << ifs.rdbuf();
     return oss.str();
 }
+
+std::string JsonStringOr(const nlohmann::json& obj, const char* key, const std::string& fallback = {})
+{
+    if (obj.contains(key) && obj[key].is_null())
+        return fallback;
+    return obj.value(key, fallback);
+}
+
+LeaderboardRow ParseLeaderboardRowJson(const nlohmann::json& item)
+{
+    LeaderboardRow row;
+    row.rank         = item.value("rank", 0);
+    row.scoreId      = JsonStringOr(item, "score_id", "");
+    row.userId       = JsonStringOr(item, "user_id", "");
+    row.username     = JsonStringOr(item, "username", "Unknown");
+    row.score        = item.value("score", 0);
+    row.accuracy     = item.value("accuracy", 0.0f);
+    row.maxCombo     = item.value("max_combo", 0);
+    row.grade        = JsonStringOr(item, "grade", "D");
+    row.pp           = (item.contains("pp") && item["pp"].is_number()) ? item["pp"].get<double>() : 0.0;
+    row.isFullCombo  = (item.contains("is_full_combo") && item["is_full_combo"].is_number_integer())
+        ? (item["is_full_combo"].get<int>() != 0)
+        : item.value("is_full_combo", false);
+    row.isAllPerfect = (item.contains("is_all_perfect") && item["is_all_perfect"].is_number_integer())
+        ? (item["is_all_perfect"].get<int>() != 0)
+        : item.value("is_all_perfect", false);
+    row.hasReplay    = (item.contains("has_replay") && item["has_replay"].is_number_integer())
+        ? (item["has_replay"].get<int>() != 0)
+        : item.value("has_replay", false);
+    row.playedAt     = item.value("played_at", 0LL);
+    row.danBadge     = (item.contains("dan_badge") && item["dan_badge"].is_null())
+        ? std::string{}
+        : item.value("dan_badge", "");
+    return row;
+}
 }
 
 APIClient& APIClient::GetInstance()
@@ -100,6 +136,7 @@ void APIClient::LoadFromConfig()
     m_user.username = cfg.Get<std::string>("online.username", "");
     m_user.isGuest  = cfg.Get<bool>("online.is_guest", true);
     m_user.totalPP  = cfg.Get<double>("online.total_pp", 0.0);
+    m_user.danBadge = cfg.Get<std::string>("online.dan_badge", "");
 }
 
 void APIClient::SaveToConfig() const
@@ -112,6 +149,7 @@ void APIClient::SaveToConfig() const
     cfg.Set("online.username", m_user.username);
     cfg.Set("online.is_guest", m_user.isGuest);
     cfg.Set("online.total_pp", m_user.totalPP);
+    cfg.Set("online.dan_badge", m_user.danBadge);
     cfg.Save();
 }
 
@@ -279,11 +317,14 @@ AuthResult APIClient::HandleAuthResponse(const HttpResponse& res)
         else
             out.token = GetAuthToken();
 
-        const auto& u   = j.at("user");
+        const auto& u     = j.at("user");
         out.user.id       = u.value("id", "");
         out.user.username = u.value("username", "");
         out.user.isGuest  = u.value("is_guest", false);
         out.user.totalPP  = u.value("total_pp", 0.0);
+        out.user.danBadge = (u.contains("dan_badge") && u["dan_badge"].is_null())
+            ? std::string{}
+            : u.value("dan_badge", "");
 
         {
             std::lock_guard lock(m_stateMutex);
@@ -526,21 +567,7 @@ LeaderboardResult APIClient::FetchLeaderboard(const std::string& chartId, const 
         {
             for (const auto& item : j["entries"])
             {
-                LeaderboardRow row;
-                row.rank         = item.value("rank", 0);
-                row.scoreId      = item.value("score_id", "");
-                row.userId       = item.value("user_id", "");
-                row.username     = item.value("username", "Unknown");
-                row.score        = item.value("score", 0);
-                row.accuracy     = item.value("accuracy", 0.0f);
-                row.maxCombo     = item.value("max_combo", 0);
-                row.grade        = item.value("grade", "D");
-                row.pp           = item.value("pp", 0.0);
-                row.isFullCombo  = item.value("is_full_combo", false);
-                row.isAllPerfect = item.value("is_all_perfect", false);
-                row.hasReplay    = item.value("has_replay", false);
-                row.playedAt     = item.value("played_at", 0LL);
-                out.entries.push_back(std::move(row));
+                out.entries.push_back(ParseLeaderboardRowJson(item));
             }
         }
         return out;
@@ -1123,10 +1150,42 @@ CloudSyncResult APIClient::SyncCloudSave()
         achArr.push_back({ { "id", a.id }, { "unlocked_at", a.unlockedAt } });
     }
 
+    nlohmann::json coursesArr = nlohmann::json::array();
+    const auto localCourses = db.GetAllCourseRecords();
+    for (const auto& c : localCourses)
+    {
+        coursesArr.push_back({
+            { "course_id", c.courseId },
+            { "badge_text", c.badgeText },
+            { "dan_rank", c.danRank },
+            { "total_score", c.totalScore },
+            { "avg_accuracy", c.avgAccuracy },
+            { "remaining_life", c.remainingLife },
+            { "cleared", c.cleared },
+            { "cleared_at", c.clearedAt }
+        });
+    }
+
     const long long nowSec = static_cast<long long>(
         std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
-    long long localSettingsTs = cfg.Get<long long>("online.settings_updated_at", 0LL);
+    const long long origLocalSettingsTs = cfg.Get<long long>("online.settings_updated_at", 0LL);
+    long long localSettingsTs           = origLocalSettingsTs;
+
+    const auto localCols = sakura::game::CollectionManager::LoadFromConfig();
+    if (!localCols.empty() && localSettingsTs == 0)
+        localSettingsTs = nowSec;
+
+    nlohmann::json colsArr = nlohmann::json::array();
+    for (const auto& col : localCols)
+    {
+        colsArr.push_back({
+            { "id", col.id },
+            { "name", col.name },
+            { "chart_ids", col.chartIds },
+            { "updated_at", col.updatedAt }
+        });
+    }
 
     nlohmann::json settingsObj = {
         { "note_speed", cfg.Get<float>("gameplay.note_speed", 5.0f) },
@@ -1137,12 +1196,14 @@ CloudSyncResult APIClient::SyncCloudSave()
         { "key_lane_1", cfg.Get<int>("input.key_lane_1", 22) },
         { "key_lane_2", cfg.Get<int>("input.key_lane_2", 7) },
         { "key_lane_3", cfg.Get<int>("input.key_lane_3", 9) },
-        { "key_thumb",  cfg.Get<int>("input.key_thumb", 44) }
+        { "key_thumb",  cfg.Get<int>("input.key_thumb", 44) },
+        { "collections", colsArr }
     };
 
     const nlohmann::json pushBody = {
         { "scores", scoresArr },
         { "achievements", achArr },
+        { "course_records", coursesArr },
         { "settings", localSettingsTs > 0 ? settingsObj : nlohmann::json::object() },
         { "settings_updated_at", localSettingsTs }
     };
@@ -1207,6 +1268,45 @@ CloudSyncResult APIClient::SyncCloudSave()
             sakura::game::AchievementManager::GetInstance().ReloadUnlocked();
         }
 
+        if (j.contains("course_records") && j["course_records"].is_array())
+        {
+            for (const auto& rc : j["course_records"])
+            {
+                if (!rc.is_object()) continue;
+                sakura::game::CourseRecord cr;
+                cr.courseId      = JsonStringOr(rc, "course_id", "");
+                cr.badgeText     = JsonStringOr(rc, "badge_text", "");
+                cr.danRank       = rc.value("dan_rank", 0);
+                cr.totalScore    = rc.value("total_score", 0);
+                cr.avgAccuracy   = rc.value("avg_accuracy", 0.0f);
+                cr.remainingLife = rc.value("remaining_life", 0.0f);
+                cr.cleared       = (rc.contains("cleared") && rc["cleared"].is_number_integer())
+                    ? (rc["cleared"].get<int>() != 0)
+                    : rc.value("cleared", false);
+                cr.clearedAt     = rc.value("cleared_at", 0LL);
+                if (!cr.courseId.empty() && db.MergeCloudCourseRecord(cr))
+                    ++out.coursesPulled;
+            }
+        }
+
+        if (const auto highest = db.GetHighestClearedCourse(); highest.has_value() && highest->cleared)
+        {
+            std::string badge = highest->badgeText;
+            if (badge.empty())
+            {
+                if (const auto* def = sakura::game::FindOfficialCourse(highest->courseId))
+                    badge = def->badgeText;
+            }
+            if (!badge.empty())
+            {
+                {
+                    std::lock_guard lock(m_stateMutex);
+                    m_user.danBadge = badge;
+                }
+                cfg.Set("online.dan_badge", badge);
+            }
+        }
+
         const long long remoteSetTs = j.value("settings_updated_at", 0LL);
         if (remoteSetTs > localSettingsTs && j.contains("settings") && j["settings"].is_object())
         {
@@ -1236,11 +1336,43 @@ CloudSyncResult APIClient::SyncCloudSave()
             const nlohmann::json seedBody = {
                 { "scores", nlohmann::json::array() },
                 { "achievements", nlohmann::json::array() },
+                { "course_records", nlohmann::json::array() },
                 { "settings", settingsObj },
                 { "settings_updated_at", nowSec }
             };
             GetTransport()->Send(MakeRequest("POST", "/api/v1/sync/push", seedBody.dump(), true));
             cfg.Set("online.settings_updated_at", nowSec);
+        }
+        else if (origLocalSettingsTs == 0)
+        {
+            cfg.Set("online.settings_updated_at", localSettingsTs);
+        }
+
+        if (j.contains("settings") && j["settings"].is_object() &&
+            j["settings"].contains("collections") && j["settings"]["collections"].is_array())
+        {
+            std::vector<sakura::game::SongCollection> remoteCols;
+            for (const auto& item : j["settings"]["collections"])
+            {
+                if (!item.is_object()) continue;
+                sakura::game::SongCollection col;
+                col.id        = JsonStringOr(item, "id", "");
+                col.name      = JsonStringOr(item, "name", "");
+                col.updatedAt = item.value("updated_at", 0LL);
+                if (item.contains("chart_ids") && item["chart_ids"].is_array())
+                {
+                    for (const auto& cid : item["chart_ids"])
+                    {
+                        if (cid.is_string())
+                            col.chartIds.push_back(cid.get<std::string>());
+                    }
+                }
+                if (!col.id.empty() || !col.name.empty())
+                    remoteCols.push_back(std::move(col));
+            }
+            const auto merged = sakura::game::CollectionManager::MergeCollections(
+                sakura::game::CollectionManager::LoadFromConfig(), remoteCols);
+            sakura::game::CollectionManager::SaveToConfig(merged);
         }
 
         cfg.Set("online.last_cloud_sync_ts", out.syncedAt);
@@ -1304,6 +1436,185 @@ void APIClient::SyncCloudSaveAsync(std::function<void(CloudSyncResult)> cb)
     PostTask([this, cb = std::move(cb)]() mutable
     {
         auto res = SyncCloudSave();
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+DailyInfoResult APIClient::FetchDailyChallenge(const std::string& dateUtc8, int limit)
+{
+    DailyInfoResult out;
+    const std::string targetDate = dateUtc8.empty() ? sakura::game::GetCurrentDateUtc8() : dateUtc8;
+    const std::string path = "/api/v1/daily?date=" + UrlEncode(targetDate)
+        + "&limit=" + std::to_string(std::max(1, limit));
+
+    const auto res = GetTransport()->Send(MakeRequest("GET", path, {}, true));
+    if (res.IsNetworkError() || res.statusCode == 404)
+    {
+        if (res.IsNetworkError())
+            m_status.store(OnlineStatus::Offline);
+        out.ok              = true;
+        out.offlineFallback = true;
+        out.spec            = sakura::game::ComputeOfflineDailyChallenge(targetDate);
+        return out;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !j.value("ok", false))
+        {
+            out.error = JsonStringOr(j, "error", "获取每日挑战失败");
+            return out;
+        }
+
+        const nlohmann::json& d = (j.contains("daily") && j["daily"].is_object())
+            ? j["daily"]
+            : ((j.contains("challenge") && j["challenge"].is_object())
+                ? j["challenge"]
+                : ((j.contains("spec") && j["spec"].is_object()) ? j["spec"] : j));
+
+        out.ok                   = true;
+        out.offlineFallback      = false;
+        out.spec.dateUtc8        = JsonStringOr(d, "date", targetDate);
+        out.spec.chartId         = JsonStringOr(d, "chart_id", "");
+        out.spec.chartTitle      = JsonStringOr(d, "chart_title", "");
+        out.spec.difficultyName  = (d.contains("difficulty") && d["difficulty"].is_string())
+            ? d["difficulty"].get<std::string>()
+            : JsonStringOr(d, "difficulty_name", "Hard");
+        out.spec.difficultyLevel = d.value("difficulty_level", 7.0f);
+        out.spec.goalText        = JsonStringOr(d, "goal_text", "");
+        out.spec.targetScore     = d.value("target_score", 950000);
+
+        const nlohmann::json& lbJson = (j.contains("leaderboard") && j["leaderboard"].is_object())
+            ? j["leaderboard"]
+            : ((j.contains("entries") || j.contains("my_rank")) ? j : d);
+
+        out.leaderboard.ok = true;
+        if (lbJson.contains("my_rank") && lbJson["my_rank"].is_number_integer())
+            out.leaderboard.myRank = lbJson["my_rank"].get<int>();
+        else if (j.contains("my_rank") && j["my_rank"].is_number_integer())
+            out.leaderboard.myRank = j["my_rank"].get<int>();
+
+        if (lbJson.contains("entries") && lbJson["entries"].is_array())
+        {
+            for (const auto& item : lbJson["entries"])
+                out.leaderboard.entries.push_back(ParseLeaderboardRowJson(item));
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.ok    = false;
+        out.error = std::string("每日挑战响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
+                                                   const sakura::game::GameResult& result)
+{
+    DailyScoreSubmitResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "请先登录在线账号后再提交每日挑战成绩";
+        return out;
+    }
+    if (result.assisted)
+    {
+        out.error = "辅助演奏不计入每日挑战排行榜";
+        return out;
+    }
+
+    const std::string targetDate = dateUtc8.empty() ? sakura::game::GetCurrentDateUtc8() : dateUtc8;
+    const int totalJudged = result.totalJudgments > 0
+        ? result.totalJudgments
+        : (result.perfectCount + result.greatCount + result.goodCount + result.badCount + result.missCount);
+
+    nlohmann::json payload = {
+        { "date", targetDate },
+        { "chart_id", result.chartId },
+        { "chart_title", result.chartTitle },
+        { "chart_hash", result.chartHash.empty() ? result.chartId : result.chartHash },
+        { "difficulty", result.difficulty },
+        { "difficulty_level", result.difficultyLevel },
+        { "score", result.score },
+        { "accuracy", result.accuracy },
+        { "max_combo", result.maxCombo },
+        { "grade", GradeToStr(result.grade) },
+        { "perfect_count", result.perfectCount },
+        { "great_count", result.greatCount },
+        { "good_count", result.goodCount },
+        { "bad_count", result.badCount },
+        { "miss_count", result.missCount },
+        { "total_judgments", totalJudged },
+        { "synergy_count", result.synergyCount },
+        { "is_full_combo", result.isFullCombo },
+        { "is_all_perfect", result.isAllPerfect },
+        { "assisted", result.assisted },
+        { "playback_rate", result.playbackRate }
+    };
+
+    const std::string replayRaw = ReadWholeFileUtf8(result.replayFile);
+    if (!replayRaw.empty())
+        payload["replay_data"] = replayRaw;
+
+    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/daily/scores", payload.dump(), true));
+    if (res.IsNetworkError())
+    {
+        m_status.store(OnlineStatus::Offline);
+        out.error = res.error.empty() ? "离线：无法提交每日挑战成绩" : res.error;
+        return out;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !j.value("ok", false))
+        {
+            out.error = JsonStringOr(j, "error", "每日挑战成绩提交失败");
+            return out;
+        }
+        out.ok      = true;
+        out.rank    = (j.contains("rank") && j["rank"].is_number_integer()) ? j["rank"].get<int>() : 0;
+        out.newBest = (j.contains("new_best") && j["new_best"].is_boolean())
+            ? j["new_best"].get<bool>()
+            : j.value("new_best", false);
+        if (j.contains("total_pp") && j["total_pp"].is_number())
+        {
+            {
+                std::lock_guard lock(m_stateMutex);
+                m_user.totalPP = j["total_pp"].get<double>();
+            }
+            SaveToConfig();
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.ok    = false;
+        out.error = std::string("每日挑战成绩响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+void APIClient::FetchDailyChallengeAsync(const std::string& dateUtc8, int limit,
+                                         std::function<void(DailyInfoResult)> cb)
+{
+    PostTask([this, dateUtc8, limit, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchDailyChallenge(dateUtc8, limit);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::SubmitDailyScoreAsync(const std::string& dateUtc8, const sakura::game::GameResult& result,
+                                      std::function<void(DailyScoreSubmitResult)> cb)
+{
+    PostTask([this, dateUtc8, result, cb = std::move(cb)]() mutable
+    {
+        auto res = SubmitDailyScore(dateUtc8, result);
         if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }

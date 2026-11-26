@@ -3,8 +3,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { createApp } from "../src/app.js";
+import { computeDailyChallenge, createApp } from "../src/app.js";
 import { PostgresCompatibleAdapter, SqliteStorageAdapter } from "../src/storage/index.js";
 import { createStoreZipArchive } from "../src/zip_validator.js";
 
@@ -390,6 +391,350 @@ test("Sakura Online Server v1.2.0 Chart Market & Cloud Sync", async () => {
     assert.equal(pullJson.achievements[0].id, "first_clear");
     assert.equal(pullJson.achievements[0].unlocked_at, 1700000050);
     assert.equal(pullJson.settings.note_speed, 6.5);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Sakura Online Server v1.4.0 Daily Challenge, Dan Badge Sync & Multi-Collection Union Sync", async () => {
+  const tmpDir = path.join(process.cwd(), `.sakura-v140-test-${crypto.randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  // Pre-seed legacy users table without dan_badge to verify PRAGMA migration
+  {
+    const legacyDb = new DatabaseSync(path.join(tmpDir, "online.db"));
+    legacyDb.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        is_guest INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    legacyDb.close();
+  }
+
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v140-test-secret", serverVersion: "v1.4.0" });
+
+  try {
+    // 1. Deterministic FNV-1a Daily Challenge validation
+    const defaultSpec = computeDailyChallenge();
+    assert.match(defaultSpec.date, /^\d{4}-\d{2}-\d{2}$/);
+    const specA = computeDailyChallenge("2026-11-26");
+    const specA2 = computeDailyChallenge("2026-11-26");
+    assert.deepEqual(specA, specA2);
+    assert.throws(() => computeDailyChallenge("2026/11/26"));
+
+    const badDailyRes = await app.request("/api/v1/daily?date=bad-date");
+    assert.equal(badDailyRes.status, 400);
+
+    // 2. Register + Guest auth include dan_badge
+    const regRes = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraKaiden", password: "sakura123456" }),
+    });
+    assert.equal(regRes.status, 201);
+    const regJson = (await regRes.json()) as {
+      token: string;
+      user: { id: string; username: string; dan_badge: string };
+    };
+    assert.equal(regJson.user.dan_badge, "");
+
+    const guestRes = await app.request("/api/v1/auth/guest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: "Challenger" }),
+    });
+    assert.equal(guestRes.status, 201);
+    const guestJson = (await guestRes.json()) as {
+      token: string;
+      user: { dan_badge: string };
+    };
+    assert.equal(guestJson.user.dan_badge, "");
+
+    // 3. Dan badge sync (highest cleared dan_rank wins; failed higher dan does not overwrite)
+    const syncDan1 = await app.request("/api/v1/sync/push", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scores: [],
+        achievements: [],
+        course_records: [
+          {
+            course_id: "dan_shodan",
+            badge_text: "初段",
+            dan_rank: 1,
+            total_score: 2850000,
+            avg_accuracy: 96.5,
+            remaining_life: 72.0,
+            cleared: true,
+            cleared_at: 1700010000,
+          },
+          {
+            course_id: "dan_kaiden",
+            badge_text: "皆传",
+            dan_rank: 11,
+            total_score: 1800000,
+            avg_accuracy: 88.0,
+            remaining_life: 0.0,
+            cleared: false,
+            cleared_at: 0,
+          },
+        ],
+        settings: {
+          note_speed: 6.5,
+          collections: [
+            { id: "col_fav", name: "Favorites", chart_ids: ["spring_breeze", "starry_sky"], updated_at: 1700010000 },
+            { id: "col_dojo", name: "Dojo Prep", chart_ids: ["instant_bloom"], updated_at: 1700010000 },
+          ],
+        },
+        settings_updated_at: 1700010000,
+      }),
+    });
+    assert.equal(syncDan1.status, 200);
+
+    const meAfterShodan = await app.request("/api/v1/auth/me", {
+      headers: { Authorization: `Bearer ${regJson.token}` },
+    });
+    const meShodanJson = (await meAfterShodan.json()) as { user: { dan_badge: string } };
+    assert.equal(meShodanJson.user.dan_badge, "初段");
+
+    // Clear Kaiden (rank 11) and also push lower Nidan (rank 2) + multi-collection union on timestamp tie
+    const syncDan2 = await app.request("/api/v1/sync/push", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scores: [],
+        achievements: [],
+        course_records: [
+          {
+            course_id: "dan_kaiden",
+            badge_text: "皆传",
+            dan_rank: 11,
+            total_score: 2965000,
+            avg_accuracy: 99.1,
+            remaining_life: 44.5,
+            cleared: true,
+            cleared_at: 1700020000,
+          },
+          {
+            course_id: "dan_nidan",
+            badge_text: "二段",
+            dan_rank: 2,
+            total_score: 2900000,
+            avg_accuracy: 97.8,
+            remaining_life: 85.0,
+            cleared: true,
+            cleared_at: 1700020500,
+          },
+        ],
+        settings: {
+          note_speed: 7.0,
+          collections: [
+            { id: "col_fav", name: "Favorites", chart_ids: ["starry_sky", "digital_dream"], updated_at: 1700010000 },
+            { id: "col_chill", name: "Chill", chart_ids: ["sakura_breath"], updated_at: 1700010000 },
+          ],
+        },
+        settings_updated_at: 1700010000,
+      }),
+    });
+    assert.equal(syncDan2.status, 200);
+
+    const loginRes = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraKaiden", password: "sakura123456" }),
+    });
+    const loginJson = (await loginRes.json()) as { user: { dan_badge: string } };
+    assert.equal(loginJson.user.dan_badge, "皆传");
+
+    const pullRes = await app.request("/api/v1/sync/pull", {
+      headers: { Authorization: `Bearer ${regJson.token}` },
+    });
+    assert.equal(pullRes.status, 200);
+    const pullJson = (await pullRes.json()) as {
+      course_records: Array<{ course_id: string; badge_text: string; dan_rank: number; cleared: boolean }>;
+      settings: {
+        note_speed: number;
+        collections: Array<{ id: string; name: string; chart_ids: string[] }>;
+      };
+    };
+    assert.equal(pullJson.course_records.length, 3);
+    const kaidenRec = pullJson.course_records.find((c) => c.course_id === "dan_kaiden");
+    assert.ok(kaidenRec);
+    assert.equal(kaidenRec.cleared, true);
+    assert.equal(pullJson.settings.note_speed, 7.0);
+    assert.equal(pullJson.settings.collections.length, 3);
+    const favCol = pullJson.settings.collections.find((c) => c.id === "col_fav");
+    assert.ok(favCol);
+    assert.deepEqual(favCol.chart_ids, ["spring_breeze", "starry_sky", "digital_dream"]);
+
+    // 4. Daily Challenge GET, POST score validation, ranking & dan_badge exposure
+    const targetDate = "2026-11-26";
+    const dailyGet1 = await app.request(`/api/v1/daily?date=${targetDate}&limit=20`);
+    assert.equal(dailyGet1.status, 200);
+    const dailyInfo1 = (await dailyGet1.json()) as {
+      ok: boolean;
+      daily: {
+        date: string;
+        chart_id: string;
+        chart_title: string;
+        difficulty: string;
+        difficulty_level: number;
+        goal_text: string;
+        target_score: number;
+      };
+      my_rank: number | null;
+      entries: unknown[];
+    };
+    assert.equal(dailyInfo1.ok, true);
+    assert.equal(dailyInfo1.daily.date, targetDate);
+    assert.equal(dailyInfo1.daily.chart_id, specA.chartId);
+    assert.equal(dailyInfo1.daily.difficulty, specA.difficulty);
+    assert.equal(dailyInfo1.my_rank, null);
+    assert.equal(dailyInfo1.entries.length, 0);
+
+    // Reject wrong chart/difficulty on daily endpoint
+    const mismatchRes = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: targetDate,
+        chart_id: "wrong_chart_id",
+        chart_hash: "hash_daily",
+        difficulty: specA.difficulty,
+        difficulty_level: specA.difficultyLevel,
+        score: 980000,
+        accuracy: 99.0,
+        max_combo: 200,
+        grade: "S",
+        perfect_count: 198,
+        great_count: 2,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        assisted: false,
+      }),
+    });
+    assert.equal(mismatchRes.status, 422);
+
+    // Submit valid daily scores for guest & Kaiden user
+    const guestDailySubmit = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${guestJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: targetDate,
+        chart_id: specA.chartId,
+        chart_title: specA.chartTitle,
+        chart_hash: "hash_daily",
+        difficulty: specA.difficulty,
+        difficulty_level: specA.difficultyLevel,
+        score: 952000,
+        accuracy: 97.2,
+        max_combo: 175,
+        grade: "S",
+        perfect_count: 188,
+        great_count: 12,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(guestDailySubmit.status, 201);
+    const guestDailyJson = (await guestDailySubmit.json()) as { ok: boolean; date: string; rank: number; new_best: boolean };
+    assert.equal(guestDailyJson.ok, true);
+    assert.equal(guestDailyJson.date, targetDate);
+    assert.equal(guestDailyJson.rank, 1);
+    assert.equal(guestDailyJson.new_best, true);
+
+    const kaidenDailySubmit = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: targetDate,
+        chart_id: specA.chartId,
+        chart_title: specA.chartTitle,
+        chart_hash: "hash_daily",
+        difficulty: specA.difficulty,
+        difficulty_level: specA.difficultyLevel,
+        score: 992000,
+        accuracy: 99.6,
+        max_combo: 200,
+        grade: "S",
+        perfect_count: 199,
+        great_count: 1,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(kaidenDailySubmit.status, 201);
+    const kaidenDailyJson = (await kaidenDailySubmit.json()) as { ok: boolean; date: string; rank: number; new_best: boolean };
+    assert.equal(kaidenDailyJson.rank, 1);
+    assert.equal(kaidenDailyJson.new_best, true);
+
+    const dailyLbRes = await app.request(`/api/v1/daily/leaderboard?date=${targetDate}&limit=50`, {
+      headers: { Authorization: `Bearer ${guestJson.token}` },
+    });
+    assert.equal(dailyLbRes.status, 200);
+    const dailyLbJson = (await dailyLbRes.json()) as {
+      ok: boolean;
+      date: string;
+      my_rank: number;
+      entries: Array<{ rank: number; username: string; dan_badge: string; score: number }>;
+    };
+    assert.equal(dailyLbJson.ok, true);
+    assert.equal(dailyLbJson.date, targetDate);
+    assert.equal(dailyLbJson.my_rank, 2);
+    assert.equal(dailyLbJson.entries.length, 2);
+    assert.equal(dailyLbJson.entries[0].username, "SakuraKaiden");
+    assert.equal(dailyLbJson.entries[0].dan_badge, "皆传");
+    assert.equal(dailyLbJson.entries[1].dan_badge, "");
+
+    // Also verify standard chart leaderboard exposes dan_badge
+    const normalScoreRes = await app.request("/api/v1/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: specA.chartId,
+        chart_title: specA.chartTitle,
+        chart_hash: "hash_std",
+        difficulty: specA.difficulty,
+        difficulty_level: specA.difficultyLevel,
+        score: 995000,
+        accuracy: 99.7,
+        max_combo: 200,
+        grade: "S",
+        perfect_count: 199,
+        great_count: 1,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(normalScoreRes.status, 201);
+
+    const stdLbRes = await app.request(`/api/v1/leaderboards/${specA.chartId}?difficulty=${specA.difficulty}`);
+    const stdLbJson = (await stdLbRes.json()) as { entries: Array<{ username: string; dan_badge: string }> };
+    assert.equal(stdLbJson.entries[0].username, "SakuraKaiden");
+    assert.equal(stdLbJson.entries[0].dan_badge, "皆传");
   } finally {
     storage.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

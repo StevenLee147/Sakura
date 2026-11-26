@@ -217,6 +217,16 @@ void SceneResult::OnEnter()
                 m_onlineStatusText = "○ 未计入全球榜：" + sub.error;
             }
         });
+        if (!m_result.assisted && m_options.isDailyChallenge && sakura::net::APIClient::GetInstance().IsAuthenticated())
+        {
+            sakura::net::APIClient::GetInstance().SubmitDailyScoreAsync(
+                m_options.dailyDate, m_result,
+                [this, alive](sakura::net::DailyScoreSubmitResult dres)
+                {
+                    if (!*alive || !dres.ok) return;
+                    m_onlineStatusText += "  ·  今日日榜 #" + std::to_string(dres.rank);
+                });
+        }
     }
 
     // ── 樱花飘落持续发射器 ────────────────────────────────────────────────────

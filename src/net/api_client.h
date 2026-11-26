@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/chart.h"
+#include "game/course.h"
 #include "net/http_client.h"
 
 #include <atomic>
@@ -30,6 +31,7 @@ struct OnlineUser
     std::string username;
     bool        isGuest = true;
     double      totalPP = 0.0;
+    std::string danBadge;
 };
 
 struct AuthResult
@@ -67,6 +69,7 @@ struct LeaderboardRow
     bool        isAllPerfect = false;
     bool        hasReplay = false;
     long long   playedAt = 0;
+    std::string danBadge;
 };
 
 struct LeaderboardResult
@@ -168,7 +171,25 @@ struct CloudSyncResult
     int         scoresPushed       = 0;
     int         scoresPulled       = 0;
     int         achievementsPulled = 0;
+    int         coursesPulled      = 0;
     long long   syncedAt           = 0;
+};
+
+struct DailyInfoResult
+{
+    bool                             ok              = false;
+    bool                             offlineFallback = false;
+    std::string                      error;
+    sakura::game::DailyChallengeSpec spec;
+    LeaderboardResult                leaderboard;
+};
+
+struct DailyScoreSubmitResult
+{
+    bool        ok      = false;
+    std::string error;
+    int         rank    = 0;
+    bool        newBest = false;
 };
 
 class APIClient
@@ -224,6 +245,10 @@ public:
     MarketRateResult RateMarketChart(const std::string& marketChartId, int rating, const std::string& comment = {});
     CloudSyncResult SyncCloudSave();
 
+    // v1.4.0 Daily Challenge & Dan Badge
+    DailyInfoResult FetchDailyChallenge(const std::string& dateUtc8 = {}, int limit = 20);
+    DailyScoreSubmitResult SubmitDailyScore(const std::string& dateUtc8, const sakura::game::GameResult& result);
+
     // Asynchronous calls (marshal completion callbacks onto main thread via PumpCallbacks)
     void PostTask(std::function<void()> workerTask);
     void PostMainCallback(std::function<void()> mainCallback);
@@ -247,6 +272,9 @@ public:
     void RateMarketChartAsync(const std::string& marketChartId, int rating, const std::string& comment,
                               std::function<void(MarketRateResult)> cb);
     void SyncCloudSaveAsync(std::function<void(CloudSyncResult)> cb = {});
+    void FetchDailyChallengeAsync(const std::string& dateUtc8, int limit, std::function<void(DailyInfoResult)> cb);
+    void SubmitDailyScoreAsync(const std::string& dateUtc8, const sakura::game::GameResult& result,
+                               std::function<void(DailyScoreSubmitResult)> cb);
 
 private:
     void EnsureWorker();

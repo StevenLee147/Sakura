@@ -5,8 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 import { validateSakuraPackage } from "../zip_validator.js";
 import {
   CloudAchievementRecord,
+  CloudCourseRecord,
   CloudScoreRecord,
   CloudSyncSnapshot,
+  DailyChallengeSpec,
   IStorageAdapter,
   LeaderboardEntry,
   MarketChartItem,
@@ -15,6 +17,102 @@ import {
   ScoreSubmission,
   UserRecord,
 } from "./types.js";
+
+const DAILY_CHALLENGE_POOL: ReadonlyArray<Omit<DailyChallengeSpec, "date">> = [
+  { chartId: "spring_breeze", chartTitle: "Spring Breeze", difficulty: "Hard", difficultyLevel: 5.5, goalText: "双区入门 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "sakura_awakening", chartTitle: "樱光初醒", difficulty: "Hard", difficultyLevel: 7.0, goalText: "樱枝觉醒 · 达成 955,000 分", targetScore: 955000 },
+  { chartId: "starry_sky", chartTitle: "繁星", difficulty: "Hard", difficultyLevel: 6.5, goalText: "星夜漫游 · 达成 955,000 分", targetScore: 955000 },
+  { chartId: "cherry_blossom", chartTitle: "Cherry Blossom", difficulty: "Hard", difficultyLevel: 7.0, goalText: "落樱缤纷 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "sakura_breath", chartTitle: "樱落呼吸", difficulty: "Hard", difficultyLevel: 7.5, goalText: "呼吸律动 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "distant_star", chartTitle: "遥远的星", difficulty: "Hard", difficultyLevel: 7.5, goalText: "星轨同押 · 达成 955,000 分", targetScore: 955000 },
+  { chartId: "unfallen_light", chartTitle: "樱光未落", difficulty: "Hard", difficultyLevel: 8.0, goalText: "疾风鼓点 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "digital_dream", chartTitle: "Digital Dream", difficulty: "Hard", difficultyLevel: 8.5, goalText: "流光滑条 · 达成 945,000 分", targetScore: 945000 },
+  { chartId: "sidechain_dream", chartTitle: "樱落侧链梦", difficulty: "Hard", difficultyLevel: 8.5, goalText: "律动侧链 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "flowing_petals", chartTitle: "樱落流光", difficulty: "Hard", difficultyLevel: 8.5, goalText: "流光花影 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "instant_bloom", chartTitle: "一瞬花绽", difficulty: "Hard", difficultyLevel: 9.0, goalText: "一瞬满开 · 达成 945,000 分", targetScore: 945000 },
+  { chartId: "starry_sky", chartTitle: "繁星", difficulty: "Expert", difficultyLevel: 9.5, goalText: "星穹极境 · 达成 940,000 分", targetScore: 940000 },
+];
+
+export function computeDailyChallenge(dateUtc8?: string): DailyChallengeSpec {
+  const resolved = (dateUtc8 ?? "").trim() || new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(resolved)) {
+    throw new Error("Invalid date format; expected YYYY-MM-DD.");
+  }
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < resolved.length; i++) {
+    h ^= resolved.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  const idx = h % 12;
+  return {
+    date: resolved,
+    ...DAILY_CHALLENGE_POOL[idx],
+  };
+}
+
+function extractUniqueChartIds(col: Record<string, unknown>): string[] {
+  const raw = Array.isArray(col.chart_ids) ? col.chart_ids : Array.isArray(col.chartIds) ? col.chartIds : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item === "string" && item.trim().length > 0) {
+      const id = item.trim();
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+  }
+  return out;
+}
+
+function mergeCollectionsById(
+  existingCols: unknown[],
+  incomingCols: unknown[],
+  incomingIsNewerOrTie: boolean
+): Array<Record<string, unknown>> {
+  const mergedMap = new Map<string, Record<string, unknown>>();
+  for (const raw of existingCols) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const col = raw as Record<string, unknown>;
+    const id = typeof col.id === "string" ? col.id.trim() : "";
+    if (!id) continue;
+    const copy: Record<string, unknown> = { ...col, id, chart_ids: extractUniqueChartIds(col) };
+    mergedMap.set(id, copy);
+  }
+  for (const raw of incomingCols) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const col = raw as Record<string, unknown>;
+    const id = typeof col.id === "string" ? col.id.trim() : "";
+    if (!id) continue;
+    const incomingIds = extractUniqueChartIds(col);
+    const existing = mergedMap.get(id);
+    if (!existing) {
+      mergedMap.set(id, { ...col, id, chart_ids: incomingIds });
+      continue;
+    }
+    const existingIds = extractUniqueChartIds(existing);
+    const unionSet = new Set<string>(existingIds);
+    const unionIds = [...existingIds];
+    for (const cid of incomingIds) {
+      if (!unionSet.has(cid)) {
+        unionSet.add(cid);
+        unionIds.push(cid);
+      }
+    }
+    const exTs = Number(existing.updated_at ?? existing.updatedAt ?? 0);
+    const inTs = Number(col.updated_at ?? col.updatedAt ?? 0);
+    const preferIncomingMeta = inTs > exTs || (inTs === exTs && incomingIsNewerOrTie);
+    const base: Record<string, unknown> = preferIncomingMeta ? { ...existing, ...col } : { ...col, ...existing };
+    base.id = id;
+    base.chart_ids = unionIds;
+    if ("updated_at" in existing || "updated_at" in col) {
+      base.updated_at = Math.max(exTs, inTs);
+    }
+    mergedMap.set(id, base);
+  }
+  return Array.from(mergedMap.values());
+}
 
 export function computeAuthoritativePP(sub: ScoreSubmission): number {
   const safeLevel = Math.max(0, sub.difficultyLevel || 0);
@@ -92,6 +190,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         username TEXT NOT NULL UNIQUE COLLATE NOCASE,
         password_hash TEXT NOT NULL,
         is_guest INTEGER NOT NULL DEFAULT 0,
+        dan_badge TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS scores (
@@ -193,7 +292,39 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         updated_at INTEGER NOT NULL,
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
+      CREATE TABLE IF NOT EXISTS cloud_courses (
+        user_id TEXT NOT NULL,
+        course_id TEXT NOT NULL,
+        badge_text TEXT NOT NULL DEFAULT '',
+        dan_rank INTEGER NOT NULL DEFAULT 0,
+        total_score INTEGER NOT NULL DEFAULT 0,
+        avg_accuracy REAL NOT NULL DEFAULT 0,
+        remaining_life REAL NOT NULL DEFAULT 0,
+        cleared INTEGER NOT NULL DEFAULT 0,
+        cleared_at INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, course_id)
+      );
+      CREATE TABLE IF NOT EXISTS daily_scores (
+        id TEXT PRIMARY KEY,
+        date_utc8 TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        chart_id TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        accuracy REAL NOT NULL,
+        max_combo INTEGER NOT NULL,
+        grade TEXT NOT NULL,
+        pp REAL NOT NULL,
+        is_full_combo INTEGER NOT NULL DEFAULT 0,
+        is_all_perfect INTEGER NOT NULL DEFAULT 0,
+        played_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_daily_scores_lb ON daily_scores(date_utc8, score DESC);
     `);
+    const userCols = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name?: string }>;
+    if (!userCols.some((c) => c.name === "dan_badge")) {
+      this.db.exec("ALTER TABLE users ADD COLUMN dan_badge TEXT NOT NULL DEFAULT ''");
+    }
     const cloudTbl = this.db.prepare(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cloud_best_scores'"
     ).get() as { sql?: string } | undefined;
@@ -235,9 +366,9 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     const id = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
     this.db.prepare(
-      "INSERT INTO users (id, username, password_hash, is_guest, created_at) VALUES (?, ?, '', 1, ?)"
+      "INSERT INTO users (id, username, password_hash, is_guest, dan_badge, created_at) VALUES (?, ?, '', 1, '', ?)"
     ).run(id, username, now);
-    return { id, username, passwordHash: "", isGuest: true, createdAt: now };
+    return { id, username, passwordHash: "", isGuest: true, danBadge: "", createdAt: now };
   }
 
   registerUser(username: string, passwordHash: string): UserRecord {
@@ -246,14 +377,14 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     const id = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
     this.db.prepare(
-      "INSERT INTO users (id, username, password_hash, is_guest, created_at) VALUES (?, ?, ?, 0, ?)"
+      "INSERT INTO users (id, username, password_hash, is_guest, dan_badge, created_at) VALUES (?, ?, ?, 0, '', ?)"
     ).run(id, username, passwordHash, now);
-    return { id, username, passwordHash, isGuest: false, createdAt: now };
+    return { id, username, passwordHash, isGuest: false, danBadge: "", createdAt: now };
   }
 
   findUserByUsername(username: string): UserRecord | null {
     const row = this.db.prepare(
-      "SELECT id, username, password_hash, is_guest, created_at FROM users WHERE username = ?"
+      "SELECT id, username, password_hash, is_guest, dan_badge, created_at FROM users WHERE username = ?"
     ).get(username) as Record<string, unknown> | undefined;
     if (!row) return null;
     return {
@@ -261,13 +392,14 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       username: String(row.username),
       passwordHash: String(row.password_hash),
       isGuest: Number(row.is_guest) !== 0,
+      danBadge: String(row.dan_badge || ""),
       createdAt: Number(row.created_at),
     };
   }
 
   findUserById(id: string): UserRecord | null {
     const row = this.db.prepare(
-      "SELECT id, username, password_hash, is_guest, created_at FROM users WHERE id = ?"
+      "SELECT id, username, password_hash, is_guest, dan_badge, created_at FROM users WHERE id = ?"
     ).get(id) as Record<string, unknown> | undefined;
     if (!row) return null;
     return {
@@ -275,6 +407,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       username: String(row.username),
       passwordHash: String(row.password_hash),
       isGuest: Number(row.is_guest) !== 0,
+      danBadge: String(row.dan_badge || ""),
       createdAt: Number(row.created_at),
     };
   }
@@ -331,7 +464,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
   } {
     const capped = Math.max(1, Math.min(100, limit || 50));
     const rows = this.db.prepare(`
-      SELECT s.id, s.user_id, u.username, s.score, s.accuracy, s.max_combo, s.grade, s.pp,
+      SELECT s.id, s.user_id, u.username, u.dan_badge, s.score, s.accuracy, s.max_combo, s.grade, s.pp,
              s.is_full_combo, s.is_all_perfect, s.has_replay, s.played_at
       FROM scores s
       JOIN users u ON u.id = s.user_id
@@ -341,22 +474,24 @@ export class SqliteStorageAdapter implements IStorageAdapter {
 
     const seenUsers = new Set<string>();
     const deduped: LeaderboardEntry[] = [];
+    let uniqueRank = 0;
     let myRank: number | null = null;
 
     for (const r of rows) {
       const uid = String(r.user_id);
       if (seenUsers.has(uid)) continue;
       seenUsers.add(uid);
-      const rank = deduped.length + 1;
+      uniqueRank++;
       if (currentUserId && uid === currentUserId) {
-        myRank = rank;
+        myRank = uniqueRank;
       }
       if (deduped.length < capped) {
         deduped.push({
-          rank,
+          rank: uniqueRank,
           scoreId: String(r.id),
           userId: uid,
           username: String(r.username),
+          danBadge: String(r.dan_badge || ""),
           score: Number(r.score),
           accuracy: Number(r.accuracy),
           maxCombo: Number(r.max_combo),
@@ -365,6 +500,108 @@ export class SqliteStorageAdapter implements IStorageAdapter {
           isFullCombo: Number(r.is_full_combo) !== 0,
           isAllPerfect: Number(r.is_all_perfect) !== 0,
           hasReplay: Number(r.has_replay) !== 0,
+          playedAt: Number(r.played_at),
+        });
+      }
+    }
+    return { entries: deduped, myRank };
+  }
+
+  submitDailyScore(
+    userId: string,
+    sub: ScoreSubmission,
+    dateUtc8?: string
+  ): { scoreId: string; date: string; pp: number; rank: number; newBest: boolean } {
+    const spec = computeDailyChallenge(dateUtc8);
+    validateScoreSubmission(sub);
+    if (sub.chartId !== spec.chartId || sub.difficulty !== spec.difficulty) {
+      throw new Error(`Daily challenge mismatch: expected ${spec.chartId} (${spec.difficulty}) for ${spec.date}.`);
+    }
+
+    const prev = this.db.prepare(
+      "SELECT MAX(score) AS best FROM daily_scores WHERE date_utc8 = ? AND user_id = ?"
+    ).get(spec.date, userId) as { best: number | null } | undefined;
+    const newBest = prev?.best == null || sub.score > Number(prev.best);
+
+    const pp = computeAuthoritativePP({ ...sub, difficultyLevel: spec.difficultyLevel });
+    const scoreId = crypto.randomUUID();
+    const now = Math.floor(Date.now() / 1000);
+    if (sub.replayData && sub.replayData.length > 0) {
+      fs.writeFileSync(path.join(this.replaysDir, `${scoreId}.skr`), sub.replayData, "utf-8");
+    }
+
+    this.db.prepare(`
+      INSERT INTO daily_scores (
+        id, date_utc8, user_id, chart_id, difficulty,
+        score, accuracy, max_combo, grade, pp,
+        is_full_combo, is_all_perfect, played_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      scoreId,
+      spec.date,
+      userId,
+      spec.chartId,
+      spec.difficulty,
+      sub.score,
+      sub.accuracy,
+      sub.maxCombo,
+      sub.grade || "D",
+      pp,
+      sub.isFullCombo ? 1 : 0,
+      sub.isAllPerfect ? 1 : 0,
+      now
+    );
+
+    const lb = this.getDailyLeaderboard(spec.date, 1000, userId);
+    return { scoreId, date: spec.date, pp, rank: lb.myRank ?? 1, newBest };
+  }
+
+  getDailyLeaderboard(
+    dateUtc8: string,
+    limit: number,
+    currentUserId?: string
+  ): { entries: LeaderboardEntry[]; myRank: number | null } {
+    const spec = computeDailyChallenge(dateUtc8);
+    const capped = Math.max(1, Math.min(100, limit || 50));
+    const rows = this.db.prepare(`
+      SELECT d.id, d.user_id, u.username, u.dan_badge, d.score, d.accuracy, d.max_combo, d.grade, d.pp,
+             d.is_full_combo, d.is_all_perfect, d.played_at
+      FROM daily_scores d
+      JOIN users u ON u.id = d.user_id
+      WHERE d.date_utc8 = ?
+      ORDER BY d.score DESC, d.accuracy DESC, d.played_at ASC
+    `).all(spec.date) as Array<Record<string, unknown>>;
+
+    const seenUsers = new Set<string>();
+    const deduped: LeaderboardEntry[] = [];
+    let uniqueRank = 0;
+    let myRank: number | null = null;
+
+    for (const r of rows) {
+      const uid = String(r.user_id);
+      if (seenUsers.has(uid)) continue;
+      seenUsers.add(uid);
+      uniqueRank++;
+      if (currentUserId && uid === currentUserId) {
+        myRank = uniqueRank;
+      }
+      if (deduped.length < capped) {
+        const sid = String(r.id);
+        const hasReplay = fs.existsSync(path.join(this.replaysDir, `${sid}.skr`));
+        deduped.push({
+          rank: uniqueRank,
+          scoreId: sid,
+          userId: uid,
+          username: String(r.username),
+          danBadge: String(r.dan_badge || ""),
+          score: Number(r.score),
+          accuracy: Number(r.accuracy),
+          maxCombo: Number(r.max_combo),
+          grade: String(r.grade),
+          pp: Number(r.pp),
+          isFullCombo: Number(r.is_full_combo) !== 0,
+          isAllPerfect: Number(r.is_all_perfect) !== 0,
+          hasReplay,
           playedAt: Number(r.played_at),
         });
       }
@@ -566,13 +803,15 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     payload: {
       scores: CloudScoreRecord[];
       achievements: CloudAchievementRecord[];
+      courseRecords?: CloudCourseRecord[];
       settings?: Record<string, unknown>;
       settingsUpdatedAt?: number;
     }
-  ): { scoresMerged: number; achievementsMerged: number; snapshot: CloudSyncSnapshot } {
+  ): { scoresMerged: number; achievementsMerged: number; coursesMerged: number; snapshot: CloudSyncSnapshot } {
     const now = Math.floor(Date.now() / 1000);
     let scoresMerged = 0;
     let achievementsMerged = 0;
+    let coursesMerged = 0;
 
     const selectBest = this.db.prepare(
       "SELECT score, accuracy FROM cloud_best_scores WHERE user_id = ? AND chart_id = ? AND chart_hash = ? AND difficulty = ?"
@@ -653,26 +892,138 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       upsertAch.run(userId, a.id.trim(), ts);
     }
 
+    const selectCourse = this.db.prepare(
+      "SELECT badge_text, dan_rank, total_score, avg_accuracy, remaining_life, cleared, cleared_at FROM cloud_courses WHERE user_id = ? AND course_id = ?"
+    );
+    const upsertCourse = this.db.prepare(`
+      INSERT INTO cloud_courses (
+        user_id, course_id, badge_text, dan_rank, total_score,
+        avg_accuracy, remaining_life, cleared, cleared_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, course_id) DO UPDATE SET
+        badge_text = excluded.badge_text,
+        dan_rank = excluded.dan_rank,
+        total_score = excluded.total_score,
+        avg_accuracy = excluded.avg_accuracy,
+        remaining_life = excluded.remaining_life,
+        cleared = excluded.cleared,
+        cleared_at = excluded.cleared_at
+    `);
+
+    for (const cr of payload.courseRecords || []) {
+      if (!cr || typeof cr.courseId !== "string" || !cr.courseId.trim()) continue;
+      const cid = cr.courseId.trim();
+      const inBadge = (cr.badgeText || "").trim();
+      const inRank = Math.max(0, Math.trunc(cr.danRank || 0));
+      const inScore = Math.max(0, Math.trunc(cr.totalScore || 0));
+      const inAcc = Math.max(0, Number(cr.avgAccuracy || 0));
+      const inLife = Math.max(0, Number(cr.remainingLife || 0));
+      const inCleared = cr.cleared ? 1 : 0;
+      const inClearedAt = inCleared ? (cr.clearedAt && cr.clearedAt > 0 ? Math.trunc(cr.clearedAt) : now) : 0;
+
+      const prevCourse = selectCourse.get(userId, cid) as {
+        badge_text: string;
+        dan_rank: number;
+        total_score: number;
+        avg_accuracy: number;
+        remaining_life: number;
+        cleared: number;
+        cleared_at: number;
+      } | undefined;
+
+      if (!prevCourse) {
+        upsertCourse.run(userId, cid, inBadge, inRank, inScore, inAcc, inLife, inCleared, inClearedAt);
+        coursesMerged++;
+      } else {
+        const prevCleared = Number(prevCourse.cleared) !== 0 ? 1 : 0;
+        const mergedCleared = Math.max(prevCleared, inCleared);
+        const incomingWinsPerf =
+          inCleared > prevCleared ||
+          (inCleared === prevCleared &&
+            (inScore > Number(prevCourse.total_score) ||
+              (inScore === Number(prevCourse.total_score) && inAcc > Number(prevCourse.avg_accuracy))));
+        const mergedBadge = inBadge || String(prevCourse.badge_text || "");
+        const mergedRank = Math.max(Number(prevCourse.dan_rank || 0), inRank);
+        const mergedScore = incomingWinsPerf ? inScore : Number(prevCourse.total_score);
+        const mergedAcc = incomingWinsPerf ? inAcc : Number(prevCourse.avg_accuracy);
+        const mergedLife = incomingWinsPerf ? inLife : Number(prevCourse.remaining_life);
+        let mergedClearedAt = Number(prevCourse.cleared_at || 0);
+        if (mergedCleared) {
+          if (mergedClearedAt <= 0) mergedClearedAt = inClearedAt || now;
+          else if (inClearedAt > 0 && inClearedAt < mergedClearedAt) mergedClearedAt = inClearedAt;
+        }
+        if (
+          incomingWinsPerf ||
+          mergedCleared !== prevCleared ||
+          mergedRank !== Number(prevCourse.dan_rank || 0) ||
+          mergedBadge !== String(prevCourse.badge_text || "") ||
+          mergedClearedAt !== Number(prevCourse.cleared_at || 0)
+        ) {
+          upsertCourse.run(userId, cid, mergedBadge, mergedRank, mergedScore, mergedAcc, mergedLife, mergedCleared, mergedClearedAt);
+          coursesMerged++;
+        }
+      }
+    }
+
+    if ((payload.courseRecords?.length ?? 0) > 0) {
+      const bestDan = this.db.prepare(`
+        SELECT badge_text
+        FROM cloud_courses
+        WHERE user_id = ? AND cleared != 0 AND badge_text != ''
+        ORDER BY dan_rank DESC, total_score DESC, cleared_at ASC
+        LIMIT 1
+      `).get(userId) as { badge_text?: string } | undefined;
+      if (bestDan?.badge_text) {
+        this.db.prepare("UPDATE users SET dan_badge = ? WHERE id = ?").run(String(bestDan.badge_text), userId);
+      }
+    }
+
     if (payload.settings && typeof payload.settings === "object" && Object.keys(payload.settings).length > 0) {
       const incomingTs = payload.settingsUpdatedAt && payload.settingsUpdatedAt > 0 ? Math.trunc(payload.settingsUpdatedAt) : now;
       const prevSet = this.db.prepare("SELECT settings_json, updated_at FROM cloud_settings WHERE user_id = ?").get(userId) as { settings_json: string; updated_at: number } | undefined;
-      let mergedObj: Record<string, unknown> = {};
+      let existingObj: Record<string, unknown> = {};
       if (prevSet) {
-        try { mergedObj = JSON.parse(String(prevSet.settings_json || "{}")); } catch { mergedObj = {}; }
+        try { existingObj = JSON.parse(String(prevSet.settings_json || "{}")); } catch { existingObj = {}; }
       }
-      if (!prevSet || incomingTs >= Number(prevSet.updated_at)) {
-        mergedObj = { ...mergedObj, ...payload.settings };
+      const prevUpdatedAt = prevSet ? Number(prevSet.updated_at || 0) : 0;
+      const incomingIsNewerOrTie = !prevSet || incomingTs >= prevUpdatedAt;
+      const bothHaveCollections = Array.isArray(existingObj.collections) && Array.isArray(payload.settings.collections);
+
+      if (incomingIsNewerOrTie) {
+        const mergedObj: Record<string, unknown> = { ...existingObj, ...payload.settings };
+        if (bothHaveCollections) {
+          mergedObj.collections = mergeCollectionsById(
+            existingObj.collections as unknown[],
+            payload.settings.collections as unknown[],
+            true
+          );
+        } else if (Array.isArray(payload.settings.collections)) {
+          mergedObj.collections = mergeCollectionsById([], payload.settings.collections as unknown[], true);
+        }
         this.db.prepare(`
           INSERT INTO cloud_settings (user_id, settings_json, updated_at)
           VALUES (?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
-        `).run(userId, JSON.stringify(mergedObj), Math.max(now, incomingTs));
+        `).run(userId, JSON.stringify(mergedObj), Math.max(prevUpdatedAt, incomingTs));
+      } else if (Array.isArray(payload.settings.collections)) {
+        const mergedObj: Record<string, unknown> = { ...existingObj };
+        mergedObj.collections = mergeCollectionsById(
+          Array.isArray(existingObj.collections) ? (existingObj.collections as unknown[]) : [],
+          payload.settings.collections as unknown[],
+          false
+        );
+        this.db.prepare(`
+          INSERT INTO cloud_settings (user_id, settings_json, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
+        `).run(userId, JSON.stringify(mergedObj), prevUpdatedAt);
       }
     }
 
     return {
       scoresMerged,
       achievementsMerged,
+      coursesMerged,
       snapshot: this.pullCloudSync(userId),
     };
   }
@@ -744,6 +1095,10 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       "SELECT achievement_id, unlocked_at FROM cloud_achievements WHERE user_id = ? ORDER BY unlocked_at ASC"
     ).all(userId) as Array<{ achievement_id: string; unlocked_at: number }>;
 
+    const courseRows = this.db.prepare(
+      "SELECT course_id, badge_text, dan_rank, total_score, avg_accuracy, remaining_life, cleared, cleared_at FROM cloud_courses WHERE user_id = ? ORDER BY dan_rank ASC, course_id ASC"
+    ).all(userId) as Array<Record<string, unknown>>;
+
     const setRow = this.db.prepare(
       "SELECT settings_json, updated_at FROM cloud_settings WHERE user_id = ?"
     ).get(userId) as { settings_json: string; updated_at: number } | undefined;
@@ -758,6 +1113,16 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       syncedAt: now,
       scores: Array.from(bestMap.values()),
       achievements: achRows.map((a) => ({ id: String(a.achievement_id), unlockedAt: Number(a.unlocked_at) })),
+      courseRecords: courseRows.map((cr) => ({
+        courseId: String(cr.course_id),
+        badgeText: String(cr.badge_text || ""),
+        danRank: Number(cr.dan_rank || 0),
+        totalScore: Number(cr.total_score || 0),
+        avgAccuracy: Number(cr.avg_accuracy || 0),
+        remainingLife: Number(cr.remaining_life || 0),
+        cleared: Number(cr.cleared) !== 0,
+        clearedAt: Number(cr.cleared_at || 0),
+      })),
       settings,
       settingsUpdatedAt,
     };

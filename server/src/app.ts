@@ -1,7 +1,37 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { hashPassword, JwtPayload, signJwt, verifyJwt, verifyPassword } from "./auth.js";
-import { CloudAchievementRecord, CloudScoreRecord, IStorageAdapter, MarketChartItem, ScoreSubmission } from "./storage/types.js";
+import { computeDailyChallenge } from "./storage/sqlite_adapter.js";
+import {
+  CloudAchievementRecord,
+  CloudCourseRecord,
+  CloudScoreRecord,
+  IStorageAdapter,
+  LeaderboardEntry,
+  MarketChartItem,
+  ScoreSubmission,
+} from "./storage/types.js";
+
+export { computeDailyChallenge };
+
+function serializeLeaderboardEntry(e: LeaderboardEntry) {
+  return {
+    rank: e.rank,
+    score_id: e.scoreId,
+    user_id: e.userId,
+    username: e.username,
+    dan_badge: e.danBadge,
+    score: e.score,
+    accuracy: e.accuracy,
+    max_combo: e.maxCombo,
+    grade: e.grade,
+    pp: e.pp,
+    is_full_combo: e.isFullCombo,
+    is_all_perfect: e.isAllPerfect,
+    has_replay: e.hasReplay,
+    played_at: e.playedAt,
+  };
+}
 
 function serializeMarketChart(c: MarketChartItem) {
   return {
@@ -99,7 +129,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.3.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.4.0";
 
   app.use("*", cors());
 
@@ -155,6 +185,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: true,
         total_pp: 0,
+        dan_badge: user.danBadge,
       },
     }, 201);
   });
@@ -187,6 +218,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: false,
         total_pp: 0,
+        dan_badge: user.danBadge,
       },
     }, 201);
   });
@@ -214,6 +246,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: false,
         total_pp: totalPp,
+        dan_badge: user.danBadge,
       },
     });
   });
@@ -234,6 +267,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: user.isGuest,
         total_pp: storage.getUserTotalPP(user.id),
+        dan_badge: user.danBadge,
       },
     });
   });
@@ -280,22 +314,80 @@ export function createApp(opts: AppOptions): Hono {
       difficulty,
       scope,
       my_rank: lb.myRank,
-      entries: lb.entries.map((e) => ({
-        rank: e.rank,
-        score_id: e.scoreId,
-        user_id: e.userId,
-        username: e.username,
-        score: e.score,
-        accuracy: e.accuracy,
-        max_combo: e.maxCombo,
-        grade: e.grade,
-        pp: e.pp,
-        is_full_combo: e.isFullCombo,
-        is_all_perfect: e.isAllPerfect,
-        has_replay: e.hasReplay,
-        played_at: e.playedAt,
-      })),
+      entries: lb.entries.map(serializeLeaderboardEntry),
     });
+  });
+
+  app.get("/api/v1/daily", (c) => {
+    try {
+      const spec = computeDailyChallenge(c.req.query("date"));
+      const limit = Number(c.req.query("limit") || "20");
+      const auth = resolveAuth(c.req.header("Authorization"));
+      const lb = storage.getDailyLeaderboard(spec.date, Number.isFinite(limit) ? limit : 20, auth?.sub);
+      return c.json({
+        ok: true,
+        daily: {
+          date: spec.date,
+          chart_id: spec.chartId,
+          chart_title: spec.chartTitle,
+          difficulty: spec.difficulty,
+          difficulty_level: spec.difficultyLevel,
+          goal_text: spec.goalText,
+          target_score: spec.targetScore,
+        },
+        my_rank: lb.myRank,
+        entries: lb.entries.map(serializeLeaderboardEntry),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid daily challenge query.";
+      return c.json({ ok: false, error: msg }, 400);
+    }
+  });
+
+  app.post("/api/v1/daily/scores", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) {
+      return c.json({ ok: false, error: "Unauthorized." }, 401);
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const rawDate = body.date ?? body.date_utc8 ?? body.dateUtc8 ?? c.req.query("date");
+      const dateStr = typeof rawDate === "string" ? rawDate : undefined;
+      const sub = parseScoreSubmission(body);
+      const res = storage.submitDailyScore(auth.sub, sub, dateStr);
+      return c.json({
+        ok: true,
+        date: res.date,
+        rank: res.rank,
+        new_best: res.newBest,
+      }, 201);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Daily score validation failed.";
+      return c.json({ ok: false, error: msg }, 422);
+    }
+  });
+
+  app.get("/api/v1/daily/leaderboard", (c) => {
+    try {
+      const spec = computeDailyChallenge(c.req.query("date"));
+      const limit = Number(c.req.query("limit") || "50");
+      const auth = resolveAuth(c.req.header("Authorization"));
+      const lb = storage.getDailyLeaderboard(spec.date, Number.isFinite(limit) ? limit : 50, auth?.sub);
+      return c.json({
+        ok: true,
+        date: spec.date,
+        my_rank: lb.myRank,
+        entries: lb.entries.map(serializeLeaderboardEntry),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid daily leaderboard query.";
+      return c.json({ ok: false, error: msg }, 400);
+    }
   });
 
   app.get("/api/v1/replays/:scoreId", (c) => {
@@ -467,17 +559,39 @@ export function createApp(opts: AppOptions): Hono {
         unlockedAt: Math.trunc(Number(a.unlocked_at ?? a.unlockedAt ?? 0)),
       };
     });
+    const rawCoursesInput = body.course_records ?? body.courseRecords;
+    const rawCourses = Array.isArray(rawCoursesInput) ? rawCoursesInput : [];
+    const courseRecords: CloudCourseRecord[] = rawCourses.map((raw) => {
+      const cr = (raw || {}) as Record<string, unknown>;
+      return {
+        courseId: String(cr.course_id ?? cr.courseId ?? ""),
+        badgeText: String(cr.badge_text ?? cr.badgeText ?? ""),
+        danRank: Math.trunc(Number(cr.dan_rank ?? cr.danRank ?? 0)),
+        totalScore: Math.trunc(Number(cr.total_score ?? cr.totalScore ?? 0)),
+        avgAccuracy: Number(cr.avg_accuracy ?? cr.avgAccuracy ?? 0),
+        remainingLife: Number(cr.remaining_life ?? cr.remainingLife ?? 0),
+        cleared: Boolean(cr.cleared ?? false),
+        clearedAt: Math.trunc(Number(cr.cleared_at ?? cr.clearedAt ?? 0)),
+      };
+    });
     const settings = body.settings && typeof body.settings === "object" && !Array.isArray(body.settings)
       ? (body.settings as Record<string, unknown>)
       : undefined;
     const settingsUpdatedAt = Number(body.settings_updated_at ?? body.settingsUpdatedAt ?? 0);
 
-    const merged = storage.pushCloudSync(auth.sub, { scores, achievements, settings, settingsUpdatedAt });
+    const merged = storage.pushCloudSync(auth.sub, {
+      scores,
+      achievements,
+      courseRecords,
+      settings,
+      settingsUpdatedAt,
+    });
     return c.json({
       ok: true,
       synced_at: merged.snapshot.syncedAt,
       scores_merged: merged.scoresMerged,
       achievements_merged: merged.achievementsMerged,
+      courses_merged: merged.coursesMerged,
       scores: merged.snapshot.scores.map((s) => ({
         chart_id: s.chartId,
         chart_title: s.chartTitle,
@@ -498,6 +612,16 @@ export function createApp(opts: AppOptions): Hono {
         played_at: s.playedAt,
       })),
       achievements: merged.snapshot.achievements.map((a) => ({ id: a.id, unlocked_at: a.unlockedAt })),
+      course_records: merged.snapshot.courseRecords.map((cr) => ({
+        course_id: cr.courseId,
+        badge_text: cr.badgeText,
+        dan_rank: cr.danRank,
+        total_score: cr.totalScore,
+        avg_accuracy: cr.avgAccuracy,
+        remaining_life: cr.remainingLife,
+        cleared: cr.cleared,
+        cleared_at: cr.clearedAt,
+      })),
       settings: merged.snapshot.settings,
       settings_updated_at: merged.snapshot.settingsUpdatedAt,
     });
@@ -530,6 +654,16 @@ export function createApp(opts: AppOptions): Hono {
         played_at: s.playedAt,
       })),
       achievements: snap.achievements.map((a) => ({ id: a.id, unlocked_at: a.unlockedAt })),
+      course_records: snap.courseRecords.map((cr) => ({
+        course_id: cr.courseId,
+        badge_text: cr.badgeText,
+        dan_rank: cr.danRank,
+        total_score: cr.totalScore,
+        avg_accuracy: cr.avgAccuracy,
+        remaining_life: cr.remainingLife,
+        cleared: cr.cleared,
+        cleared_at: cr.clearedAt,
+      })),
       settings: snap.settings,
       settings_updated_at: snap.settingsUpdatedAt,
     });

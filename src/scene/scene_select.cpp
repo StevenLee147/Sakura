@@ -1,5 +1,6 @@
 #include "scene_select.h"
 #include "scene_menu.h"
+#include "scene_course.h"
 #include "scene_market.h"
 #include "scene_game.h"
 #include "scene_settings.h"
@@ -35,8 +36,8 @@ std::string Lower(std::string s) { for(auto& c:s) if(static_cast<unsigned char>(
 std::string Duration(int ms) { const int sec=ms/1000; return std::to_string(sec/60)+":"+(sec%60<10?"0":"")+std::to_string(sec%60); }
 constexpr Color pink{246,178,206,255}, gold{250,216,157,255}, dim{168,178,204,255}, white{248,242,248,255};
 }
-std::unique_ptr<Button> SceneSelect::Button(NormRect rect, const std::string& label, std::function<void()> action, bool primary) {
-    auto b=std::make_unique<sakura::ui::Button>(rect,label,m_font,0.021f,0.008f);
+std::unique_ptr<Button> SceneSelect::Button(NormRect rect, const std::string& label, std::function<void()> action, bool primary, float fontSize) {
+    auto b=std::make_unique<sakura::ui::Button>(rect,label,m_font,fontSize,0.008f);
     b->SetTextAlign(TextAlign::Center); b->SetOnClick(std::move(action));
     VisualStyle::ApplyButton(b.get(),primary?ButtonVariant::Primary:ButtonVariant::Secondary); return b;
 }
@@ -45,19 +46,31 @@ void SceneSelect::OnEnter() {
     auto& cfg=Config::GetInstance();
     const auto favorites=cfg.Get<std::vector<std::string>>("library.favorites",{});
     m_favorites={favorites.begin(),favorites.end()};
+    m_collections=CollectionManager::LoadFromConfig();
     m_search=std::make_unique<TextInput>(NormRect{0.04f,0.16f,0.28f,0.051f},m_font,0.022f);
     m_search->SetPlaceholder("搜索曲名、曲师、标签  /  Ctrl+F");
     m_search->SetOnChange([this](const std::string&){Filter();});
     m_startInput=std::make_unique<TextInput>(NormRect{0.555f,0.762f,0.105f,0.040f},m_font,0.022f,8);
     m_endInput=std::make_unique<TextInput>(NormRect{0.698f,0.762f,0.105f,0.040f},m_font,0.022f,8);
     m_startInput->SetText("0"); m_endInput->SetText("0");
-    m_buttons.push_back(Button({0.33f,0.16f,0.062f,0.051f},"收藏",[this]{m_onlyFavorites=!m_onlyFavorites;Filter();}));
-    m_buttons.push_back(Button({0.398f,0.16f,0.062f,0.051f},"排序",[this]{m_sort=(m_sort+1)%3;Filter();}));
-    m_buttons.push_back(Button({0.445f,0.064f,0.095f,0.044f},"谱面市场",[this]{m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager),TransitionType::SilkShutter,0.38f);},true));
-    m_buttons.push_back(Button({0.55f,0.064f,0.09f,0.044f},"导入谱面",[this]{ImportFolder();}));
-    m_buttons.push_back(Button({0.65f,0.064f,0.09f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);}));
-    m_buttons.push_back(Button({0.75f,0.064f,0.09f,0.044f},"打开曲库",[]{const std::filesystem::path path=Paths::User("charts");std::error_code ec;std::filesystem::create_directories(path,ec);SDL_OpenURL(("file:///"+path.generic_string()).c_str());}));
-    m_buttons.push_back(Button({0.85f,0.064f,0.11f,0.044f},"偏好设置",[this]{m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager),TransitionType::SilkShutter,0.38f);}));
+    m_buttons.push_back(Button({0.326f,0.16f,0.072f,0.051f},"全部",[this]{
+        const int totalStates=2+static_cast<int>(m_collections.size());
+        m_collectionFilter=(m_collectionFilter+1)%totalStates;
+        if(m_collectionFilter>=2) m_activeCollectionIndex=m_collectionFilter-2;
+        Filter();
+    },false,0.0185f));
+    m_buttons.push_back(Button({0.402f,0.16f,0.058f,0.051f},"曲名",[this]{m_sort=(m_sort+1)%3;Filter();},false,0.019f));
+
+    auto dailyBtn=Button({0.355f,0.064f,0.082f,0.044f},"今日挑战",[this]{ActivateDailyChallenge();},false,0.018f);
+    VisualStyle::ApplyButton(dailyBtn.get(),ButtonVariant::Accent);
+    m_buttons.push_back(std::move(dailyBtn));
+    m_buttons.push_back(Button({0.442f,0.064f,0.082f,0.044f},"樱华道场",[this]{m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+    m_buttons.push_back(Button({0.529f,0.064f,0.082f,0.044f},"谱面市场",[this]{m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager),TransitionType::SilkShutter,0.38f);},true,0.018f));
+    m_buttons.push_back(Button({0.616f,0.064f,0.081f,0.044f},"导入谱面",[this]{ImportFolder();},false,0.018f));
+    m_buttons.push_back(Button({0.702f,0.064f,0.081f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+    m_buttons.push_back(Button({0.788f,0.064f,0.081f,0.044f},"打开曲库",[]{const std::filesystem::path path=Paths::User("charts");std::error_code ec;std::filesystem::create_directories(path,ec);SDL_OpenURL(("file:///"+path.generic_string()).c_str());},false,0.018f));
+    m_buttons.push_back(Button({0.874f,0.064f,0.086f,0.044f},"偏好设置",[this]{m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+
     m_buttons.push_back(Button({0.04f,0.909f,0.12f,0.057f},"返回主页",[this]{Back();}));
     m_buttons.push_back(Button({0.17f,0.909f,0.09f,0.057f},"刷新 / F5",[this]{Scan();}));
     m_buttons.push_back(Button({0.77f,0.909f,0.19f,0.057f},"开始演奏   →",[this]{Start(m_options.mode);},true));
@@ -66,6 +79,9 @@ void SceneSelect::OnEnter() {
     Scan();
 }
 void SceneSelect::Scan() {
+    m_collections=CollectionManager::LoadFromConfig();
+    if(m_collectionFilter>1+static_cast<int>(m_collections.size())) m_collectionFilter=0;
+    if(m_activeCollectionIndex>=static_cast<int>(m_collections.size())) m_activeCollectionIndex=0;
     ChartLoader loader;
     m_charts=loader.ScanCharts("resources/charts");
     auto custom=loader.ScanCharts(Paths::User("charts"));
@@ -78,11 +94,17 @@ void SceneSelect::Scan() {
     for(int i:m_visible) if(m_charts[i].id==last) {Select(i,Config::GetInstance().Get<int>("library.last_difficulty",0));break;}
 }
 void SceneSelect::Filter() {
+    if(m_collectionFilter<0 || m_collectionFilter>1+static_cast<int>(m_collections.size())) m_collectionFilter=0;
     m_visible.clear(); const auto query=Lower(m_search->GetText());
     for(int i=0;i<static_cast<int>(m_charts.size());++i) {
-        const auto& c=m_charts[i]; std::string hay=c.title+" "+c.artist+" "+c.charter;
+        const auto& c=m_charts[i];
+        bool matchCol=true;
+        if(m_collectionFilter==1) matchCol=m_favorites.contains(c.id);
+        else if(m_collectionFilter>=2) matchCol=CollectionManager::ContainsChart(m_collections[static_cast<size_t>(m_collectionFilter-2)],c.id);
+        if(!matchCol) continue;
+        std::string hay=c.title+" "+c.artist+" "+c.charter;
         for(const auto& tag:c.tags) hay+=" "+tag;
-        if((!m_onlyFavorites || m_favorites.contains(c.id)) && Lower(hay).find(query)!=std::string::npos) m_visible.push_back(i);
+        if(Lower(hay).find(query)!=std::string::npos) m_visible.push_back(i);
     }
     std::stable_sort(m_visible.begin(),m_visible.end(),[this](int a,int b){
         if(m_sort==1 && m_charts[a].bpm!=m_charts[b].bpm) return m_charts[a].bpm<m_charts[b].bpm;
@@ -93,10 +115,19 @@ void SceneSelect::Filter() {
     if(std::find(m_visible.begin(),m_visible.end(),m_selected)==m_visible.end()) {
         m_selected=-1; if(!m_visible.empty()) Select(m_visible.front());
     }
-    m_buttons[0]->SetText(m_onlyFavorites?"已收藏":"收藏");
-    m_buttons[1]->SetText(m_sort==0?"曲名":m_sort==1?"BPM":"难度");
-    if(m_selected<0) {m_detailButtons.clear();sakura::audio::AudioManager::GetInstance().StopMusic();}
-    m_buttons.back()->SetEnabled(m_selected>=0);
+    if(m_buttons.size()>=2) {
+        if(m_collectionFilter==0) {m_buttons[0]->SetText("全部");m_buttons[0]->SetFontSize(0.019f);}
+        else if(m_collectionFilter==1) {m_buttons[0]->SetText("已收藏");m_buttons[0]->SetFontSize(0.0185f);}
+        else {m_buttons[0]->SetText(m_collections[static_cast<size_t>(m_collectionFilter-2)].name);m_buttons[0]->SetFontSize(0.016f);}
+        VisualStyle::ApplyButton(m_buttons[0].get(),m_collectionFilter>0?ButtonVariant::Primary:ButtonVariant::Secondary);
+        m_buttons[1]->SetText(m_sort==0?"曲名":m_sort==1?"BPM":"难度");
+    }
+    if(m_selected<0) {
+        m_rebuild=true;
+        sakura::audio::AudioManager::GetInstance().StopMusic();
+        if(!m_buttons.empty()) m_buttons.back()->SetText("开始演奏   →");
+    }
+    if(!m_buttons.empty()) m_buttons.back()->SetEnabled(m_selected>=0);
 }
 void SceneSelect::Select(int index,int difficulty) {
     if(index<0 || index>=static_cast<int>(m_charts.size())) return;
@@ -191,16 +222,141 @@ void SceneSelect::WatchOnlineReplay(const sakura::net::LeaderboardRow& row) {
         m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[selIdx],diffIdx,opts),TransitionType::SakuraSweep,0.42f);
     });
 }
+void SceneSelect::CreatePresetCollection() {
+    static constexpr const char* kPresets[]={"热身曲单","右手特训","高难冲分"};
+    auto exists=[this](std::string_view name){
+        return std::any_of(m_collections.begin(),m_collections.end(),[&](const SongCollection& col){return col.name==name;});
+    };
+    std::string chosen;
+    for(const char* preset:kPresets) {
+        if(!exists(preset)) {chosen=preset; break;}
+    }
+    if(chosen.empty()) {
+        int n=static_cast<int>(m_collections.size())+1;
+        chosen="精选曲单 #"+std::to_string(n);
+        while(exists(chosen)) {++n; chosen="精选曲单 #"+std::to_string(n);}
+    }
+    const auto created=CollectionManager::CreateCollection(m_collections,chosen);
+    CollectionManager::SaveToConfig(m_collections);
+    m_activeCollectionIndex=static_cast<int>(m_collections.size())-1;
+    ToastManager::Instance().Show("已新建曲单「"+created.name+"」· 点「入单」可收入当前曲目",ToastType::Success,2.8f);
+    m_rebuild=true;
+}
+void SceneSelect::ToggleCurrentInCollection() {
+    if(m_selected<0 || m_selected>=static_cast<int>(m_charts.size())) return;
+    const auto& c=m_charts[m_selected];
+    if(m_collections.empty()) {
+        CollectionManager::CreateCollection(m_collections,"精选曲单 1");
+        m_activeCollectionIndex=0;
+    }
+    int targetIdx=0;
+    if(m_collectionFilter>=2 && m_collectionFilter-2<static_cast<int>(m_collections.size())) targetIdx=m_collectionFilter-2;
+    else if(m_activeCollectionIndex>=0 && m_activeCollectionIndex<static_cast<int>(m_collections.size())) targetIdx=m_activeCollectionIndex;
+    const std::string colId=m_collections[static_cast<size_t>(targetIdx)].id;
+    const std::string colName=m_collections[static_cast<size_t>(targetIdx)].name;
+    CollectionManager::ToggleChartInCollection(m_collections,colId,c.id);
+    CollectionManager::SaveToConfig(m_collections);
+    const bool inCol=CollectionManager::ContainsChart(m_collections[static_cast<size_t>(targetIdx)],c.id);
+    ToastManager::Instance().Show(
+        inCol?("已加入曲单「"+colName+"」"):("已从曲单「"+colName+"」移除"),
+        inCol?ToastType::Success:ToastType::Info,2.4f);
+    m_rebuild=true;
+    if(m_collectionFilter>=2) Filter();
+}
+bool SceneSelect::IsSelectedMatchingDaily() const {
+    if(!m_dailyActiveSpec.has_value() || m_selected<0 || m_selected>=static_cast<int>(m_charts.size())) return false;
+    const auto& c=m_charts[m_selected];
+    const std::string& wantId=m_dailyResolvedChartId.empty()?m_dailyActiveSpec->chartId:m_dailyResolvedChartId;
+    if(c.id!=wantId) return false;
+    const int expectedDiff=ResolveMatchingDifficultyIndex(c,m_dailyActiveSpec->difficultyName,m_dailyActiveSpec->difficultyLevel);
+    return m_difficulty==expectedDiff;
+}
+void SceneSelect::ActivateDailyChallenge() {
+    if(m_charts.empty()) {
+        ToastManager::Instance().Show("当前曲库暂无谱面，无法开启今日挑战",ToastType::Warning,3.0f);
+        return;
+    }
+    const auto todaySpec=ComputeOfflineDailyChallenge(GetCurrentDateUtc8());
+    auto resolveChartIndex=[this](const DailyChallengeSpec& spec)->int {
+        for(int i=0;i<static_cast<int>(m_charts.size());++i) if(m_charts[i].id==spec.chartId) return i;
+        if(!spec.chartTitle.empty()) {
+            const std::string want=Lower(spec.chartTitle);
+            for(int i=0;i<static_cast<int>(m_charts.size());++i) if(Lower(m_charts[i].title)==want) return i;
+        }
+        return 0;
+    };
+    const int chartIdx=resolveChartIndex(todaySpec);
+    if(std::find(m_visible.begin(),m_visible.end(),chartIdx)==m_visible.end()) {
+        m_search->SetText("");
+        m_collectionFilter=0;
+        Filter();
+    }
+    const int diffIdx=ResolveMatchingDifficultyIndex(m_charts[chartIdx],todaySpec.difficultyName,todaySpec.difficultyLevel);
+    m_dailyActiveSpec=todaySpec;
+    m_dailyResolvedChartId=m_charts[chartIdx].id;
+    m_dailyMyRank.reset();
+    m_playAsDaily=true;
+    m_options.mode=PlayMode::Standard;
+    m_options.rate=1.0f;
+    m_showGlobalLeaderboard=false;
+    Select(chartIdx,diffIdx);
+
+    auto alive=m_alive;
+    sakura::net::APIClient::GetInstance().FetchDailyChallengeAsync(
+        todaySpec.dateUtc8,10,[this,alive,todaySpec](sakura::net::DailyInfoResult res){
+            if(!*alive) return;
+            DailyChallengeSpec spec=todaySpec;
+            if(res.ok && !res.spec.dateUtc8.empty()) {
+                spec=res.spec;
+                m_dailyActiveSpec=spec;
+                for(int i=0;i<static_cast<int>(m_charts.size());++i) {
+                    if(m_charts[i].id==spec.chartId) {
+                        m_dailyResolvedChartId=m_charts[i].id;
+                        if(m_playAsDaily && m_selected!=i) {
+                            if(std::find(m_visible.begin(),m_visible.end(),i)==m_visible.end()) {
+                                m_search->SetText("");
+                                m_collectionFilter=0;
+                                Filter();
+                            }
+                            Select(i,ResolveMatchingDifficultyIndex(m_charts[i],spec.difficultyName,spec.difficultyLevel));
+                        }
+                        break;
+                    }
+                }
+            }
+            if(res.ok && !res.offlineFallback) m_dailyMyRank=res.leaderboard.myRank;
+            const std::string goalStr=!spec.goalText.empty()?spec.goalText:("目标分数 "+std::to_string(spec.targetScore));
+            std::string rankStr=" · 离线轮换挑战";
+            if(res.ok && !res.offlineFallback) {
+                rankStr=res.leaderboard.myRank.has_value()?(" · 线上排名 #"+std::to_string(*res.leaderboard.myRank)):" · 线上暂未上榜";
+            }
+            ToastManager::Instance().Show("今日挑战 ["+spec.dateUtc8+"]："+goalStr+rankStr,ToastType::Info,4.0f);
+            m_rebuild=true;
+        });
+}
 void SceneSelect::BuildDetail() {
-    m_rebuild=false; m_detailButtons.clear(); if(m_selected<0) return;
+    m_rebuild=false; m_detailButtons.clear();
+    if(m_selected<0) {
+        if(!m_buttons.empty()) m_buttons.back()->SetText("开始演奏   →");
+        return;
+    }
     if(m_options.mode!=PlayMode::Practice || m_showGlobalLeaderboard){m_startInput->SetFocused(false);m_endInput->SetFocused(false);}
     const auto& c=m_charts[m_selected];
-    m_detailButtons.push_back(Button({0.785f,0.185f,0.090f,0.037f},m_showGlobalLeaderboard?"本地面板":"全球排行",[this]{
+    bool inTargetCol=false;
+    if(!m_collections.empty()) {
+        int targetIdx=0;
+        if(m_collectionFilter>=2 && m_collectionFilter-2<static_cast<int>(m_collections.size())) targetIdx=m_collectionFilter-2;
+        else if(m_activeCollectionIndex>=0 && m_activeCollectionIndex<static_cast<int>(m_collections.size())) targetIdx=m_activeCollectionIndex;
+        inTargetCol=CollectionManager::ContainsChart(m_collections[static_cast<size_t>(targetIdx)],c.id);
+    }
+    m_detailButtons.push_back(Button({0.664f,0.185f,0.082f,0.036f},m_showGlobalLeaderboard?"本地面板":"全球排行",[this]{
         m_showGlobalLeaderboard=!m_showGlobalLeaderboard;
         if(m_showGlobalLeaderboard) FetchGlobalLeaderboard();
         m_rebuild=true;
-    },m_showGlobalLeaderboard));
-    m_detailButtons.push_back(Button({0.883f,0.185f,0.059f,0.037f},m_favorites.contains(c.id)?"已收藏":"收藏",[this]{Favorite();}));
+    },m_showGlobalLeaderboard,0.0165f));
+    m_detailButtons.push_back(Button({0.752f,0.185f,0.060f,0.036f},m_favorites.contains(c.id)?"已收藏":"收藏",[this]{Favorite();},m_favorites.contains(c.id),0.0165f));
+    m_detailButtons.push_back(Button({0.818f,0.185f,0.060f,0.036f},"+曲单",[this]{CreatePresetCollection();},false,0.0165f));
+    m_detailButtons.push_back(Button({0.884f,0.185f,0.060f,0.036f},inTargetCol?"已入单":"入单",[this]{ToggleCurrentInCollection();},inTargetCol,0.0165f));
     const int count=static_cast<int>(c.difficulties.size());
     const int first=(m_difficulty/4)*4;
     for(int i=first;i<std::min(first+4,count);++i) {
@@ -225,11 +381,21 @@ void SceneSelect::BuildDetail() {
         const char* modes[]={"正式演奏","自由练习","自动演示"};
         for(int i=0;i<3;++i) m_detailButtons.push_back(Button({0.515f+i*0.145f,0.595f,0.135f,0.042f},modes[i],
             [this,i]{m_options.mode=static_cast<PlayMode>(i);if(i==0)m_options.rate=1;m_rebuild=true;},static_cast<int>(m_options.mode)==i));
+        if(m_options.mode==PlayMode::Standard && IsSelectedMatchingDaily()) {
+            m_detailButtons.push_back(Button({0.848f,0.696f,0.090f,0.034f},m_playAsDaily?"挑战：开":"挑战：关",[this]{
+                m_playAsDaily=!m_playAsDaily;
+                m_rebuild=true;
+            },m_playAsDaily,0.016f));
+        }
         if(m_options.mode!=PlayMode::Standard) {
             m_detailButtons.push_back(Button({0.815f,0.677f,0.057f,0.037f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
             m_detailButtons.push_back(Button({0.883f,0.677f,0.057f,0.037f},"+",[this]{m_options.rate=std::min(2.0f,m_options.rate+0.1f);}));
         }
         if(m_options.mode==PlayMode::Practice) m_detailButtons.push_back(Button({0.825f,0.762f,0.116f,0.040f},m_options.loop?"循环：开":"循环：关",[this]{m_options.loop=!m_options.loop;m_rebuild=true;}));
+    }
+    if(!m_buttons.empty()) {
+        const bool asDaily=(m_options.mode==PlayMode::Standard && m_playAsDaily && IsSelectedMatchingDaily());
+        m_buttons.back()->SetText(asDaily?"开始今日挑战 →":"开始演奏   →");
     }
     m_detailButtons.push_back(Button({0.515f,0.827f,0.18f,0.040f},"播放最近回放",[this]{Start(PlayMode::Replay);}));
     m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile),TransitionType::SilkShutter,0.38f);}));
@@ -242,6 +408,13 @@ void SceneSelect::Favorite() {
 }
 void SceneSelect::Start(PlayMode mode) {
     if(m_selected<0) return; auto options=m_options;options.mode=mode;
+    if(mode==PlayMode::Standard && m_playAsDaily && m_dailyActiveSpec.has_value() && IsSelectedMatchingDaily()) {
+        options.isDailyChallenge=true;
+        options.dailyDate=m_dailyActiveSpec->dateUtc8;
+    } else {
+        options.isDailyChallenge=false;
+        options.dailyDate.clear();
+    }
     if(mode==PlayMode::Replay) {
         const auto key="library.replay_"+m_charts[m_selected].id+"_"+std::to_string(m_difficulty);
         options.replayFile=Config::GetInstance().Get<std::string>(key,"");
@@ -388,7 +561,7 @@ void SceneSelect::OnRender(Renderer& r) {
     if(m_visible.empty()) {
         VisualStyle::DrawGlassCard(r,{0.06f,0.42f,0.38f,0.16f},{26,32,58,210},{16,20,40,224},{250,216,157,120},{140,150,192,48},0.014f,0.40f);
         r.DrawText(m_font,"没有匹配的曲目",0.25f,0.455f,0.029f,white,TextAlign::Center);
-        r.DrawText(m_font,"清空搜索、关闭收藏筛选，或导入谱面",0.25f,0.515f,0.018f,dim,TextAlign::Center);
+        r.DrawText(m_font,"清空搜索、切换曲单筛选，或导入谱面",0.25f,0.515f,0.018f,dim,TextAlign::Center);
     }
     r.DrawText(m_font,std::to_string(m_visible.size())+" 首曲目   ·   ↑ ↓ 选曲   /   ← → 难度   /   Enter 演奏",0.04f,0.866f,0.017f,dim);
 
@@ -438,7 +611,8 @@ void SceneSelect::OnRender(Renderer& r) {
                 const float ry=0.572f+i*0.046f;
                 r.DrawRoundedRect({0.515f,ry,0.350f,0.039f},0.007f,i==0?Color{66,44,76,195}:Color{26,32,58,185},true,6);
                 r.DrawText(m_font,"#"+std::to_string(row.rank),0.524f,ry+0.008f,0.017f,i==0?gold:pink);
-                VisualStyle::DrawTextFit(r,m_font,row.username,0.562f,ry+0.008f,0.017f,0.135f,white);
+                const std::string userLabel=row.danBadge.empty()?row.username:("["+row.danBadge+"] "+row.username);
+                VisualStyle::DrawTextFit(r,m_font,userLabel,0.558f,ry+0.008f,0.017f,0.165f,white);
                 r.DrawText(m_font,std::to_string(row.score)+"  "+Number(row.accuracy,1)+"%",0.855f,ry+0.008f,0.016f,gold,TextAlign::Right);
             }
             if(m_globalEntries.empty()) {
@@ -457,6 +631,13 @@ void SceneSelect::OnRender(Renderer& r) {
             }
 
             r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
+            if(m_options.mode==PlayMode::Standard && m_dailyActiveSpec.has_value() && IsSelectedMatchingDaily()) {
+                r.DrawRoundedGradientRect({0.515f,0.691f,0.425f,0.044f},0.008f,{68,44,78,205},{36,30,62,205},{52,36,68,215},{28,24,50,215},8,true);
+                r.DrawRoundedRectOutlineGradient({0.515f,0.691f,0.425f,0.044f},0.008f,{250,216,157,175},{246,178,206,95},0.0013f,8);
+                const std::string goalStr=!m_dailyActiveSpec->goalText.empty()?m_dailyActiveSpec->goalText:("目标 "+std::to_string(m_dailyActiveSpec->targetScore));
+                const std::string rankTag=m_dailyMyRank.has_value()?(" · #"+std::to_string(*m_dailyMyRank)):"";
+                VisualStyle::DrawTextFit(r,m_font,"今日挑战 ["+m_dailyActiveSpec->dateUtc8+"] · "+goalStr+rankTag,0.528f,0.702f,0.016f,0.312f,m_playAsDaily?gold:dim);
+            }
             if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
             if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}
             else r.DrawText(m_font,"A / S / D / F / Space  +  鼠标    ·    Esc 暂停",0.515f,0.760f,0.019f,dim);
@@ -492,6 +673,6 @@ void SceneSelect::OnEvent(const SDL_Event& e) {
         if(row<static_cast<int>(m_visible.size())){Select(m_visible[row]);if(e.button.clicks==2)Start(m_options.mode);return;}
     }
     for(auto& b:m_buttons)if(b->HandleEvent(e))return;
-    for(auto& b:m_detailButtons)if(b->HandleEvent(e))return;
+    if(m_selected>=0) for(auto& b:m_detailButtons)if(b->HandleEvent(e))return;
 }
 }

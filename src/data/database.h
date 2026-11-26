@@ -4,6 +4,7 @@
 // 提供成绩、统计、成就的持久化存储
 
 #include "game/chart.h"
+#include "game/course.h"
 
 #include <array>
 #include <optional>
@@ -102,6 +103,13 @@ public:
 
     // 检查某成就是否已解锁
     bool IsAchievementUnlocked(const std::string& id) const;
+
+    // ── 段位认定记录 (v1.4.0) ─────────────────────────────────────────────────
+    bool SaveCourseRecord(const sakura::game::CourseRecord& record);
+    bool MergeCloudCourseRecord(const sakura::game::CourseRecord& record);
+    std::optional<sakura::game::CourseRecord> GetCourseRecord(const std::string& courseId) const;
+    std::vector<sakura::game::CourseRecord> GetAllCourseRecords() const;
+    std::optional<sakura::game::CourseRecord> GetHighestClearedCourse() const;
 
     // 禁止拷贝与移动
     Database(const Database&)            = delete;

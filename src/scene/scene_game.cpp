@@ -1,9 +1,15 @@
 // scene_game.cpp — 游戏核心场景实现
 
 #include "scene_game.h"
+#include "scene_course.h"
 #include "scene_select.h"
 #include "scene_pause.h"
 #include "scene_result.h"
+#include "game/course.h"
+#include "game/chart_loader.h"
+#include "game/achievement_manager.h"
+#include "data/database.h"
+#include "net/api_client.h"
 #include "core/input.h"
 #include "core/config.h"
 #include "core/paths.h"
@@ -254,6 +260,12 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
                                int hitErrorMs, bool showHitError,
                                bool isSynergy)
 {
+    if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive() &&
+        r != sakura::game::JudgeResult::None)
+    {
+        sakura::game::CourseSession::GetInstance().Gauge().OnJudge(r);
+    }
+
     JudgeFlash flash;
     flash.result   = r;
     flash.timer    = JudgeFlash::FLASH_DURATION;
@@ -353,6 +365,28 @@ void SceneGame::OnUpdate(float dt)
             m_session.Submit({now, sakura::game::InputKind::Tick});
         }
     }
+    if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive())
+    {
+        if (sakura::game::CourseSession::GetInstance().Gauge().IsFailed())
+        {
+            m_finishing = true;
+            sakura::audio::AudioManager::GetInstance().StopMusic();
+            auto& cs = sakura::game::CourseSession::GetInstance();
+            const auto& diff = m_chartInfo.difficulties[m_difficultyIndex];
+            auto partial = m_session.Score().GetResult(
+                m_chartInfo.id, m_chartInfo.title, diff.name, m_difficultyIndex, diff.level,
+                std::max(0.0, (now - m_options.startMs) / 1000.0));
+            cs.RecordStageResult(partial);
+            auto rec = cs.BuildFinalRecord();
+            sakura::data::Database::GetInstance().SaveCourseRecord(rec);
+            cs.Abort();
+            sakura::ui::ToastManager::Instance().Show(
+                "段位血槽归零 · 考核未通过", sakura::ui::ToastType::Warning, 3.5f);
+            m_manager.SwitchScene(
+                std::make_unique<SceneCourse>(m_manager, rec), TransitionType::SilkShutter, 0.42f);
+            return;
+        }
+    }
     if (m_gameState.IsFinished())
     {
         m_finishing = true;
@@ -392,6 +426,59 @@ void SceneGame::OnUpdate(float dt)
                 cfg.Save();
             }
             else sakura::ui::ToastManager::Instance().Show("回放保存失败，请检查存储空间", sakura::ui::ToastType::Error);
+        }
+        if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive())
+        {
+            auto& cs = sakura::game::CourseSession::GetInstance();
+            if (cs.Gauge().IsFailed())
+            {
+                cs.RecordStageResult(result);
+                auto rec = cs.BuildFinalRecord();
+                sakura::data::Database::GetInstance().SaveCourseRecord(rec);
+                cs.Abort();
+                sakura::ui::ToastManager::Instance().Show(
+                    "段位血槽归零 · 考核未通过", sakura::ui::ToastType::Warning, 3.5f);
+                m_manager.SwitchScene(
+                    std::make_unique<SceneCourse>(m_manager, rec), TransitionType::SilkShutter, 0.42f);
+                return;
+            }
+            if (!result.assisted)
+            {
+                sakura::data::Database::GetInstance().SaveScore(result);
+                sakura::game::AchievementManager::GetInstance().CheckAndUnlock(result);
+                if (sakura::net::APIClient::GetInstance().IsAuthenticated())
+                    sakura::net::APIClient::GetInstance().SubmitScoreAsync(result, {});
+            }
+            cs.RecordStageResult(result);
+            if (cs.HasNextStage() && cs.AdvanceStage())
+            {
+                sakura::game::ChartInfo nextChart;
+                int nextDiff = 0;
+                if (cs.GetCurrentStageChart(nextChart, nextDiff))
+                {
+                    sakura::ui::ToastManager::Instance().Show(
+                        "第 " + std::to_string(cs.GetCurrentStageIndex()) + " 曲通过 · 进入下一首",
+                        sakura::ui::ToastType::Success, 2.5f);
+                    m_manager.SwitchScene(
+                        std::make_unique<SceneGame>(m_manager, nextChart, nextDiff, m_options),
+                        TransitionType::SakuraSweep, 0.38f);
+                    return;
+                }
+            }
+            auto rec = cs.BuildFinalRecord();
+            sakura::data::Database::GetInstance().SaveCourseRecord(rec);
+            if (sakura::core::Config::GetInstance().Get<bool>("online.auto_cloud_sync", true) &&
+                sakura::net::APIClient::GetInstance().IsAuthenticated())
+            {
+                sakura::net::APIClient::GetInstance().SyncCloudSaveAsync();
+            }
+            cs.Abort();
+            sakura::ui::ToastManager::Instance().Show(
+                "✦ 樱华道场认定合格：[" + rec.badgeText + "]",
+                sakura::ui::ToastType::Achievement, 4.5f);
+            m_manager.SwitchScene(
+                std::make_unique<SceneCourse>(m_manager, rec), TransitionType::SakuraSweep, 0.44f);
+            return;
         }
         m_manager.SwitchScene(std::make_unique<SceneResult>(m_manager, result, m_chartInfo, m_options), TransitionType::SakuraSweep, 0.44f);
         return;
@@ -510,6 +597,47 @@ void SceneGame::Pause()
 void SceneGame::Retry()
 {
     if(m_options.returnToEditor){OnExit();OnEnter();return;}
+    if (m_options.isCourseMode)
+    {
+        auto& cs = sakura::game::CourseSession::GetInstance();
+        if (cs.IsActive())
+        {
+            const auto courseDef = cs.GetCourse();
+            sakura::game::ChartLoader loader;
+            auto charts = loader.ScanCharts("resources/charts");
+            auto custom = loader.ScanCharts(sakura::core::Paths::User("charts"));
+            for (auto& c : custom)
+            {
+                auto existing = std::find_if(charts.begin(), charts.end(),
+                    [&](const sakura::game::ChartInfo& other) { return other.id == c.id; });
+                if (existing == charts.end())
+                    charts.push_back(std::move(c));
+                else
+                    *existing = std::move(c);
+            }
+            if (std::find_if(charts.begin(), charts.end(),
+                    [this](const sakura::game::ChartInfo& other) { return other.id == m_chartInfo.id; }) == charts.end())
+            {
+                charts.push_back(m_chartInfo);
+            }
+            if (cs.Start(courseDef, charts))
+            {
+                sakura::game::ChartInfo firstChart;
+                int firstDiff = 0;
+                if (cs.GetCurrentStageChart(firstChart, firstDiff))
+                {
+                    sakura::ui::ToastManager::Instance().Show(
+                        "段位考核已从第 1 曲重新开始", sakura::ui::ToastType::Info, 2.2f);
+                    m_manager.SwitchScene(
+                        std::make_unique<SceneGame>(m_manager, firstChart, firstDiff, m_options),
+                        TransitionType::Fade, 0.18f);
+                    return;
+                }
+            }
+        }
+        m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager), TransitionType::SilkShutter, 0.35f);
+        return;
+    }
     m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager, m_chartInfo, m_difficultyIndex, m_options),
         TransitionType::Fade, 0.18f);
 }
@@ -832,8 +960,11 @@ void SceneGame::RenderTrack(sakura::core::Renderer& renderer)
         renderer, { TRACK_X - 0.004f, 0.092f, 0.140f, 0.022f },
         "KEYS · 4K + SPACE", m_fontSmall, 0.0125f,
         { 36, 30, 58, 185 }, { 250, 216, 157, 125 }, { 250, 220, 168, 235 });
+    const float mouseBadgeX = (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive())
+        ? (MOUSE_X + MOUSE_W - 0.133f)
+        : (MOUSE_X - 0.012f);
     sakura::ui::VisualStyle::DrawBadgePill(
-        renderer, { MOUSE_X - 0.012f, 0.092f, 0.145f, 0.022f },
+        renderer, { mouseBadgeX, 0.092f, 0.145f, 0.022f },
         "MOUSE · 丝滑旋律", m_fontSmall, 0.013f,
         { 30, 36, 62, 185 }, { 246, 178, 206, 125 }, { 246, 184, 212, 235 });
 }
@@ -1428,11 +1559,42 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         : std::string{};
     renderer.DrawText(m_fontSmall, diffBadge, 0.036f, 0.050f, 0.016f, gold);
 
-    const char* modes[] = { "LIVE · 正式演奏", "PRACTICE · 自由练习", "AUTO · 自动演示", "REPLAY · 回放" };
-    const char* modeText = m_options.returnToEditor ? "EDITOR · 试玩  (Esc 返回工房)" : modes[static_cast<int>(m_options.mode)];
+    const bool courseActive = m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive();
+    std::string modeLabel;
+    NormRect modePillRect{ 0.435f, 0.014f, 0.19f, 0.029f };
+    Color modeFill{ 44, 34, 68, 205 };
+    Color modeBorder{ 250, 216, 157, 150 };
+    Color modeTextCol = pink;
+
+    if (m_options.returnToEditor)
+    {
+        modeLabel = "EDITOR · 试玩  (Esc 返回工房)";
+    }
+    else if (courseActive)
+    {
+        const auto& cs = sakura::game::CourseSession::GetInstance();
+        modeLabel = "COURSE " + std::to_string(cs.GetCurrentStageIndex() + 1) + "/" +
+                    std::to_string(cs.GetTotalStages()) + " · " + cs.GetCourse().badgeText;
+        modePillRect = { 0.415f, 0.014f, 0.23f, 0.029f };
+        modeFill = { 52, 36, 74, 220 };
+        modeBorder = { 250, 216, 157, 205 };
+        modeTextCol = gold;
+    }
+    else if (m_options.isDailyChallenge)
+    {
+        modeLabel = "DAILY · 今日挑战";
+        modeFill = { 38, 46, 76, 215 };
+        modeBorder = { 250, 216, 157, 190 };
+        modeTextCol = gold;
+    }
+    else
+    {
+        const char* modes[] = { "LIVE · 正式演奏", "PRACTICE · 自由练习", "AUTO · 自动演示", "REPLAY · 回放" };
+        modeLabel = modes[static_cast<int>(m_options.mode)];
+    }
     sakura::ui::VisualStyle::DrawBadgePill(
-        renderer, { 0.435f, 0.014f, 0.19f, 0.029f }, modeText, m_fontSmall, 0.014f,
-        { 44, 34, 68, 205 }, { 250, 216, 157, 150 }, pink);
+        renderer, modePillRect, modeLabel, m_fontSmall, 0.014f,
+        modeFill, modeBorder, modeTextCol);
 
     const float feverEnergy = std::clamp(m_session.Score().GetFeverEnergy(), 0.0f, 1.0f);
     const bool feverActive = m_session.Score().IsFeverActive();
@@ -1449,9 +1611,53 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
     renderer.DrawText(m_fontSmall, feverActive ? "✦ SAKURA BLOOM · 满开" : "BLOOM",
         0.530f, 0.060f, 0.0115f, feverActive ? gold : dim, TextAlign::Center);
 
+    if (courseActive)
+    {
+        const auto& cs = sakura::game::CourseSession::GetInstance();
+        const float lifePct = std::clamp(cs.Gauge().GetLife(), 0.0f, 100.0f);
+        const float lifeRatio = lifePct / 100.0f;
+        const NormRect gaugeRect{ 0.415f, 0.088f, 0.23f, 0.012f };
+
+        Color barLeft, barRight, barTextCol;
+        if (lifePct > 50.0f)
+        {
+            barLeft    = { 86, 224, 172, 255 };
+            barRight   = { 250, 216, 152, 255 };
+            barTextCol = { 162, 238, 198, 255 };
+        }
+        else if (lifePct >= 25.0f)
+        {
+            barLeft    = { 242, 168, 76, 255 };
+            barRight   = { 252, 208, 118, 255 };
+            barTextCol = { 252, 198, 112, 255 };
+        }
+        else
+        {
+            barLeft    = { 224, 64, 92, 255 };
+            barRight   = { 248, 112, 134, 255 };
+            barTextCol = { 248, 116, 138, 255 };
+        }
+
+        renderer.DrawSoftShadow(gaugeRect, 0.006f, 0.008f, { 4, 6, 16, 175 }, 0.002f, 6);
+        renderer.DrawRoundedRect(gaugeRect, 0.006f, { 18, 22, 42, 228 }, true, 6);
+        if (lifeRatio > 0.002f)
+        {
+            const float fillW = std::min(gaugeRect.width, std::max(0.008f, gaugeRect.width * lifeRatio));
+            renderer.DrawRoundedGradientRect(
+                { gaugeRect.x, gaugeRect.y, fillW, gaugeRect.height }, 0.006f,
+                barLeft, barRight, barLeft, barRight, 6, true);
+        }
+        renderer.DrawRoundedRect(gaugeRect, 0.006f, barTextCol.WithAlpha(185), false, 6, 0.0012f);
+
+        std::ostringstream lifeStr;
+        lifeStr << std::fixed << std::setprecision(0) << lifePct << "%";
+        renderer.DrawText(m_fontSmall, "LIFE", gaugeRect.x - 0.008f, 0.0865f, 0.0125f, dim, TextAlign::Right);
+        renderer.DrawText(m_fontSmall, lifeStr.str(), gaugeRect.x + gaugeRect.width + 0.008f, 0.0865f, 0.0135f, barTextCol, TextAlign::Left);
+    }
+
     if (m_retryTracker.GetCount() > 0)
     {
-        const NormRect retryRect{ 0.37f, 0.095f, 0.26f, 0.032f };
+        const NormRect retryRect{ 0.37f, courseActive ? 0.112f : 0.095f, 0.26f, 0.032f };
         const std::string retryText = "再按 " + std::to_string(m_retryTracker.GetRemaining()) +
             " 次 R 确认重开 (" + std::to_string(m_retryTracker.GetCount()) + "/3)";
         renderer.DrawSoftShadow(retryRect, 0.016f, 0.010f, { 250, 216, 157, 82 }, 0.0f, 8);

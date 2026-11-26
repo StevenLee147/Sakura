@@ -20,6 +20,9 @@ struct PlayOptions
     int endMs = 0; // 0 = entire song
     bool loop = false;
     bool returnToEditor = false;
+    bool isCourseMode = false;
+    bool isDailyChallenge = false;
+    std::string dailyDate;
     std::string replayFile;
 };
 

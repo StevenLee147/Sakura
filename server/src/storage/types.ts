@@ -3,6 +3,7 @@ export interface UserRecord {
   username: string;
   passwordHash: string;
   isGuest: boolean;
+  danBadge: string;
   createdAt: number;
 }
 
@@ -35,6 +36,7 @@ export interface LeaderboardEntry {
   scoreId: string;
   userId: string;
   username: string;
+  danBadge: string;
   score: number;
   accuracy: number;
   maxCombo: number;
@@ -44,6 +46,16 @@ export interface LeaderboardEntry {
   isAllPerfect: boolean;
   hasReplay: boolean;
   playedAt: number;
+}
+
+export interface DailyChallengeSpec {
+  date: string;
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  goalText: string;
+  targetScore: number;
 }
 
 export interface MarketDifficultyInfo {
@@ -122,10 +134,22 @@ export interface CloudAchievementRecord {
   unlockedAt: number;
 }
 
+export interface CloudCourseRecord {
+  courseId: string;
+  badgeText: string;
+  danRank: number;
+  totalScore: number;
+  avgAccuracy: number;
+  remainingLife: number;
+  cleared: boolean;
+  clearedAt: number;
+}
+
 export interface CloudSyncSnapshot {
   syncedAt: number;
   scores: CloudScoreRecord[];
   achievements: CloudAchievementRecord[];
+  courseRecords: CloudCourseRecord[];
   settings: Record<string, unknown>;
   settingsUpdatedAt: number;
 }
@@ -142,13 +166,33 @@ export interface IStorageAdapter {
     entries: LeaderboardEntry[];
     myRank: number | null;
   };
+  submitDailyScore(userId: string, sub: ScoreSubmission, dateUtc8?: string): {
+    scoreId: string;
+    date: string;
+    pp: number;
+    rank: number;
+    newBest: boolean;
+  };
+  getDailyLeaderboard(dateUtc8: string, limit: number, currentUserId?: string): {
+    entries: LeaderboardEntry[];
+    myRank: number | null;
+  };
   getReplayData(scoreId: string): string | null;
   publishChart(userId: string, username: string, pkgBuffer: Buffer, description?: string): MarketChartItem;
   listCharts(query: MarketSearchQuery): { total: number; page: number; pageSize: number; charts: MarketChartItem[] };
   getChartById(chartId: string, currentUserId?: string): { chart: MarketChartItem; ratings: MarketRatingEntry[] } | null;
   downloadChartPackage(chartId: string): { buffer: Buffer; chart: MarketChartItem } | null;
   rateChart(chartId: string, userId: string, username: string, rating: number, comment: string): { ratingAvg: number; ratingCount: number; myRating: number };
-  pushCloudSync(userId: string, payload: { scores: CloudScoreRecord[]; achievements: CloudAchievementRecord[]; settings?: Record<string, unknown>; settingsUpdatedAt?: number }): { scoresMerged: number; achievementsMerged: number; snapshot: CloudSyncSnapshot };
+  pushCloudSync(
+    userId: string,
+    payload: {
+      scores: CloudScoreRecord[];
+      achievements: CloudAchievementRecord[];
+      courseRecords?: CloudCourseRecord[];
+      settings?: Record<string, unknown>;
+      settingsUpdatedAt?: number;
+    }
+  ): { scoresMerged: number; achievementsMerged: number; coursesMerged: number; snapshot: CloudSyncSnapshot };
   pullCloudSync(userId: string): CloudSyncSnapshot;
   close(): void;
 }

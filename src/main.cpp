@@ -6,6 +6,8 @@
 #include "game/chart_loader.h"
 #include "scene/scene_menu.h"
 #include "scene/scene_market.h"
+#include "scene/scene_course.h"
+#include "game/course.h"
 #include "scene/scene_splash.h"
 #include "scene/scene_select.h"
 #include "game/achievement_manager.h"
@@ -52,7 +54,7 @@ public:
     bool succeeded = true;
 private:
     std::filesystem::path m_directory;
-    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "market", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
+    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "market", "course", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
         "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "game_bga_f3", "result", "result_detail"};
     size_t m_stage = 0;
     bool m_started = false;
@@ -133,6 +135,7 @@ private:
             if (name == "menu") scene = std::make_unique<SceneMenu>(manager);
             if (name == "select" || name=="select_practice") scene = std::make_unique<SceneSelect>(manager);
             if (name == "market") scene = std::make_unique<SceneMarket>(manager);
+            if (name == "course") scene = std::make_unique<SceneCourse>(manager);
             if (name.starts_with("settings")) scene = std::make_unique<SceneSettings>(manager);
             if (name == "tutorial") scene = std::make_unique<SceneTutorial>(manager);
             if (name == "stats") scene = std::make_unique<SceneStats>(manager);
@@ -273,6 +276,7 @@ private:
         if(name=="menu")m_semantic=dynamic_cast<SceneMenu*>(current)!=nullptr;
         if(name.starts_with("select")) {const auto* select=dynamic_cast<SceneSelect*>(current);m_semantic=select && (name!="select_practice" || select->CurrentMode()==sakura::game::PlayMode::Practice);}
         if(name=="market")m_semantic=dynamic_cast<SceneMarket*>(current)!=nullptr;
+        if(name=="course")m_semantic=dynamic_cast<SceneCourse*>(current)!=nullptr;
         if(name.starts_with("settings")){const auto* settings=dynamic_cast<SceneSettings*>(current);int page=name=="settings"?0:name=="settings_audio"?1:name=="settings_controls"?2:name=="settings_display"?3:name=="settings_visual"?4:5;m_semantic=settings&&settings->CurrentPage()==page;}
         if(name=="game"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&game->Session().Score().GetJudgedCount()>0;}
         if(name=="game_bga_f3"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&IsDiagnosticsOverlayVisible();SetDiagnosticsOverlayVisible(false);}
@@ -571,6 +575,54 @@ bool RunVerifyOnline(const std::string& baseUrl)
     }
     db.Shutdown();
 
+    // v1.4.0 E2E: Daily Challenge parity + daily leaderboard rank + Course Dan badge & Collections sync
+    const auto dailyInfo    = api.FetchDailyChallenge("2026-11-26", 10);
+    const auto offlineDaily = ComputeOfflineDailyChallenge("2026-11-26");
+    if (!dailyInfo.ok || dailyInfo.offlineFallback || dailyInfo.spec.chartId != offlineDaily.chartId)
+        return failStep("FetchDailyChallenge", dailyInfo.error + " chart=" + dailyInfo.spec.chartId);
+
+    GameResult validDailyGameResult;
+    validDailyGameResult.chartId         = dailyInfo.spec.chartId;
+    validDailyGameResult.chartTitle      = dailyInfo.spec.chartTitle.empty() ? dailyInfo.spec.chartId : dailyInfo.spec.chartTitle;
+    validDailyGameResult.chartHash       = "e2e_daily_hash";
+    validDailyGameResult.difficulty      = dailyInfo.spec.difficultyName;
+    validDailyGameResult.difficultyLevel = dailyInfo.spec.difficultyLevel;
+    validDailyGameResult.score           = 988000;
+    validDailyGameResult.accuracy        = 99.2f;
+    validDailyGameResult.maxCombo        = 100;
+    validDailyGameResult.grade           = Grade::S;
+    validDailyGameResult.perfectCount    = 99;
+    validDailyGameResult.greatCount      = 1;
+    validDailyGameResult.goodCount       = 0;
+    validDailyGameResult.badCount        = 0;
+    validDailyGameResult.missCount       = 0;
+    validDailyGameResult.totalJudgments  = 100;
+    validDailyGameResult.isFullCombo     = true;
+    validDailyGameResult.isAllPerfect    = false;
+    validDailyGameResult.assisted        = false;
+    validDailyGameResult.playbackRate    = 1.0f;
+    const auto dailySub = api.SubmitDailyScore("2026-11-26", validDailyGameResult);
+    if (!dailySub.ok || dailySub.rank != 1)
+        return failStep("SubmitDailyScore", dailySub.error + " rank=" + std::to_string(dailySub.rank));
+
+    const fs::path dbV140 = e2eDir / "device_v140.db";
+    fs::remove(dbV140, ec);
+    if (!db.Initialize(dbV140.string())) return failStep("InitDbV140");
+    const CourseRecord kaidenRec{ "dan_kaiden", "皆传", 10, 3920000, 99.1f, 84.0f, true, 1795600000LL };
+    if (!db.SaveCourseRecord(kaidenRec)) return failStep("SaveCourseRecordV140");
+
+    std::vector<SongCollection> e2eCols = CollectionManager::LoadFromConfig();
+    const SongCollection e2eCol = CollectionManager::CreateCollection(e2eCols, "E2E_Col", 1795600000LL);
+    CollectionManager::ToggleChartInCollection(e2eCols, e2eCol.id, "sakura_breath", 1795600001LL);
+    CollectionManager::SaveToConfig(e2eCols);
+
+    const auto syncV140 = api.SyncCloudSave();
+    if (!syncV140.ok) return failStep("SyncCloudSaveV140", syncV140.error);
+    const auto profV140 = api.RefreshProfile();
+    if (!profV140.ok || profV140.user.danBadge != "皆传")
+        return failStep("RefreshProfileDanBadge", profV140.error + " badge=" + profV140.user.danBadge);
+    db.Shutdown();
+
     const nlohmann::json report = {
         { "verified", true },
         { "username", uname },
@@ -581,7 +633,9 @@ bool RunVerifyOnline(const std::string& baseUrl)
         { "pp", submitted.pp },
         { "replay_events", dlReplay->inputs.size() },
         { "cloud_restored_scores", syncPull.scoresPulled },
-        { "cloud_restored_achievements", syncPull.achievementsPulled }
+        { "cloud_restored_achievements", syncPull.achievementsPulled },
+        { "daily_chart_id", dailyInfo.spec.chartId },
+        { "dan_badge", profV140.user.danBadge }
     };
     sakura::utils::AtomicWrite(fs::path(sakura::core::Paths::User("verify-online.json")), report.dump(2));
     api.Shutdown();

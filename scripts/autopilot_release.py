@@ -222,8 +222,47 @@ def watch_remote_release(target_tag: str) -> None:
                 break
         time.sleep(15)
     if conclusion != "success":
-        run(["gh", "run", "view", str(run_id), "--log-failed"], check=False)
-        raise RuntimeError(f"GitHub Actions run {run_id} finished with conclusion={conclusion!r} for {target_tag}.")
+        jobs_probe = run(["gh", "run", "view", str(run_id), "--json", "jobs"], check=False, capture=True)
+        only_release_failed = False
+        if jobs_probe.returncode == 0 and jobs_probe.stdout.strip():
+            jobs = json.loads(jobs_probe.stdout).get("jobs", [])
+            failed_names = [j.get("name", "") for j in jobs if j.get("conclusion") not in ("success", "skipped")]
+            if failed_names == ["Create GitHub Release"]:
+                only_release_failed = True
+        if only_release_failed:
+            print(f"[autopilot] Only Create GitHub Release hit transient failure on run {run_id}; recovering from release-dist...", flush=True)
+            dl_dir = REPO / "build" / "qa" / f"ci-dist-{target_tag}"
+            if dl_dir.exists():
+                shutil.rmtree(dl_dir)
+            dl_dir.mkdir(parents=True, exist_ok=True)
+            run(["gh", "run", "download", str(run_id), "-n", "release-dist", "-D", str(dl_dir)])
+            zip_f = dl_dir / f"Sakura-{target_tag}-win64.zip"
+            exe_f = dl_dir / f"Sakura-{target_tag}-win64-setup.exe"
+            sum_f = dl_dir / f"Sakura-{target_tag}-SHA256SUMS.txt"
+            (dl_dir / "Sakura-win64.zip").replace(zip_f)
+            (dl_dir / "Sakura-win64-setup.exe").replace(exe_f)
+            import hashlib
+            h_exe = hashlib.sha256(exe_f.read_bytes()).hexdigest()
+            h_zip = hashlib.sha256(zip_f.read_bytes()).hexdigest()
+            sum_f.write_text(f"{h_exe}  {exe_f.name}\n{h_zip}  {zip_f.name}\n", encoding="utf-8")
+            is_pre = any(s in target_tag for s in ("-dev", "-alpha", "-beta", "-rc"))
+            flag = "--prerelease" if is_pre else "--latest"
+            for attempt in range(1, 9):
+                chk = run(["gh", "release", "view", target_tag], check=False, capture=True)
+                if chk.returncode == 0:
+                    u = run(["gh", "release", "upload", target_tag, str(exe_f), str(zip_f), str(sum_f), "--clobber"], check=False)
+                    e = run(["gh", "release", "edit", target_tag, "--tag", target_tag, "--draft=false", flag], check=False)
+                    if u.returncode == 0 and e.returncode == 0:
+                        break
+                else:
+                    c = run(["gh", "release", "create", target_tag, str(exe_f), str(zip_f), str(sum_f), "--title", f"Sakura-樱 {target_tag}", "--generate-notes", flag], check=False)
+                    if c.returncode == 0:
+                        break
+                time.sleep(attempt * 4)
+            shutil.rmtree(dl_dir, ignore_errors=True)
+        else:
+            run(["gh", "run", "view", str(run_id), "--log-failed"], check=False)
+            raise RuntimeError(f"GitHub Actions run {run_id} finished with conclusion={conclusion!r} for {target_tag}.")
 
     for _ in range(12):
         rel = run(["gh", "release", "view", target_tag, "--json", "tagName,isPrerelease,assets,url"], check=False, capture=True)

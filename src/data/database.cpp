@@ -77,6 +77,19 @@ CREATE TABLE IF NOT EXISTS achievements (
 );
 )sql";
 
+constexpr const char* SQL_CREATE_COURSE_RECORDS = R"sql(
+CREATE TABLE IF NOT EXISTS course_records (
+    course_id      TEXT    PRIMARY KEY NOT NULL,
+    badge_text     TEXT    NOT NULL DEFAULT '',
+    dan_rank       INTEGER NOT NULL DEFAULT 0,
+    total_score    INTEGER NOT NULL DEFAULT 0,
+    avg_accuracy   REAL    NOT NULL DEFAULT 0.0,
+    remaining_life REAL    NOT NULL DEFAULT 0.0,
+    cleared        INTEGER NOT NULL DEFAULT 0,
+    cleared_at     INTEGER NOT NULL DEFAULT 0
+);
+)sql";
+
 // 列索引常量（与 SELECT 顺序对应）
 enum ScoreCol
 {
@@ -166,6 +179,26 @@ std::string ResolveDatabasePath(std::string_view dbPath)
         return envPath;
 
     return "data/sakura.db";
+}
+
+sakura::game::CourseRecord RowToCourseRecord(sqlite3_stmt* stmt)
+{
+    auto getStr = [stmt](int col) -> std::string
+    {
+        const char* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col));
+        return s ? s : "";
+    };
+
+    sakura::game::CourseRecord rec;
+    rec.courseId      = getStr(0);
+    rec.badgeText     = getStr(1);
+    rec.danRank       = sqlite3_column_int(stmt, 2);
+    rec.totalScore    = sqlite3_column_int(stmt, 3);
+    rec.avgAccuracy   = static_cast<float>(sqlite3_column_double(stmt, 4));
+    rec.remainingLife = static_cast<float>(sqlite3_column_double(stmt, 5));
+    rec.cleared       = sqlite3_column_int(stmt, 6) != 0;
+    rec.clearedAt     = static_cast<long long>(sqlite3_column_int64(stmt, 7));
+    return rec;
 }
 
 } // namespace (anonymous)
@@ -297,6 +330,7 @@ bool Database::CreateTables()
     if(version<2 && existed)ok=ExecSQL("ALTER TABLE scores RENAME TO legacy_scores_v1");
     if(version==2 && existed)ok=ExecSQL("ALTER TABLE scores ADD COLUMN chart_hash TEXT NOT NULL DEFAULT ''");
     ok=ok && ExecSQL(SQL_CREATE_SCORES) && ExecSQL(SQL_CREATE_STATISTICS) && ExecSQL(SQL_CREATE_ACHIEVEMENTS)
+        && ExecSQL(SQL_CREATE_COURSE_RECORDS)
         && ExecSQL("CREATE INDEX IF NOT EXISTS idx_scores_revision ON scores(chart_id,difficulty,chart_hash,score DESC)")
         && ExecSQL("PRAGMA user_version=3");
     if(ok)ok=ExecSQL("COMMIT");
@@ -1023,6 +1057,179 @@ bool Database::MergeCloudAchievement(const std::string& id, long long unlockedAt
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
     return ok && !wasUnlocked;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 段位认定记录 (v1.4.0)
+// ═════════════════════════════════════════════════════════════════════════════
+
+bool Database::SaveCourseRecord(const sakura::game::CourseRecord& record)
+{
+    if (!m_db)
+    {
+        LOG_WARN("[Database] SaveCourseRecord: 数据库未打开");
+        return false;
+    }
+    if (record.courseId.empty())
+        return false;
+
+    const char* sql = R"sql(
+        INSERT INTO course_records (
+            course_id, badge_text, dan_rank, total_score,
+            avg_accuracy, remaining_life, cleared, cleared_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(course_id) DO UPDATE SET
+            badge_text     = CASE WHEN excluded.badge_text != '' THEN excluded.badge_text ELSE course_records.badge_text END,
+            dan_rank       = MAX(course_records.dan_rank, excluded.dan_rank),
+            total_score    = MAX(course_records.total_score, excluded.total_score),
+            avg_accuracy   = MAX(course_records.avg_accuracy, excluded.avg_accuracy),
+            remaining_life = MAX(course_records.remaining_life, excluded.remaining_life),
+            cleared        = MAX(course_records.cleared, excluded.cleared),
+            cleared_at     = CASE
+                WHEN course_records.cleared_at > 0 AND excluded.cleared_at > 0
+                    THEN MIN(course_records.cleared_at, excluded.cleared_at)
+                WHEN excluded.cleared_at > 0
+                    THEN excluded.cleared_at
+                ELSE course_records.cleared_at
+            END;
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        LOG_ERROR("[Database] SaveCourseRecord prepare 失败: {}", sqlite3_errmsg(m_db));
+        return false;
+    }
+
+    const long long clearedAt = (record.cleared && record.clearedAt <= 0)
+        ? NowTimestamp()
+        : (record.clearedAt > 0 ? record.clearedAt : 0LL);
+
+    sqlite3_bind_text  (stmt, 1, record.courseId.c_str(),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text  (stmt, 2, record.badgeText.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int   (stmt, 3, record.danRank);
+    sqlite3_bind_int   (stmt, 4, record.totalScore);
+    sqlite3_bind_double(stmt, 5, static_cast<double>(record.avgAccuracy));
+    sqlite3_bind_double(stmt, 6, static_cast<double>(record.remainingLife));
+    sqlite3_bind_int   (stmt, 7, record.cleared ? 1 : 0);
+    sqlite3_bind_int64 (stmt, 8, clearedAt);
+
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    if (!ok)
+        LOG_ERROR("[Database] SaveCourseRecord step 失败: {}", sqlite3_errmsg(m_db));
+    else
+        LOG_INFO("[Database] 已保存段位记录: course={} score={} cleared={}",
+                 record.courseId, record.totalScore, record.cleared);
+
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool Database::MergeCloudCourseRecord(const sakura::game::CourseRecord& record)
+{
+    if (!m_db || record.courseId.empty())
+        return false;
+
+    const auto existing = GetCourseRecord(record.courseId);
+    if (existing.has_value())
+    {
+        const bool improvesCleared   = record.cleared && !existing->cleared;
+        const bool improvesScore     = record.totalScore > existing->totalScore;
+        const bool improvesAccuracy  = record.avgAccuracy > existing->avgAccuracy + 1e-5f;
+        const bool improvesClearedAt = record.clearedAt > 0 &&
+            (existing->clearedAt <= 0 || record.clearedAt < existing->clearedAt);
+
+        if (!improvesCleared && !improvesScore && !improvesAccuracy && !improvesClearedAt)
+            return false;
+    }
+
+    return SaveCourseRecord(record);
+}
+
+std::optional<sakura::game::CourseRecord> Database::GetCourseRecord(const std::string& courseId) const
+{
+    if (!m_db || courseId.empty())
+        return std::nullopt;
+
+    const char* sql = R"sql(
+        SELECT course_id, badge_text, dan_rank, total_score,
+               avg_accuracy, remaining_life, cleared, cleared_at
+        FROM course_records
+        WHERE course_id = ?
+        LIMIT 1;
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        LOG_ERROR("[Database] GetCourseRecord prepare 失败: {}", sqlite3_errmsg(m_db));
+        return std::nullopt;
+    }
+
+    sqlite3_bind_text(stmt, 1, courseId.c_str(), -1, SQLITE_TRANSIENT);
+
+    std::optional<sakura::game::CourseRecord> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        result = RowToCourseRecord(stmt);
+
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<sakura::game::CourseRecord> Database::GetAllCourseRecords() const
+{
+    if (!m_db)
+        return {};
+
+    const char* sql = R"sql(
+        SELECT course_id, badge_text, dan_rank, total_score,
+               avg_accuracy, remaining_life, cleared, cleared_at
+        FROM course_records
+        ORDER BY dan_rank ASC, course_id ASC;
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        LOG_ERROR("[Database] GetAllCourseRecords prepare 失败: {}", sqlite3_errmsg(m_db));
+        return {};
+    }
+
+    std::vector<sakura::game::CourseRecord> records;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        records.push_back(RowToCourseRecord(stmt));
+
+    sqlite3_finalize(stmt);
+    return records;
+}
+
+std::optional<sakura::game::CourseRecord> Database::GetHighestClearedCourse() const
+{
+    if (!m_db)
+        return std::nullopt;
+
+    const char* sql = R"sql(
+        SELECT course_id, badge_text, dan_rank, total_score,
+               avg_accuracy, remaining_life, cleared, cleared_at
+        FROM course_records
+        WHERE cleared = 1
+        ORDER BY dan_rank DESC, total_score DESC
+        LIMIT 1;
+    )sql";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        LOG_ERROR("[Database] GetHighestClearedCourse prepare 失败: {}", sqlite3_errmsg(m_db));
+        return std::nullopt;
+    }
+
+    std::optional<sakura::game::CourseRecord> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        result = RowToCourseRecord(stmt);
+
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 } // namespace sakura::data

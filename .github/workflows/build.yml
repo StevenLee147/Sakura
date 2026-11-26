@@ -289,16 +289,34 @@ jobs:
             echo "value=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: |
-            dist/Sakura-${{ env.RELEASE_TAG }}-win64-setup.exe
-            dist/Sakura-${{ env.RELEASE_TAG }}-win64.zip
-            dist/Sakura-${{ env.RELEASE_TAG }}-SHA256SUMS.txt
-          prerelease: ${{ steps.prerelease.outputs.value }}
-          generate_release_notes: true
-          name: "Sakura-樱 ${{ env.RELEASE_TAG }}"
+      - name: Create GitHub Release (with 5xx retry resilience)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.RELEASE_TAG }}
+          IS_PRE: ${{ steps.prerelease.outputs.value }}
+        run: |
+          PRE_FLAG=""
+          if [[ "$IS_PRE" == "true" ]]; then
+            PRE_FLAG="--prerelease"
+          else
+            PRE_FLAG="--latest"
+          fi
+          FILES=(
+            "dist/Sakura-${TAG}-win64-setup.exe"
+            "dist/Sakura-${TAG}-win64.zip"
+            "dist/Sakura-${TAG}-SHA256SUMS.txt"
+          )
+          for attempt in $(seq 1 8); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              if gh release upload "$TAG" "${FILES[@]}" --clobber && gh release edit "$TAG" --tag "$TAG" --draft=false $PRE_FLAG; then
+                exit 0
+              fi
+            else
+              if gh release create "$TAG" "${FILES[@]}" --title "Sakura-樱 ${TAG}" --generate-notes $PRE_FLAG; then
+                exit 0
+              fi
+            fi
+            echo "[release] Attempt ${attempt} hit transient GitHub error; retrying..."
+            sleep $((attempt * 4))
+          done
+          exit 1
