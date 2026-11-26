@@ -2,20 +2,20 @@
 
 本文档定义了 Copilot 在 **无人值守（Unattended Autopilot）** 模式下连续完成多个版本开发、验证、打包、打标、GitHub Release 发布与线上服同步的标准作业协议。
 
-> **当前战役归档状态（v0.8.0-alpha → v2.0.0）**：首轮规划的全部 **13 个里程碑版本**（`v0.8.0-alpha`、`v0.8.1-alpha`、`v0.9.0-beta`、`v0.9.1-beta`、`v1.0.0`、`v1.1.0`、`v1.2.0`、`v1.3.0`、`v1.4.0`、`v1.5.0`、`v1.6.0`、`v1.7.0`、`v2.0.0`）已 **100% 完成研发、门禁验证并上线 GitHub Releases 与 `https://steven-lee.tech:233`**。本手册继续保留为后续 **`v2.x` 系列扩展版本**的标准复用模板。
+> **当前战役状态（已发布归档：`v0.8.0-alpha → v2.0.0` 共 13 个版本 ｜ 当前活跃战役：`v2.1.0 → v3.0.0` 共 6 个版本）**：前序规划的 **13 个里程碑版本**（`v0.8.0-alpha`、`v0.8.1-alpha`、`v0.9.0-beta`、`v0.9.1-beta`、`v1.0.0`、`v1.1.0`、`v1.2.0`、`v1.3.0`、`v1.4.0`、`v1.5.0`、`v1.6.0`、`v1.7.0`、`v2.0.0`）已 **100% 完成研发、门禁验证并上线 GitHub Releases 与 `https://steven-lee.tech:233`**；当前活跃战役为 **`v2.1.0 → v3.0.0` 共 6 个里程碑版本**（`v2.1.0`、`v2.2.0`、`v2.3.0`、`v2.4.0`、`v2.5.0`、`v3.0.0`），按本手册协议执行全程零人工介入连续迭代与自动发布。
 
-## 一键投喂 Prompt（支持未来 `v2.x` 新里程碑断点续跑）
+## 一键投喂 Prompt（`v2.1.0 → v3.0.0` 全自动断点续跑）
 
-在 `doc/ROADMAP.md` 与下表登记新的 `v2.x` 目标版本后，将以下提示词直接发给处于 Autopilot 模式的 Copilot 即可自动续跑直至目标版本全部发版完成：
+任意放入本仓库并处于 Autopilot 模式的 Copilot 会话，直接投喂以下提示词即可自动定位断点并连续跑完 `v2.1.0 → v2.2.0 → v2.3.0 → v2.4.0 → v2.5.0 → v3.0.0` 全部研发、验证、发版与部署闭环：
 
 ```text
-请阅读 doc/roadmap/AUTOPILOT_PLAYBOOK.md 与 doc/ROADMAP.md，进入全程零人工介入的持续更新+自动发布循环：
-1. 先运行 python scripts/autopilot_release.py --status 检查当前 VERSION.json、本地 Git tag 与远端 GitHub Releases，定位下一个尚未发布的里程碑版本。
-2. 严格按照对应版本的 roadmap 规范完成全部代码、资源与单测（遵循 0.0~1.0 归一化布局与绝不简化原则，兼顾 Windows MSVC 与 ci-linux 单测）。
-3. 中间提交统一设置 VERSION_HOOK_BUMP=no-bump 防止弹窗阻塞；每完成一个里程碑版本的功能与测试后，调用 python scripts/autopilot_release.py 执行本地 Release 编译、CTest、--smoke-test、发行打包、非交互式升版打 Tag、直推 main 与 Tag、并阻塞等待远端 GitHub Actions 成功创建 GitHub Release 且校验发行资产。
-4. 若本地测试或远端 GitHub Actions 失败，立即读取错误日志原地修复并重跑，严禁跳过或禁用功能。
-5. 每个正式版本 GitHub Release 验证通过后，脚本会自动通过免密 SSH 将最新 server/ 部署至 steven-lee.tech (/srv/sakura-online) 并校验 https://steven-lee.tech:233/api/v1/health 版本号一致。
-6. 当前版本全链路验收通过后，不要停下询问我，立即自动进入下一个规划版本的开发与发布，直至路线图中所有待发版本（如 v2.x 系列目标版本）正式发布并验收通过。
+请阅读 doc/roadmap/AUTOPILOT_PLAYBOOK.md 与 doc/ROADMAP.md，进入全程零人工介入（Zero Human Intervention）的持续更新+自动发布循环：
+1. 先运行 python scripts/autopilot_release.py --status 检查当前 VERSION.json、本地 Git tag 与远端 GitHub Releases，自动定位 v2.1.0 → v2.2.0 → v2.3.0 → v2.4.0 → v2.5.0 → v3.0.0 序列中下一个尚未发布的里程碑版本。
+2. 每个版本先对齐共享头文件契约，再按互斥文件白名单扇出最高 10 路并行子智能体（Up to 10 Disjoint Parallel Subagents）同步完成全部代码、资源与单测（严格遵循 0.0~1.0 归一化布局与绝不简化原则，兼顾 Windows MSVC 与 ci-linux 单测）。
+3. 中间增量提交统一设置 VERSION_HOOK_BUMP=no-bump 防止弹窗阻塞；每完成一个里程碑版本后，运行 python scripts/autopilot_release.py 执行本地 4 重门禁校验（① Release 编译 + CTest 全量单测、② Sakura.exe --smoke-test --verify-play 实机冒烟、③ server 单测 + Sakura.exe --verify-online 在线端到端验证、④ package_release.py 双产物发行打包），通过后自动非交互升版打 Tag 并推送 main 与 Tag。
+4. 阻塞等待远端 GitHub Actions 完成跨平台构建，严格校验 GitHub Release 双发行产物（便携版 .zip、Inno Setup -setup.exe）与 SHA256SUMS.txt 齐全且为正式版；若本地门禁或远端 CI 失败，立即读取日志原地修复并重跑，严禁跳过门禁或禁用功能。
+5. 每个版本 GitHub Release 校验通过后，自动通过免密 SSH 将最新 server/ 部署至 steven-lee.tech:233 (/srv/sakura-online) 并校验 https://steven-lee.tech:233/api/v1/health 返回最新版本号且状态健康。
+6. 当前版本全链路验收通过后，绝不停下询问人工确认，立即自动进入下一个版本，连续推进 v2.1.0 → v2.2.0 → v2.3.0 → v2.4.0 → v2.5.0 → v3.0.0 直至全部正式发布并验收通过。
 ```
 
 ---
@@ -33,7 +33,12 @@
 | 11 | `v1.6.0` | `stable` (`clear`) | `minor` | `V1_6_GHOST_AND_MULTIPLAYER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
 | 12 | `v1.7.0` | `stable` (`clear`) | `minor` | `V1_7_PHIRA_CONVERTER_AND_VOL4.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
 | 13 | `v2.0.0` | `stable` (`clear`) | `major` | `V2_0_SELF_UPDATER_AND_CAREER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
-| 14+ | `v2.x.0` / `v2.0.x`（后续扩展模板） | `stable` (`clear`) | `minor` / `patch` | `V2_X_<FEATURE_SPEC>.md` | 预留扩展槽位（双产物 + SHA256 + `:233` 同版本探针） |
+| 14 | `v2.1.0` | `stable` (`clear`) | `minor` | `V2_1_AUTH_PERSISTENCE_AND_ACCOUNT.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 15 | `v2.2.0` | `stable` (`clear`) | `minor` | `V2_2_ONLINE_TRANSPORT_AND_ARENA.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 16 | `v2.3.0` | `stable` (`clear`) | `minor` | `V2_3_UI_OVERHAUL_AND_SELECT_UX.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 17 | `v2.4.0` | `stable` (`clear`) | `minor` | `V2_4_LOW_LATENCY_AUDIO_AND_SFX.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 18 | `v2.5.0` | `stable` (`clear`) | `minor` | `V2_5_RIVALS_SOCIAL_AND_POLISH.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 19 | `v3.0.0` | `stable` (`clear`) | `major` | `V3_0_SEASON_RANKED_AND_VOL5.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
 
 ---
 
@@ -101,10 +106,10 @@ python scripts/autopilot_release.py --release \
 
 ---
 
-## `v2.x` 后续扩展快速接入清单
+## `v3.x` 后续扩展快速接入清单
 
-当规划 `v2.1.0` 及后续 `v2.x` 扩展版本时，按以下三步即可无缝复用本自动化管线：
-1. 在 `doc/roadmap/` 下新建对应规格文件（如 `V2_1_<TOPIC>.md`），明确跨平台逻辑层（`sakura-game-logic`）、UI 归一化布局、SQLite 幂等迁移与服务端契约。
+当规划 `v3.0.0` 之后的后续扩展版本时，按以下三步即可无缝复用本自动化管线：
+1. 在 `doc/roadmap/` 下新建对应规格文件（如 `V3_1_<TOPIC>.md`），明确跨平台逻辑层（`sakura-game-logic`）、UI 归一化布局、SQLite 幂等迁移与服务端契约。
 2. 在 `doc/ROADMAP.md` 里程碑表与本文件发布阶梯表中追加目标 Tag（常规功能迭代使用 `--channel stable --bump minor`，热修补丁使用 `--channel stable --bump patch`）。
 3. 启动 Autopilot 会话运行 `python scripts/autopilot_release.py --status`，按上述 10 路互斥文件域并行开发与全量门禁闭环直推上线，客户端内置的 `Updater` v2 将自动向存量玩家推送 SHA-256 校验热更新。
 

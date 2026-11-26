@@ -35,6 +35,12 @@ ROADMAP_RELEASES = [
     {"tag": "v1.6.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_6_GHOST_AND_MULTIPLAYER.md"},
     {"tag": "v1.7.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V1_7_PHIRA_CONVERTER_AND_VOL4.md"},
     {"tag": "v2.0.0", "channel": "stable", "bump": "major", "spec": "doc/roadmap/V2_0_SELF_UPDATER_AND_CAREER.md"},
+    {"tag": "v2.1.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V2_1_AUTH_PERSISTENCE_AND_ACCOUNT.md"},
+    {"tag": "v2.2.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V2_2_ONLINE_TRANSPORT_AND_ARENA.md"},
+    {"tag": "v2.3.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V2_3_UI_OVERHAUL_AND_SELECT_UX.md"},
+    {"tag": "v2.4.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V2_4_LOW_LATENCY_AUDIO_AND_SFX.md"},
+    {"tag": "v2.5.0", "channel": "stable", "bump": "minor", "spec": "doc/roadmap/V2_5_RIVALS_SOCIAL_AND_POLISH.md"},
+    {"tag": "v3.0.0", "channel": "stable", "bump": "major", "spec": "doc/roadmap/V3_0_SEASON_RANKED_AND_VOL5.md"},
 ]
 
 
@@ -91,7 +97,7 @@ def show_status() -> int:
     if next_target:
         print(f"\nNext Target Release  : {next_target['tag']} (spec: {next_target['spec']})")
     else:
-        print("\nAll roadmap releases up to v1.2.0 are PUBLISHED!")
+        print(f"\nAll roadmap releases up to {ROADMAP_RELEASES[-1]['tag']} are PUBLISHED!")
     return 0
 
 
