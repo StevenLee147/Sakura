@@ -26,6 +26,7 @@ add_executable(SakuraTests
     test_v140_course_daily_collections.cpp
     test_v150_skins_and_stage_v4.cpp
     test_v160_ghost_and_arena.cpp
+    test_v170_converter_and_vol4.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

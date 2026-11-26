@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 1.6.0
+    VERSION 1.7.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
@@ -292,6 +292,7 @@ if(SAKURA_BUILD_TESTS)
         src/effects/video_decoder.cpp
         src/game/approach_visuals.cpp
         src/game/achievement_manager.cpp
+        src/game/chart_converter.cpp
         src/game/chart_loader.cpp
         src/game/course.cpp
         src/game/ghost_runner.cpp

@@ -1,6 +1,6 @@
 # Sakura 内置曲库
 
-本目录包含 9 首内置原创曲目、共 26 张双区谱面（覆盖 Easy / Normal / Hard / Expert 四个难度梯度）；全部曲目均为项目作者通过 Suno 付费方案创作生成的真实 OGG Vorbis 音源（版权归项目作者所有，不含任何程序合成占位 WAV）。曲库时长、采样率与各难度音符统计汇总见 `album.json`。
+本目录包含 15 首内置原创曲目、共 43 张双区谱面（覆盖 Easy / Normal / Hard / Expert 四个难度梯度）；全部曲目均为项目作者通过 Suno 付费方案创作生成的真实 OGG Vorbis 音源（版权归项目作者所有，不含任何程序合成占位 WAV）。曲库时长、采样率与各难度音符统计汇总见 `album.json`。
 
 | ID | 曲目 | 曲包 | BPM | 难度 | 时长 |
 |---|---|---|---|---|---|
@@ -13,10 +13,18 @@
 | `flowing_petals` | 樱落流光 | Vol. 03 | 127.5 | Normal 5.0 / Hard 8.5 / Expert 12.0 | 179.00 s |
 | `instant_bloom` | 一瞬花绽 | Vol. 03 | 140 | Normal 5.5 / Hard 9.0 / Expert 12.5 | 209.56 s |
 | `petal_storm_overdrive` | Petal Storm: Overdrive | Vol. 03 | 187 | Hard 10.5 / Expert 14.5 | 218.92 s |
+| `sakura_memories` | Sakura Memories | Vol. 04 | 156 | Normal 4.0 / Hard 7.5 / Expert 10.5 | 228.16 s |
+| `moonlit_prelude` | 月夜序曲 · Prelude | Vol. 04 | 140 | Easy 3.0 / Normal 5.5 / Hard 8.5 | 271.04 s |
+| `sakura_pulse` | 樱落脉动 | Vol. 04 | 187 | Normal 4.5 / Hard 7.5 / Expert 10.5 | 60.00 s |
+| `shattered_drive_f` | 破碎推进到F | Vol. 04 | 175 | Normal 5.5 / Hard 9.0 / Expert 12.0 | 60.00 s |
+| `sakura_sprint` | 樱语疾行 | Vol. 04 | 187 | Normal 6.0 / Hard 9.5 / Expert 13.0 | 279.36 s |
+| `shattered_threshold` | 破碎阈值 | Vol. 04 | 120 | Hard 10.0 / Expert 13.5 | 269.68 s |
 
-「樱落呼吸」（Sakura Originals · Vol. 02）由 `scripts/build_sakura_breath.py` 根据真实音频分析生成：键盘端（左手）跟随底鼓、军鼓、镲片等打击乐起音，鼠标端（右手）跟随主旋律起音，音高越高位置越靠上，长音转为 Slider，并自带独立 Pillow 封面绘制流程。
+「樱落呼吸」（Sakura Originals · Vol. 02，1 首 / 3 张谱面）由 `scripts/build_sakura_breath.py` 根据真实音频分析生成：键盘端（左手）跟随底鼓、军鼓、镲片等打击乐起音，鼠标端（右手）跟随主旋律起音，音高越高位置越靠上，长音转为 Slider，并自带独立 Pillow 封面绘制流程。
 
-其余 8 首官方精选曲目（Sakura Official Pack · Vol. 03）由 `scripts/build_song_pack.py` 从未跟踪目录 `download/songs/` 中的源 MP3 转码为 `music.ogg`，并通过 STFT 谐波/打击乐分离（HPSS）与拍点自相关网格分析生成多难度双区谱面（涵盖 A/S/D/F 四轨、Space 樱枝横梁、跨区同押 `link_id`、键鼠协同 `require_lane`、曲线 Slider 与 SV 变速）及专属夜樱封面。
+8 首官方精选曲目（Sakura Official Pack · Vol. 03，共 23 张谱面）由 `scripts/build_song_pack.py` 从未跟踪目录 `download/songs/` 中的源 MP3 转码为 `music.ogg`，并通过 STFT 谐波/打击乐分离（HPSS）与拍点自相关网格分析生成多难度双区谱面（涵盖 A/S/D/F 四轨、Space 樱枝横梁、跨区同押 `link_id`、键鼠协同 `require_lane`、曲线 Slider 与 SV 变速）及专属夜樱封面。
+
+6 首官方精选新曲（Sakura Official Pack · Vol. 04，共 17 张 Chart Format v4 谱面）由 `scripts/build_pack_vol4.py` 基于 `download/songs/` 中的真实创作 MP3 转码生成可复现 `music.ogg`，复用并扩展 STFT/HPSS 与 $\Delta t$ 自适应防重叠鼠标布局管线，原生输出 `version: 4` 谱面（含对齐段落能量峰值的 `pulse` / `tint` / `vignette` / `petal_burst` 舞台演出事件 `stage_events`、全难度 Space 樱枝横梁、Hard/Expert 跨区连携与组合技、Hold/Slider 及专属夜樱主题 `cover.png`）。
 
 每首曲目独立存放 `info.json`、难度 JSON、`music.ogg`、`cover.png` 以及可选背景图或背景视频（如 `bg.mp4`）。资源字段均为相对本曲目目录的路径。自制谱面建议通过游戏导入到用户数据目录的 `charts`；编辑内置谱面会建立用户副本。
 

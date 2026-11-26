@@ -2,6 +2,7 @@
 
 #include "scene_chart_wizard.h"
 #include "core/paths.h"
+#include "game/chart_converter.h"
 #include "utils/file_io.h"
 #include "scene_menu.h"
 #include "scene_editor.h"
@@ -43,6 +44,8 @@ SceneChartWizard::SceneChartWizard(SceneManager& mgr)
 void SceneChartWizard::OnEnter()
 {
     LOG_INFO("[SceneChartWizard] 进入新建谱面向导");
+
+    m_importingExternal = false;
 
     auto& rm     = sakura::core::ResourceManager::GetInstance();
     m_fontTitle  = rm.GetDefaultFontHandle();
@@ -122,6 +125,15 @@ void SceneChartWizard::SetupFields()
 
 void SceneChartWizard::SetupButtons()
 {
+    m_btnImportExternal = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.635f, 0.056f, 0.205f, 0.044f },
+        "转换 .pez / .osz / .sm", m_fontLabel, 0.0175f, 0.008f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnImportExternal.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnImportExternal->SetOnClick([this]()
+    {
+        OpenExternalChartDialog();
+    });
+
     m_btnCreate = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.38f, 0.802f, 0.20f, 0.054f },
         "创建谱面", m_fontTitle, 0.022f, 0.010f);
@@ -172,6 +184,7 @@ void SceneChartWizard::FocusField(int index)
 void SceneChartWizard::OnUpdate(float dt)
 {
     for (auto& f : m_fields) if (f) f->Update(dt);
+    if (m_btnImportExternal) m_btnImportExternal->Update(dt);
     if (m_btnCreate) m_btnCreate->Update(dt);
     if (m_btnCancel) m_btnCancel->Update(dt);
     for (auto& btn : m_btnPickResource)
@@ -265,6 +278,7 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
     }
 
     // 按钮
+    if (m_btnImportExternal) m_btnImportExternal->Render(renderer);
     for (auto& btn : m_btnPickResource)
         if (btn) btn->Render(renderer);
     if (m_btnCreate) m_btnCreate->Render(renderer);
@@ -285,7 +299,14 @@ void SceneChartWizard::OnRender(sakura::core::Renderer& renderer)
 
 void SceneChartWizard::OnEvent(const SDL_Event& event)
 {
+    if (event.type == SDL_EVENT_DROP_FILE && event.drop.data)
+    {
+        ImportExternalChartFile(event.drop.data);
+        return;
+    }
+
     // 先分发到按钮
+    if (m_btnImportExternal) m_btnImportExternal->HandleEvent(event);
     if (m_btnCreate) m_btnCreate->HandleEvent(event);
     if (m_btnCancel) m_btnCancel->HandleEvent(event);
     for (auto& btn : m_btnPickResource)
@@ -694,16 +715,61 @@ void SceneChartWizard::OpenResourceFileDialog(int fieldIndex)
         QueueResourceFileError(std::string("打开文件选择器失败: ") + err);
 }
 
+void SceneChartWizard::OpenExternalChartDialog()
+{
+    if (m_importingExternal) return;
+
+    static const SDL_DialogFileFilter kFilters[] = {
+        { "External Charts (.pez; .osz; .sm; .osu)", "pez;osz;sm;osu;json" }
+    };
+
+    auto holderPtr = std::make_unique<std::shared_ptr<DialogMailbox>>(m_mailbox);
+    SDL_ClearError();
+    SDL_ShowOpenFileDialog(
+        [](void* userdata, const char* const* filelist, int)
+        {
+            std::unique_ptr<std::shared_ptr<DialogMailbox>> holder(
+                static_cast<std::shared_ptr<DialogMailbox>*>(userdata));
+            if (!holder || !*holder) return;
+            std::lock_guard lock((*holder)->mutex);
+            if (!filelist)
+            {
+                const char* err = SDL_GetError();
+                (*holder)->results.push_back(PendingDialogResult{
+                    -1, "", std::string("打开文件选择器失败: ") + (err ? err : "未知错误"), false });
+                return;
+            }
+            if (filelist[0] == nullptr) return; // 用户主动取消
+            (*holder)->results.push_back(PendingDialogResult{ -1, filelist[0], "", true });
+        },
+        holderPtr.release(),
+        SDL_GetKeyboardFocus(),
+        kFilters,
+        1,
+        nullptr,
+        false);
+
+    const char* err = SDL_GetError();
+    if (err && err[0] != '\0')
+        QueueResourceFileError(std::string("打开文件选择器失败: ") + err);
+}
+
 void SceneChartWizard::QueueResourceFileSelection(int fieldIndex, const std::string& filePath)
 {
     std::scoped_lock lock(m_mailbox->mutex);
-    m_mailbox->results.push_back(PendingDialogResult{ fieldIndex, filePath, "" });
+    m_mailbox->results.push_back(PendingDialogResult{ fieldIndex, filePath, "", false });
+}
+
+void SceneChartWizard::QueueExternalChartSelection(const std::string& filePath)
+{
+    std::scoped_lock lock(m_mailbox->mutex);
+    m_mailbox->results.push_back(PendingDialogResult{ -1, filePath, "", true });
 }
 
 void SceneChartWizard::QueueResourceFileError(const std::string& errorMsg)
 {
     std::scoped_lock lock(m_mailbox->mutex);
-    m_mailbox->results.push_back(PendingDialogResult{ -1, "", errorMsg });
+    m_mailbox->results.push_back(PendingDialogResult{ -1, "", errorMsg, false });
 }
 
 void SceneChartWizard::ApplyPendingDialogResults()
@@ -722,10 +788,62 @@ void SceneChartWizard::ApplyPendingDialogResults()
             ShowError(item.errorMessage);
             continue;
         }
+        if (item.isExternalImport)
+        {
+            if (ImportExternalChartFile(item.filePath))
+                return;
+            continue;
+        }
         if (item.fieldIndex < 0 || item.fieldIndex >= FIELD_COUNT || !m_fields[item.fieldIndex])
             continue;
         m_fields[item.fieldIndex]->SetText(item.filePath);
     }
+}
+
+bool SceneChartWizard::ImportExternalChartFile(const std::string& filePath)
+{
+    if (m_importingExternal) return false;
+    if (filePath.empty())
+    {
+        ShowError("未选择要转换的外部谱面文件");
+        return false;
+    }
+
+    const auto* utf8Ptr = reinterpret_cast<const char8_t*>(filePath.c_str());
+    fs::path sourcePath = fs::path(std::u8string(utf8Ptr, utf8Ptr + filePath.size()));
+    std::error_code ec;
+    if (!fs::exists(sourcePath, ec))
+    {
+        fs::path fallbackPath(filePath);
+        if (fs::exists(fallbackPath, ec))
+            sourcePath = std::move(fallbackPath);
+    }
+
+    const fs::path destChartsRoot = fs::path(sakura::core::Paths::User("charts"));
+    LOG_INFO("[SceneChartWizard] 开始转换外部谱面: {} -> {}", filePath, destChartsRoot.string());
+
+    const auto conv = sakura::game::ChartConverter::ImportExternalPackage(sourcePath, destChartsRoot);
+    if (!conv.ok || conv.chartInfo.difficulties.empty())
+    {
+        ShowError(conv.error.empty() ? "外部谱面转换失败" : conv.error);
+        return false;
+    }
+
+    m_importingExternal = true;
+    const std::string title = conv.chartInfo.title.empty() ? "外部谱面" : conv.chartInfo.title;
+    sakura::ui::ToastManager::Instance().Show(
+        "已转换谱面「" + title + "」，正在打开编辑器...",
+        sakura::ui::ToastType::Success,
+        4.0f);
+
+    m_manager.SwitchScene(
+        std::make_unique<SceneEditor>(
+            m_manager,
+            conv.outputChartDir,
+            conv.chartInfo.difficulties.front().chartFile,
+            0),
+        TransitionType::SlideLeft, 0.4f);
+    return true;
 }
 
 } // namespace sakura::scene

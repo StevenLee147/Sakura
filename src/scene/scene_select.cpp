@@ -12,6 +12,7 @@
 #include "core/theme.h"
 #include "audio/audio_manager.h"
 #include "audio/audio_visualizer.h"
+#include "game/chart_converter.h"
 #include "game/chart_loader.h"
 #include "game/chart_utils.h"
 #include "game/replay.h"
@@ -33,6 +34,21 @@ using namespace sakura::game;
 namespace {
 std::string Number(float v, int precision = 1) { std::ostringstream s; s << std::fixed << std::setprecision(precision) << v; return s.str(); }
 std::string Lower(std::string s) { for(auto& c:s) if(static_cast<unsigned char>(c)<128) c=static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; }
+std::filesystem::path ResolveInputPath(const std::string& rawPath) {
+    if(rawPath.empty()) return {};
+    std::error_code ec;
+    const auto* u8=reinterpret_cast<const char8_t*>(rawPath.data());
+    std::filesystem::path u8Path{std::u8string(u8,u8+rawPath.size())};
+    if(std::filesystem::exists(u8Path,ec) && !ec) return u8Path;
+    ec.clear();
+    std::filesystem::path localPath(rawPath);
+    if(std::filesystem::exists(localPath,ec) && !ec) return localPath;
+    return u8Path;
+}
+std::string PathExtLower(const std::filesystem::path& p) {
+    const auto u8=p.extension().u8string();
+    return Lower(std::string(reinterpret_cast<const char*>(u8.data()),u8.size()));
+}
 std::string Duration(int ms) { const int sec=ms/1000; return std::to_string(sec/60)+":"+(sec%60<10?"0":"")+std::to_string(sec%60); }
 bool ReplayFileExists(const std::string& path) {
     if(path.empty()) return false;
@@ -542,30 +558,95 @@ void SceneSelect::Start(PlayMode mode) {
     m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[m_selected],m_difficulty,options),TransitionType::SakuraSweep,0.42f);
 }
 void SceneSelect::ImportFolder() {
+    static const SDL_DialogFileFilter kFilters[] = {
+        { "谱面包 (.sakura / Phira .pez / osu! .osz / .sm)", "sakura;pez;osz;sm;osu;zip" }
+    };
     auto* context=new std::shared_ptr<DialogState>(m_dialog);
-    SDL_ShowOpenFolderDialog([](void* raw,const char* const* files,int){
+    SDL_ShowOpenFileDialog([](void* raw,const char* const* files,int){
         std::unique_ptr<std::shared_ptr<DialogState>> state(static_cast<std::shared_ptr<DialogState>*>(raw));
         std::lock_guard lock((*state)->mutex);(*state)->path=files&&files[0]?files[0]:"";(*state)->ready=true;
-    },context,SDL_GetKeyboardFocus(),nullptr,false);
+    },context,SDL_GetKeyboardFocus(),kFilters,1,nullptr,false);
 }
 void SceneSelect::AcceptImport(const std::string& path) {
     if(path.empty())return;
     const auto target=std::filesystem::path(Paths::User("imports"))/("import-"+std::to_string(SDL_GetTicksNS()));
+    auto finishConvertedImport=[this](const sakura::game::ConversionResult& convRes){
+        Scan();
+        if(!SelectChart(convRes.chartInfo.id,0)) {
+            if(m_search) m_search->SetText("");
+            m_collectionFilter=0;
+            Filter();
+            SelectChart(convRes.chartInfo.id,0);
+        }
+        ToastManager::Instance().Show(
+            "已智能转换并导入双区谱面："+convRes.chartInfo.title+" ("+std::to_string(convRes.convertedDifficulties)+" 难度)",
+            ToastType::Success,4.0f);
+    };
     try {
-        const std::filesystem::path srcPath(path);
-        if(std::filesystem::is_regular_file(srcPath)) {
-            const auto ext = Lower(srcPath.extension().string());
+        const std::filesystem::path srcPath=ResolveInputPath(path);
+        std::error_code fsEc;
+        if(!std::filesystem::exists(srcPath,fsEc) || fsEc)
+            throw std::runtime_error("未找到要导入的谱面路径");
+
+        const std::filesystem::path destChartsRoot(Paths::User("charts"));
+        const auto detectedFmt=sakura::game::ChartConverter::DetectFormat(srcPath);
+        if(detectedFmt==sakura::game::ExternalChartFormat::PhiraPez ||
+           detectedFmt==sakura::game::ExternalChartFormat::PhiraJson ||
+           detectedFmt==sakura::game::ExternalChartFormat::OsuArchive ||
+           detectedFmt==sakura::game::ExternalChartFormat::OsuFile ||
+           detectedFmt==sakura::game::ExternalChartFormat::StepManiaSm) {
+            std::error_code mkEc;
+            std::filesystem::create_directories(destChartsRoot,mkEc);
+            const auto convRes=sakura::game::ChartConverter::ImportExternalPackage(srcPath,destChartsRoot);
+            if(!convRes.ok)
+                throw std::runtime_error(convRes.error.empty()?"外部谱面包转换导入失败":convRes.error);
+            finishConvertedImport(convRes);
+            return;
+        }
+
+        if(std::filesystem::is_regular_file(srcPath,fsEc) && !fsEc) {
+            const auto ext = PathExtLower(srcPath);
             if(ext != ".sakura" && ext != ".zip")
-                throw std::runtime_error("仅支持导入谱面文件夹或 .sakura / .zip 谱面包");
+                throw std::runtime_error("仅支持导入谱面文件夹或 .sakura / .pez / .osz / .sm / .osu / .zip 谱面包");
             if(!sakura::utils::ExtractZipArchive(srcPath, target))
                 throw std::runtime_error(".sakura 谱面包校验或解压失败");
-        } else if(std::filesystem::is_directory(srcPath)) {
+            if(ext == ".zip") {
+                std::error_code infoEc;
+                ChartLoader zipCheckLoader;
+                const bool hasNativeRootInfo = std::filesystem::is_regular_file(target / "info.json", infoEc) &&
+                                               !infoEc &&
+                                               zipCheckLoader.LoadChartInfo((target / "info.json").string()).has_value();
+                if(!hasNativeRootInfo) {
+                    std::error_code mkEc;
+                    std::filesystem::create_directories(destChartsRoot,mkEc);
+                    const auto convRes = sakura::game::ChartConverter::ImportExternalPackage(srcPath, destChartsRoot);
+                    if(convRes.ok) {
+                        std::error_code rmEc;
+                        std::filesystem::remove_all(target, rmEc);
+                        finishConvertedImport(convRes);
+                        return;
+                    }
+                }
+            }
+        } else if(std::filesystem::is_directory(srcPath,fsEc) && !fsEc) {
             std::filesystem::create_directories(target);
             for(const auto& entry:std::filesystem::recursive_directory_iterator(srcPath)) {
                 if(entry.is_symlink())throw std::runtime_error("谱面目录不能包含符号链接");
                 const auto dest=target/std::filesystem::relative(entry.path(),srcPath);
                 if(entry.is_directory())std::filesystem::create_directories(dest);
                 else if(entry.is_regular_file())std::filesystem::copy_file(entry.path(),dest);
+            }
+            std::error_code infoEc;
+            if(!std::filesystem::is_regular_file(target / "info.json", infoEc) || infoEc) {
+                std::error_code mkEc;
+                std::filesystem::create_directories(destChartsRoot,mkEc);
+                const auto convRes = sakura::game::ChartConverter::ImportExternalPackage(srcPath, destChartsRoot);
+                if(convRes.ok) {
+                    std::error_code rmEc;
+                    std::filesystem::remove_all(target, rmEc);
+                    finishConvertedImport(convRes);
+                    return;
+                }
             }
         } else {
             throw std::runtime_error("未找到要导入的谱面路径");
@@ -574,7 +655,7 @@ void SceneSelect::AcceptImport(const std::string& path) {
         if(!info)throw std::runtime_error("谱面包缺少有效的 info.json");
         for(const auto& diff:info->difficulties)if(!loader.LoadChartData(info->folderPath+"/"+diff.chartFile))throw std::runtime_error("谱面数据无效："+diff.name);
         if(!std::filesystem::is_regular_file(target/info->musicFile))throw std::runtime_error("没有找到音乐文件");
-        const auto destination=std::filesystem::path(Paths::User("charts"))/target.filename();
+        const auto destination=destChartsRoot/target.filename();
         std::filesystem::create_directories(destination.parent_path());
         std::filesystem::rename(target,destination);
         Scan();ToastManager::Instance().Show("谱面已导入曲库："+info->title,ToastType::Success);

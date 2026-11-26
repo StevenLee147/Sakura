@@ -62,13 +62,15 @@ private:
     int m_focusedField = 0;
 
     // ── 按钮 ──────────────────────────────────────────────────────────────────
-    std::unique_ptr<sakura::ui::Button> m_btnCreate;   // 创建谱面
-    std::unique_ptr<sakura::ui::Button> m_btnCancel;   // 取消
+    std::unique_ptr<sakura::ui::Button> m_btnImportExternal; // 转换外部谱面 (.pez/.osz/.sm)
+    std::unique_ptr<sakura::ui::Button> m_btnCreate;         // 创建谱面
+    std::unique_ptr<sakura::ui::Button> m_btnCancel;         // 取消
     std::array<std::unique_ptr<sakura::ui::Button>, 3> m_btnPickResource; // 选择音乐/封面/背景
 
     // ── 状态 ──────────────────────────────────────────────────────────────────
     std::string m_errorMsg;    // 显示验证错误
     float       m_errorTimer = 0.0f;
+    bool        m_importingExternal = false;
 
     // ── 内部方法 ──────────────────────────────────────────────────────────────
     void SetupFields();
@@ -97,15 +99,19 @@ private:
                                    std::string& outFileName,
                                    bool convertToPng = false);
     void OpenResourceFileDialog(int fieldIndex);
+    void OpenExternalChartDialog();
     void QueueResourceFileSelection(int fieldIndex, const std::string& filePath);
+    void QueueExternalChartSelection(const std::string& filePath);
     void QueueResourceFileError(const std::string& errorMsg);
     void ApplyPendingDialogResults();
+    bool ImportExternalChartFile(const std::string& filePath);
 
     struct PendingDialogResult
     {
         int fieldIndex = -1;
         std::string filePath;
         std::string errorMessage;
+        bool isExternalImport = false;
     };
     struct DialogMailbox { std::mutex mutex; std::vector<PendingDialogResult> results; };
     std::shared_ptr<DialogMailbox> m_mailbox = std::make_shared<DialogMailbox>();

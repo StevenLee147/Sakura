@@ -4,8 +4,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iterator>
+#include <limits>
+#include <system_error>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -80,6 +85,323 @@ struct CentralEntry
     std::uint32_t size   = 0;
     std::uint32_t offset = 0;
 };
+
+struct DeflateBitReader
+{
+    const std::uint8_t* data     = nullptr;
+    std::size_t         size     = 0;
+    std::size_t         pos      = 0;
+    std::uint64_t       bitBuf   = 0;
+    int                 bitCount = 0;
+
+    void Refill()
+    {
+        while (bitCount <= 56 && pos < size)
+        {
+            bitBuf |= static_cast<std::uint64_t>(data[pos++]) << bitCount;
+            bitCount += 8;
+        }
+    }
+
+    void Consume(int n)
+    {
+        bitBuf >>= n;
+        bitCount -= n;
+    }
+
+    bool ReadBits(int n, std::uint32_t& out)
+    {
+        if (n == 0)
+        {
+            out = 0;
+            return true;
+        }
+        if (bitCount < n)
+            Refill();
+        if (bitCount < n)
+            return false;
+        out = static_cast<std::uint32_t>(bitBuf & ((1ULL << n) - 1ULL));
+        bitBuf >>= n;
+        bitCount -= n;
+        return true;
+    }
+
+    void AlignToByte()
+    {
+        const int discard = bitCount & 7;
+        if (discard > 0)
+        {
+            bitBuf >>= discard;
+            bitCount -= discard;
+        }
+        pos -= static_cast<std::size_t>(bitCount / 8);
+        bitBuf = 0;
+        bitCount = 0;
+    }
+
+    bool ReadAlignedU16(std::uint16_t& out)
+    {
+        if (size - pos < 2)
+            return false;
+        out = ReadU16(data + pos);
+        pos += 2;
+        return true;
+    }
+
+    bool AppendAlignedBytes(std::size_t count, std::string& out)
+    {
+        if (size - pos < count)
+            return false;
+        if (count > 0)
+            out.append(reinterpret_cast<const char*>(data + pos), count);
+        pos += count;
+        return true;
+    }
+};
+
+struct HuffmanTable
+{
+    std::vector<std::uint16_t> entries;
+    int                        tableBits = 0;
+};
+
+std::uint32_t ReverseBits(std::uint32_t code, int len)
+{
+    std::uint32_t rev = 0;
+    for (int i = 0; i < len; ++i)
+    {
+        rev = (rev << 1U) | (code & 1U);
+        code >>= 1U;
+    }
+    return rev;
+}
+
+bool BuildHuffmanTable(const std::uint8_t* lengths, std::size_t numSymbols, HuffmanTable& outTable)
+{
+    std::array<int, 16> blCount{};
+    int maxLen = 0;
+    for (std::size_t i = 0; i < numSymbols; ++i)
+    {
+        const std::uint8_t len = lengths[i];
+        if (len > 15U)
+            return false;
+        if (len > 0U)
+        {
+            ++blCount[len];
+            if (static_cast<int>(len) > maxLen)
+                maxLen = static_cast<int>(len);
+        }
+    }
+
+    if (maxLen == 0)
+    {
+        outTable.entries.clear();
+        outTable.tableBits = 0;
+        return true;
+    }
+
+    int left = 1;
+    for (int bits = 1; bits <= maxLen; ++bits)
+    {
+        left <<= 1;
+        left -= blCount[bits];
+        if (left < 0)
+            return false;
+    }
+
+    std::array<std::uint32_t, 16> nextCode{};
+    std::uint32_t code = 0;
+    for (int bits = 1; bits <= maxLen; ++bits)
+    {
+        code = (code + static_cast<std::uint32_t>(blCount[bits - 1])) << 1U;
+        nextCode[bits] = code;
+    }
+
+    const std::uint32_t tableSize = 1U << maxLen;
+    outTable.entries.assign(tableSize, 0U);
+    outTable.tableBits = maxLen;
+
+    for (std::size_t sym = 0; sym < numSymbols; ++sym)
+    {
+        const int len = static_cast<int>(lengths[sym]);
+        if (len == 0)
+            continue;
+        const std::uint32_t msbCode = nextCode[len]++;
+        const std::uint32_t revCode = ReverseBits(msbCode, len);
+        const auto packed = static_cast<std::uint16_t>((sym << 5U) | static_cast<std::size_t>(len));
+        const std::uint32_t step = 1U << len;
+        for (std::uint32_t idx = revCode; idx < tableSize; idx += step)
+            outTable.entries[idx] = packed;
+    }
+    return true;
+}
+
+bool DecodeHuffmanSymbol(DeflateBitReader& reader, const HuffmanTable& table, std::uint32_t& outSym)
+{
+    if (table.tableBits <= 0)
+        return false;
+    if (reader.bitCount < table.tableBits)
+        reader.Refill();
+    const std::uint32_t mask = (1U << table.tableBits) - 1U;
+    const std::uint16_t entry = table.entries[static_cast<std::uint32_t>(reader.bitBuf) & mask];
+    const int codeLen = static_cast<int>(entry & 0x1FU);
+    if (codeLen == 0 || codeLen > reader.bitCount)
+        return false;
+    outSym = static_cast<std::uint32_t>(entry >> 5U);
+    reader.Consume(codeLen);
+    return true;
+}
+
+const HuffmanTable& GetFixedLitLenTable()
+{
+    static const HuffmanTable kTable = []() {
+        std::array<std::uint8_t, 288> lengths{};
+        for (std::size_t i = 0; i <= 143; ++i)
+            lengths[i] = 8;
+        for (std::size_t i = 144; i <= 255; ++i)
+            lengths[i] = 9;
+        for (std::size_t i = 256; i <= 279; ++i)
+            lengths[i] = 7;
+        for (std::size_t i = 280; i <= 287; ++i)
+            lengths[i] = 8;
+        HuffmanTable t;
+        BuildHuffmanTable(lengths.data(), lengths.size(), t);
+        return t;
+    }();
+    return kTable;
+}
+
+const HuffmanTable& GetFixedDistTable()
+{
+    static const HuffmanTable kTable = []() {
+        std::array<std::uint8_t, 32> lengths{};
+        lengths.fill(5);
+        HuffmanTable t;
+        BuildHuffmanTable(lengths.data(), lengths.size(), t);
+        return t;
+    }();
+    return kTable;
+}
+
+bool InflateHuffmanBlock(DeflateBitReader& reader,
+                         const HuffmanTable& litLenTable,
+                         const HuffmanTable& distTable,
+                         std::string& outUncompressed,
+                         std::size_t maxOutputBytes)
+{
+    static constexpr std::array<std::uint16_t, 29> kLengthBase = {
+        3, 4, 5, 6, 7, 8, 9, 10,
+        11, 13, 15, 17,
+        19, 23, 27, 31,
+        35, 43, 51, 59,
+        67, 83, 99, 115,
+        131, 163, 195, 227,
+        258
+    };
+    static constexpr std::array<std::uint8_t, 29> kLengthExtra = {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1,
+        2, 2, 2, 2,
+        3, 3, 3, 3,
+        4, 4, 4, 4,
+        5, 5, 5, 5,
+        0
+    };
+    static constexpr std::array<std::uint16_t, 30> kDistBase = {
+        1, 2, 3, 4,
+        5, 7,
+        9, 13,
+        17, 25,
+        33, 49,
+        65, 97,
+        129, 193,
+        257, 385,
+        513, 769,
+        1025, 1537,
+        2049, 3073,
+        4097, 6145,
+        8193, 12289,
+        16385, 24577
+    };
+    static constexpr std::array<std::uint8_t, 30> kDistExtra = {
+        0, 0, 0, 0,
+        1, 1,
+        2, 2,
+        3, 3,
+        4, 4,
+        5, 5,
+        6, 6,
+        7, 7,
+        8, 8,
+        9, 9,
+        10, 10,
+        11, 11,
+        12, 12,
+        13, 13
+    };
+
+    for (;;)
+    {
+        std::uint32_t sym = 0;
+        if (!DecodeHuffmanSymbol(reader, litLenTable, sym))
+            return false;
+
+        if (sym < 256U)
+        {
+            if (outUncompressed.size() >= maxOutputBytes)
+                return false;
+            outUncompressed.push_back(static_cast<char>(sym));
+        }
+        else if (sym == 256U)
+        {
+            return true;
+        }
+        else if (sym <= 285U)
+        {
+            const std::uint32_t lenIdx = sym - 257U;
+            std::uint32_t lenExtra = 0;
+            if (!reader.ReadBits(kLengthExtra[lenIdx], lenExtra))
+                return false;
+            const std::size_t matchLen = static_cast<std::size_t>(kLengthBase[lenIdx]) + lenExtra;
+
+            std::uint32_t distSym = 0;
+            if (!DecodeHuffmanSymbol(reader, distTable, distSym) || distSym >= 30U)
+                return false;
+
+            std::uint32_t distExtra = 0;
+            if (!reader.ReadBits(kDistExtra[distSym], distExtra))
+                return false;
+            const std::size_t distance = static_cast<std::size_t>(kDistBase[distSym]) + distExtra;
+
+            if (distance == 0 || distance > outUncompressed.size())
+                return false;
+            if (matchLen > maxOutputBytes - outUncompressed.size())
+                return false;
+
+            const std::size_t startOut = outUncompressed.size();
+            outUncompressed.resize(startOut + matchLen);
+            char* dst = outUncompressed.data() + startOut;
+            const char* src = dst - distance;
+            if (distance >= matchLen)
+            {
+                std::memcpy(dst, src, matchLen);
+            }
+            else if (distance == 1)
+            {
+                std::memset(dst, static_cast<unsigned char>(*src), matchLen);
+            }
+            else
+            {
+                for (std::size_t k = 0; k < matchLen; ++k)
+                    dst[k] = src[k];
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
 
 } // namespace
 
@@ -276,11 +598,209 @@ bool CreateZipArchive(const fs::path& sourceDir, const fs::path& archivePath)
     return AtomicWrite(archivePath, blob);
 }
 
+bool InflateRawDeflate(const std::uint8_t* compData,
+                       std::size_t compSize,
+                       std::string& outUncompressed,
+                       std::size_t maxOutputBytes)
+{
+    outUncompressed.clear();
+    if (compData == nullptr || compSize == 0)
+        return false;
+
+    static constexpr std::array<std::uint8_t, 19> kCodeLengthOrder = {
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+    };
+
+    DeflateBitReader reader{ compData, compSize, 0, 0, 0 };
+    HuffmanTable codeLenTable;
+    HuffmanTable dynLitLenTable;
+    HuffmanTable dynDistTable;
+
+    std::uint32_t bfinal = 0;
+    do
+    {
+        std::uint32_t btype = 0;
+        if (!reader.ReadBits(1, bfinal) || !reader.ReadBits(2, btype))
+        {
+            outUncompressed.clear();
+            return false;
+        }
+
+        if (btype == 0U)
+        {
+            reader.AlignToByte();
+            std::uint16_t len  = 0;
+            std::uint16_t nlen = 0;
+            if (!reader.ReadAlignedU16(len) || !reader.ReadAlignedU16(nlen))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+            if ((static_cast<std::uint32_t>(len) ^ static_cast<std::uint32_t>(nlen)) != 0xFFFFU)
+            {
+                outUncompressed.clear();
+                return false;
+            }
+            if (static_cast<std::size_t>(len) > maxOutputBytes - outUncompressed.size())
+            {
+                outUncompressed.clear();
+                return false;
+            }
+            if (!reader.AppendAlignedBytes(static_cast<std::size_t>(len), outUncompressed))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+        }
+        else if (btype == 1U)
+        {
+            if (!InflateHuffmanBlock(reader, GetFixedLitLenTable(), GetFixedDistTable(), outUncompressed, maxOutputBytes))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+        }
+        else if (btype == 2U)
+        {
+            std::uint32_t hlit  = 0;
+            std::uint32_t hdist = 0;
+            std::uint32_t hclen = 0;
+            if (!reader.ReadBits(5, hlit) || !reader.ReadBits(5, hdist) || !reader.ReadBits(4, hclen))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+
+            const std::uint32_t numLitLen  = hlit + 257U;
+            const std::uint32_t numDist    = hdist + 1U;
+            const std::uint32_t numCodeLen = hclen + 4U;
+            if (numLitLen > 286U || numDist > 30U)
+            {
+                outUncompressed.clear();
+                return false;
+            }
+
+            std::array<std::uint8_t, 19> codeLenLengths{};
+            for (std::uint32_t i = 0; i < numCodeLen; ++i)
+            {
+                std::uint32_t clVal = 0;
+                if (!reader.ReadBits(3, clVal))
+                {
+                    outUncompressed.clear();
+                    return false;
+                }
+                codeLenLengths[kCodeLengthOrder[i]] = static_cast<std::uint8_t>(clVal);
+            }
+
+            if (!BuildHuffmanTable(codeLenLengths.data(), codeLenLengths.size(), codeLenTable) || codeLenTable.tableBits <= 0)
+            {
+                outUncompressed.clear();
+                return false;
+            }
+
+            const std::uint32_t totalCodes = numLitLen + numDist;
+            std::array<std::uint8_t, 286 + 30> combinedLengths{};
+            std::uint32_t idx = 0;
+            while (idx < totalCodes)
+            {
+                std::uint32_t clSym = 0;
+                if (!DecodeHuffmanSymbol(reader, codeLenTable, clSym))
+                {
+                    outUncompressed.clear();
+                    return false;
+                }
+
+                if (clSym <= 15U)
+                {
+                    combinedLengths[idx++] = static_cast<std::uint8_t>(clSym);
+                }
+                else if (clSym == 16U)
+                {
+                    if (idx == 0)
+                    {
+                        outUncompressed.clear();
+                        return false;
+                    }
+                    std::uint32_t extra = 0;
+                    if (!reader.ReadBits(2, extra))
+                    {
+                        outUncompressed.clear();
+                        return false;
+                    }
+                    const std::uint32_t repeat = 3U + extra;
+                    if (idx + repeat > totalCodes)
+                    {
+                        outUncompressed.clear();
+                        return false;
+                    }
+                    const std::uint8_t prev = combinedLengths[idx - 1];
+                    for (std::uint32_t r = 0; r < repeat; ++r)
+                        combinedLengths[idx++] = prev;
+                }
+                else if (clSym == 17U || clSym == 18U)
+                {
+                    std::uint32_t extra = 0;
+                    const int extraBits = (clSym == 17U) ? 3 : 7;
+                    const std::uint32_t baseRepeat = (clSym == 17U) ? 3U : 11U;
+                    if (!reader.ReadBits(extraBits, extra))
+                    {
+                        outUncompressed.clear();
+                        return false;
+                    }
+                    const std::uint32_t repeat = baseRepeat + extra;
+                    if (idx + repeat > totalCodes)
+                    {
+                        outUncompressed.clear();
+                        return false;
+                    }
+                    for (std::uint32_t r = 0; r < repeat; ++r)
+                        combinedLengths[idx++] = 0;
+                }
+                else
+                {
+                    outUncompressed.clear();
+                    return false;
+                }
+            }
+
+            if (combinedLengths[256] == 0)
+            {
+                outUncompressed.clear();
+                return false;
+            }
+
+            if (!BuildHuffmanTable(combinedLengths.data(), numLitLen, dynLitLenTable) ||
+                !BuildHuffmanTable(combinedLengths.data() + numLitLen, numDist, dynDistTable))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+
+            if (!InflateHuffmanBlock(reader, dynLitLenTable, dynDistTable, outUncompressed, maxOutputBytes))
+            {
+                outUncompressed.clear();
+                return false;
+            }
+        }
+        else
+        {
+            outUncompressed.clear();
+            return false;
+        }
+    } while (bfinal == 0U);
+
+    return true;
+}
+
 bool ExtractZipArchive(const fs::path& archivePath, const fs::path& destDir, std::uintmax_t maxTotalBytes)
 {
     std::error_code ec;
     const auto fsize = fs::file_size(archivePath, ec);
-    if (ec || fsize < 22 || fsize > maxTotalBytes)
+    constexpr std::uintmax_t kHeaderSlack = 16ULL * 1024ULL * 1024ULL;
+    const std::uintmax_t maxFileBytes = (maxTotalBytes <= std::numeric_limits<std::uintmax_t>::max() - kHeaderSlack)
+        ? (maxTotalBytes + kHeaderSlack)
+        : std::numeric_limits<std::uintmax_t>::max();
+    if (ec || fsize < 22 || fsize > maxFileBytes || fsize > static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()))
         return false;
 
     std::ifstream in(archivePath, std::ios::binary);
@@ -295,7 +815,7 @@ bool ExtractZipArchive(const fs::path& archivePath, const fs::path& destDir, std
     const std::size_t minSearch = buf.size() > 65557 ? (buf.size() - 65557) : 0;
     for (std::size_t p = buf.size() - 22; ; --p)
     {
-        if (ReadU32(&buf[p]) == 0x06054b50U)
+        if (ReadU32(buf.data() + p) == 0x06054b50U)
         {
             eocdPos = p;
             break;
@@ -306,9 +826,9 @@ bool ExtractZipArchive(const fs::path& archivePath, const fs::path& destDir, std
     if (eocdPos == buf.size())
         return false;
 
-    const std::uint16_t entryCount = ReadU16(&buf[eocdPos + 10]);
-    const std::uint32_t cdSize     = ReadU32(&buf[eocdPos + 12]);
-    const std::uint32_t cdOffset   = ReadU32(&buf[eocdPos + 16]);
+    const std::uint16_t entryCount = ReadU16(buf.data() + eocdPos + 10);
+    const std::uint32_t cdSize     = ReadU32(buf.data() + eocdPos + 12);
+    const std::uint32_t cdOffset   = ReadU32(buf.data() + eocdPos + 16);
     if (entryCount == 0 || static_cast<std::uint64_t>(cdOffset) + cdSize > eocdPos)
         return false;
 
@@ -320,48 +840,87 @@ bool ExtractZipArchive(const fs::path& archivePath, const fs::path& destDir, std
     std::uintmax_t extractedTotal = 0;
     for (std::uint16_t i = 0; i < entryCount; ++i)
     {
-        if (pos + 46 > eocdPos || ReadU32(&buf[pos]) != 0x02014b50U)
+        if (pos + 46 > eocdPos || ReadU32(buf.data() + pos) != 0x02014b50U)
             return false;
-        const std::uint16_t method    = ReadU16(&buf[pos + 10]);
-        const std::uint32_t crc       = ReadU32(&buf[pos + 16]);
-        const std::uint32_t compSz    = ReadU32(&buf[pos + 20]);
-        const std::uint32_t uncompSz  = ReadU32(&buf[pos + 24]);
-        const std::uint16_t nameLen   = ReadU16(&buf[pos + 28]);
-        const std::uint16_t extraLen  = ReadU16(&buf[pos + 30]);
-        const std::uint16_t commLen   = ReadU16(&buf[pos + 32]);
-        const std::uint32_t localOff  = ReadU32(&buf[pos + 42]);
+        const std::uint16_t verMadeBy = ReadU16(buf.data() + pos + 4);
+        const std::uint16_t cdFlags   = ReadU16(buf.data() + pos + 8);
+        const std::uint16_t method    = ReadU16(buf.data() + pos + 10);
+        const std::uint32_t crc       = ReadU32(buf.data() + pos + 16);
+        const std::uint32_t compSz    = ReadU32(buf.data() + pos + 20);
+        const std::uint32_t uncompSz  = ReadU32(buf.data() + pos + 24);
+        const std::uint16_t nameLen   = ReadU16(buf.data() + pos + 28);
+        const std::uint16_t extraLen  = ReadU16(buf.data() + pos + 30);
+        const std::uint16_t commLen   = ReadU16(buf.data() + pos + 32);
+        const std::uint32_t extAttr   = ReadU32(buf.data() + pos + 38);
+        const std::uint32_t localOff  = ReadU32(buf.data() + pos + 42);
 
-        if (pos + 46 + nameLen + extraLen + commLen > eocdPos)
+        if (static_cast<std::uint64_t>(pos) + 46ULL + nameLen + extraLen + commLen > eocdPos)
             return false;
-        std::string rawName(reinterpret_cast<const char*>(&buf[pos + 46]), nameLen);
+        std::string rawName(reinterpret_cast<const char*>(buf.data() + pos + 46), nameLen);
         pos += 46 + nameLen + extraLen + commLen;
+
+        // Reject POSIX symlinks (S_IFLNK = 0xA000 in upper 16 bits of external attributes)
+        const std::uint16_t hostOs = verMadeBy >> 8U;
+        if ((hostOs == 3U || hostOs == 19U) && ((extAttr >> 16U) & 0xF000U) == 0xA000U)
+            return false;
 
         if (!rawName.empty() && (rawName.back() == '/' || rawName.back() == '\\'))
             continue;
-        if (method != 0 || compSz != uncompSz || !IsSafeRelativePath(rawName))
+        if ((cdFlags & 0x0001U) != 0 || !IsSafeRelativePath(rawName))
             return false;
-        extractedTotal += uncompSz;
-        if (extractedTotal > maxTotalBytes)
+        if (method != 0 && method != 8)
             return false;
-
-        if (static_cast<std::uint64_t>(localOff) + 30 > buf.size() || ReadU32(&buf[localOff]) != 0x04034b50U)
+        if (method == 0 && compSz != uncompSz)
             return false;
-        const std::uint16_t lNameLen  = ReadU16(&buf[localOff + 26]);
-        const std::uint16_t lExtraLen = ReadU16(&buf[localOff + 28]);
-        const std::size_t dataStart   = static_cast<std::size_t>(localOff) + 30 + lNameLen + lExtraLen;
-        if (dataStart + compSz > buf.size())
+        if (uncompSz > maxTotalBytes - extractedTotal)
             return false;
 
-        const auto actualCrc = ComputeCrc32(&buf[dataStart], compSz);
+        if (static_cast<std::uint64_t>(localOff) + 30ULL > buf.size() || ReadU32(buf.data() + localOff) != 0x04034b50U)
+            return false;
+        const std::uint16_t lFlags    = ReadU16(buf.data() + localOff + 6);
+        const std::uint16_t lMethod   = ReadU16(buf.data() + localOff + 8);
+        const std::uint16_t lNameLen  = ReadU16(buf.data() + localOff + 26);
+        const std::uint16_t lExtraLen = ReadU16(buf.data() + localOff + 28);
+        if ((lFlags & 0x0001U) != 0 || lMethod != method)
+            return false;
+
+        const std::uint64_t dataStart64 = static_cast<std::uint64_t>(localOff) + 30ULL + lNameLen + lExtraLen;
+        if (dataStart64 > buf.size())
+            return false;
+        const std::size_t dataStart = static_cast<std::size_t>(dataStart64);
+        if (static_cast<std::uint64_t>(compSz) > buf.size() - dataStart)
+            return false;
+
+        const std::uintmax_t remainingBudget = maxTotalBytes - extractedTotal;
+        const std::size_t maxEntryOut = (remainingBudget > static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()))
+            ? std::numeric_limits<std::size_t>::max()
+            : static_cast<std::size_t>(remainingBudget);
+
+        std::string content;
+        if (method == 0)
+        {
+            content.assign(reinterpret_cast<const char*>(buf.data() + dataStart), compSz);
+        }
+        else
+        {
+            content.reserve(std::min<std::size_t>(static_cast<std::size_t>(uncompSz), 4U * 1024U * 1024U));
+            if (!InflateRawDeflate(buf.data() + dataStart, compSz, content, maxEntryOut))
+                return false;
+            if (content.size() != static_cast<std::size_t>(uncompSz))
+                return false;
+        }
+
+        const auto actualCrc = ComputeCrc32(reinterpret_cast<const std::uint8_t*>(content.data()), content.size());
         if (actualCrc != crc)
             return false;
+
+        extractedTotal += content.size();
 
         std::replace(rawName.begin(), rawName.end(), '\\', '/');
         const fs::path relPath(std::u8string(reinterpret_cast<const char8_t*>(rawName.data()), rawName.size()));
         const fs::path outPath = destDir / relPath;
         if (outPath.has_parent_path())
             fs::create_directories(outPath.parent_path(), ec);
-        std::string content(reinterpret_cast<const char*>(&buf[dataStart]), compSz);
         if (!AtomicWrite(outPath, content))
             return false;
     }

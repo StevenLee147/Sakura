@@ -1,7 +1,7 @@
 ﻿; installer/sakura.iss — Sakura-樱 Windows x64 Official Installer (Inno Setup 6)
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.7.0"
 #endif
 
 #ifndef SourceStageDir
@@ -57,7 +57,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "fileassoc"; Description: "Associate .sakura chart package files with {#MyAppName}"; GroupDescription: "File associations:"
+Name: "fileassoc"; Description: "Associate .sakura dual-zone chart package files with {#MyAppName}"; GroupDescription: "File associations:"
+Name: "extchartassoc"; Description: "Register Open-With support for Phira (.pez) and osu! (.osz) chart packages"; GroupDescription: "File associations:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceStageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -70,9 +71,16 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Registry]
 Root: HKA; Subkey: "Software\Classes\.sakura"; ValueType: string; ValueName: ""; ValueData: "SakuraChartPackage"; Flags: uninsdeletevalue; Tasks: fileassoc
-Root: HKA; Subkey: "Software\Classes\SakuraChartPackage"; ValueType: string; ValueName: ""; ValueData: "Sakura Chart Package"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\SakuraChartPackage"; ValueType: string; ValueName: ""; ValueData: "Sakura Dual-Zone Chart Package"; Flags: uninsdeletekey; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\SakuraChartPackage\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\SakuraChartPackage\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\.pez"; ValueType: string; ValueName: ""; ValueData: "SakuraExternalChartPackage"; Flags: createvalueifdoesntexist uninsdeletevalue; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\.pez\OpenWithProgids"; ValueType: string; ValueName: "SakuraExternalChartPackage"; ValueData: ""; Flags: uninsdeletevalue; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\.osz"; ValueType: string; ValueName: ""; ValueData: "SakuraExternalChartPackage"; Flags: createvalueifdoesntexist uninsdeletevalue; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\.osz\OpenWithProgids"; ValueType: string; ValueName: "SakuraExternalChartPackage"; ValueData: ""; Flags: uninsdeletevalue; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\SakuraExternalChartPackage"; ValueType: string; ValueName: ""; ValueData: "External Rhythm Chart Package (.pez / .osz)"; Flags: uninsdeletekey; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\SakuraExternalChartPackage\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: extchartassoc
+Root: HKA; Subkey: "Software\Classes\SakuraExternalChartPackage\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: extchartassoc
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent

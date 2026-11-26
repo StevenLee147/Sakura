@@ -324,5 +324,223 @@
         "synergy_count": 159
       }
     ]
+  },
+  {
+    "id": "sakura_memories",
+    "seconds": 228.16,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Normal",
+        "level": 4.0,
+        "chart_file": "normal.json",
+        "note_count": 383,
+        "hold_count": 11,
+        "mouse_note_count": 117,
+        "thumb_count": 18,
+        "synergy_count": 0
+      },
+      {
+        "name": "Hard",
+        "level": 7.5,
+        "chart_file": "hard.json",
+        "note_count": 782,
+        "hold_count": 20,
+        "mouse_note_count": 216,
+        "thumb_count": 31,
+        "synergy_count": 91
+      },
+      {
+        "name": "Expert",
+        "level": 10.5,
+        "chart_file": "expert.json",
+        "note_count": 1162,
+        "hold_count": 4,
+        "mouse_note_count": 329,
+        "thumb_count": 36,
+        "synergy_count": 143
+      }
+    ]
+  },
+  {
+    "id": "moonlit_prelude",
+    "seconds": 271.04,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Easy",
+        "level": 3.0,
+        "chart_file": "easy.json",
+        "note_count": 362,
+        "hold_count": 14,
+        "mouse_note_count": 113,
+        "thumb_count": 15,
+        "synergy_count": 0
+      },
+      {
+        "name": "Normal",
+        "level": 5.5,
+        "chart_file": "normal.json",
+        "note_count": 576,
+        "hold_count": 29,
+        "mouse_note_count": 174,
+        "thumb_count": 22,
+        "synergy_count": 0
+      },
+      {
+        "name": "Hard",
+        "level": 8.5,
+        "chart_file": "hard.json",
+        "note_count": 1012,
+        "hold_count": 23,
+        "mouse_note_count": 289,
+        "thumb_count": 31,
+        "synergy_count": 127
+      }
+    ]
+  },
+  {
+    "id": "sakura_pulse",
+    "seconds": 60.0,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Normal",
+        "level": 4.5,
+        "chart_file": "normal.json",
+        "note_count": 111,
+        "hold_count": 4,
+        "mouse_note_count": 33,
+        "thumb_count": 4,
+        "synergy_count": 0
+      },
+      {
+        "name": "Hard",
+        "level": 7.5,
+        "chart_file": "hard.json",
+        "note_count": 199,
+        "hold_count": 1,
+        "mouse_note_count": 56,
+        "thumb_count": 9,
+        "synergy_count": 23
+      },
+      {
+        "name": "Expert",
+        "level": 10.5,
+        "chart_file": "expert.json",
+        "note_count": 268,
+        "hold_count": 6,
+        "mouse_note_count": 84,
+        "thumb_count": 8,
+        "synergy_count": 30
+      }
+    ]
+  },
+  {
+    "id": "shattered_drive_f",
+    "seconds": 60.0,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Normal",
+        "level": 5.5,
+        "chart_file": "normal.json",
+        "note_count": 123,
+        "hold_count": 6,
+        "mouse_note_count": 37,
+        "thumb_count": 4,
+        "synergy_count": 0
+      },
+      {
+        "name": "Hard",
+        "level": 9.0,
+        "chart_file": "hard.json",
+        "note_count": 224,
+        "hold_count": 4,
+        "mouse_note_count": 65,
+        "thumb_count": 7,
+        "synergy_count": 28
+      },
+      {
+        "name": "Expert",
+        "level": 12.0,
+        "chart_file": "expert.json",
+        "note_count": 308,
+        "hold_count": 2,
+        "mouse_note_count": 92,
+        "thumb_count": 11,
+        "synergy_count": 39
+      }
+    ]
+  },
+  {
+    "id": "sakura_sprint",
+    "seconds": 279.36,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Normal",
+        "level": 6.0,
+        "chart_file": "normal.json",
+        "note_count": 647,
+        "hold_count": 27,
+        "mouse_note_count": 199,
+        "thumb_count": 21,
+        "synergy_count": 0
+      },
+      {
+        "name": "Hard",
+        "level": 9.5,
+        "chart_file": "hard.json",
+        "note_count": 1129,
+        "hold_count": 10,
+        "mouse_note_count": 325,
+        "thumb_count": 47,
+        "synergy_count": 125
+      },
+      {
+        "name": "Expert",
+        "level": 13.0,
+        "chart_file": "expert.json",
+        "note_count": 1563,
+        "hold_count": 18,
+        "mouse_note_count": 473,
+        "thumb_count": 51,
+        "synergy_count": 170
+      }
+    ]
+  },
+  {
+    "id": "shattered_threshold",
+    "seconds": 269.68,
+    "sample_rate": 44100,
+    "channels": 2,
+    "difficulties": [
+      {
+        "name": "Hard",
+        "level": 10.0,
+        "chart_file": "hard.json",
+        "note_count": 1107,
+        "hold_count": 21,
+        "mouse_note_count": 331,
+        "thumb_count": 34,
+        "synergy_count": 150
+      },
+      {
+        "name": "Expert",
+        "level": 13.5,
+        "chart_file": "expert.json",
+        "note_count": 1658,
+        "hold_count": 1,
+        "mouse_note_count": 475,
+        "thumb_count": 32,
+        "synergy_count": 222
+      }
+    ]
   }
 ]

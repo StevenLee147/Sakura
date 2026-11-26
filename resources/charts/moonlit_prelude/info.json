@@ -1,0 +1,52 @@
+{
+  "version": 4,
+  "id": "moonlit_prelude",
+  "title": "月夜序曲 · Prelude",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 04",
+  "tags": [
+    "original",
+    "prelude",
+    "atmospheric",
+    "v4-stage"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 75720,
+  "bpm": 140.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Easy",
+      "level": 3.0,
+      "chart_file": "easy.json",
+      "note_count": 362,
+      "hold_count": 14,
+      "mouse_note_count": 113,
+      "thumb_count": 15,
+      "synergy_count": 0
+    },
+    {
+      "name": "Normal",
+      "level": 5.5,
+      "chart_file": "normal.json",
+      "note_count": 576,
+      "hold_count": 29,
+      "mouse_note_count": 174,
+      "thumb_count": 22,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 8.5,
+      "chart_file": "hard.json",
+      "note_count": 1012,
+      "hold_count": 23,
+      "mouse_note_count": 289,
+      "thumb_count": 31,
+      "synergy_count": 127
+    }
+  ]
+}

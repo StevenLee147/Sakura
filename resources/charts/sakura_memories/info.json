@@ -1,0 +1,52 @@
+{
+  "version": 4,
+  "id": "sakura_memories",
+  "title": "Sakura Memories",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 04",
+  "tags": [
+    "original",
+    "melodic",
+    "nostalgic",
+    "v4-stage"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 72720,
+  "bpm": 156.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 4.0,
+      "chart_file": "normal.json",
+      "note_count": 383,
+      "hold_count": 11,
+      "mouse_note_count": 117,
+      "thumb_count": 18,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 7.5,
+      "chart_file": "hard.json",
+      "note_count": 782,
+      "hold_count": 20,
+      "mouse_note_count": 216,
+      "thumb_count": 31,
+      "synergy_count": 91
+    },
+    {
+      "name": "Expert",
+      "level": 10.5,
+      "chart_file": "expert.json",
+      "note_count": 1162,
+      "hold_count": 4,
+      "mouse_note_count": 329,
+      "thumb_count": 36,
+      "synergy_count": 143
+    }
+  ]
+}

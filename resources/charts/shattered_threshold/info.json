@@ -1,0 +1,42 @@
+{
+  "version": 4,
+  "id": "shattered_threshold",
+  "title": "破碎阈值",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 04",
+  "tags": [
+    "original",
+    "hardcore",
+    "boss",
+    "v4-stage"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 164000,
+  "bpm": 120.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Hard",
+      "level": 10.0,
+      "chart_file": "hard.json",
+      "note_count": 1107,
+      "hold_count": 21,
+      "mouse_note_count": 331,
+      "thumb_count": 34,
+      "synergy_count": 150
+    },
+    {
+      "name": "Expert",
+      "level": 13.5,
+      "chart_file": "expert.json",
+      "note_count": 1658,
+      "hold_count": 1,
+      "mouse_note_count": 475,
+      "thumb_count": 32,
+      "synergy_count": 222
+    }
+  ]
+}
