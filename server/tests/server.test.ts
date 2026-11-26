@@ -6,7 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { computeDailyChallenge, createApp } from "../src/app.js";
-import { PostgresCompatibleAdapter, SqliteStorageAdapter } from "../src/storage/index.js";
+import { computeChartRating, PostgresCompatibleAdapter, SqliteStorageAdapter } from "../src/storage/index.js";
 import { createStoreZipArchive } from "../src/zip_validator.js";
 
 test("Sakura Online Server v1.1.0 Auth, Anti-Cheat Scores, Leaderboards & Replays", async () => {
@@ -1033,5 +1033,265 @@ test("Sakura Online Server v1.6.0 Multiplayer Arena Rooms & Podium Ranking", asy
   } finally {
     storage.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Sakura Online Server v2.0.0 Authoritative Sakura Rating & Updater Assets", async () => {
+  const tmpDir = path.join(process.cwd(), `.sakura-v200-test-${crypto.randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v200-test-secret", serverVersion: "2.0.0" });
+
+  try {
+    // 1. Direct computeChartRating curve & bonus verification across all brackets
+    assert.equal(computeChartRating(0, 100, true, true, 50), 0);
+    assert.equal(computeChartRating(-2.5, 99.9, true, false, 10), 0);
+    assert.ok(Math.abs(computeChartRating(10.0, 100.0, true, true, 40) - 12.18) < 1e-9);
+    assert.ok(Math.abs(computeChartRating(10.0, 99.75, true, false, 10) - 11.83) < 1e-9);
+    assert.ok(Math.abs(computeChartRating(9.0, 98.6, false, false, 0) - 10.2) < 1e-9);
+    assert.ok(Math.abs(computeChartRating(9.0, 96.5, false, false, 0) - 9.5) < 1e-9);
+    assert.ok(Math.abs(computeChartRating(8.0, 92.5, false, false, 0) - 7.5) < 1e-9);
+    assert.ok(Math.abs(computeChartRating(10.0, 45.0, false, false, 0) - 2.25) < 1e-9);
+    assert.equal(computeChartRating(0.5, 80.0, false, false, 0), 0);
+
+    // 2. /api/v1/version dual-artifact + SHA256SUMS URLs & GitHub-compatible assets array
+    const verRes = await app.request("/api/v1/version");
+    assert.equal(verRes.status, 200);
+    const verJson = (await verRes.json()) as {
+      tag_name: string;
+      latest_version: string;
+      download_url: string;
+      portable_zip_url: string;
+      installer_exe_url: string;
+      sha256_sums_url: string;
+      assets: Array<{ name: string; browser_download_url: string }>;
+    };
+    assert.equal(verJson.tag_name, "v2.0.0");
+    assert.equal(verJson.latest_version, "v2.0.0");
+    assert.match(verJson.installer_exe_url, /Sakura-v2\.0\.0-win64-setup\.exe$/);
+    assert.equal(verJson.download_url, verJson.installer_exe_url);
+    assert.match(verJson.portable_zip_url, /Sakura-v2\.0\.0-win64\.zip$/);
+    assert.match(verJson.sha256_sums_url, /Sakura-v2\.0\.0-SHA256SUMS\.txt$/);
+    assert.equal(verJson.assets.length, 3);
+    assert.deepEqual(
+      verJson.assets.map((a) => a.name),
+      [
+        "Sakura-v2.0.0-win64-setup.exe",
+        "Sakura-v2.0.0-win64.zip",
+        "Sakura-v2.0.0-SHA256SUMS.txt",
+      ]
+    );
+    assert.equal(verJson.assets[0].browser_download_url, verJson.installer_exe_url);
+    assert.equal(verJson.assets[1].browser_download_url, verJson.portable_zip_url);
+    assert.equal(verJson.assets[2].browser_download_url, verJson.sha256_sums_url);
+
+    // 3. Guest & Register initialize sakura_rating to 0
+    const guestRes = await app.request("/api/v1/auth/guest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: "BudGuest" }),
+    });
+    assert.equal(guestRes.status, 201);
+    const guestJson = (await guestRes.json()) as { token: string; user: { sakura_rating: number } };
+    assert.equal(guestJson.user.sakura_rating, 0);
+
+    const regRes = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraMaster", password: "sakura123456" }),
+    });
+    assert.equal(regRes.status, 201);
+    const regJson = (await regRes.json()) as { token: string; user: { id: string; sakura_rating: number } };
+    assert.equal(regJson.user.sakura_rating, 0);
+
+    // 4. Cloud-synced scores contribute to B30 and fallback rawR10 = b30Avg when recent scores is empty
+    const syncRes = await app.request("/api/v1/sync/push", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scores: [
+          {
+            chart_id: "starry_sky",
+            chart_title: "繁星",
+            chart_hash: "hash_ss_ex",
+            difficulty: "Expert",
+            difficulty_level: 10.0,
+            score: 1000000,
+            accuracy: 100.0,
+            max_combo: 500,
+            grade: "SS",
+            perfect_count: 500,
+            great_count: 0,
+            good_count: 0,
+            bad_count: 0,
+            miss_count: 0,
+            is_full_combo: true,
+            is_all_perfect: true,
+            played_at: 1700100000,
+          },
+          {
+            chart_id: "sakura_breath",
+            chart_title: "樱落呼吸",
+            chart_hash: "hash_sb_hd",
+            difficulty: "Hard",
+            difficulty_level: 8.0,
+            score: 980000,
+            accuracy: 98.0,
+            max_combo: 320,
+            grade: "S",
+            perfect_count: 310,
+            great_count: 10,
+            good_count: 0,
+            bad_count: 0,
+            miss_count: 0,
+            is_full_combo: true,
+            is_all_perfect: false,
+            played_at: 1700100100,
+          },
+        ],
+        achievements: [],
+      }),
+    });
+    assert.equal(syncRes.status, 200);
+
+    // (12.12 + 9.06) / 2 = 10.59
+    const meAfterSync = await app.request("/api/v1/auth/me", {
+      headers: { Authorization: `Bearer ${regJson.token}` },
+    });
+    assert.equal(meAfterSync.status, 200);
+    const meSyncJson = (await meAfterSync.json()) as { user: { sakura_rating: number } };
+    assert.equal(meSyncJson.user.sakura_rating, 10.59);
+
+    // 5. Ranked score upgrades (sakura_breath, Hard) from 9.06 -> 10.14; B30=11.13, R10=10.14 => 10.88
+    const upScoreRes = await app.request("/api/v1/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "sakura_breath",
+        chart_title: "樱落呼吸",
+        chart_hash: "hash_sb_hd",
+        difficulty: "Hard",
+        difficulty_level: 8.0,
+        score: 1000000,
+        accuracy: 100.0,
+        max_combo: 320,
+        grade: "SS",
+        perfect_count: 320,
+        great_count: 0,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 320,
+        synergy_count: 10,
+        is_full_combo: true,
+        is_all_perfect: true,
+        assisted: false,
+      }),
+    });
+    assert.equal(upScoreRes.status, 201);
+    const upScoreJson = (await upScoreRes.json()) as { sakura_rating: number };
+    assert.equal(upScoreJson.sakura_rating, 10.88);
+
+    // 6. Anti-degradation floor: 10 low-accuracy plays on starry_sky do not lower B30 (11.13)
+    // and floor R10 at b30Avg * 0.85 = 9.4605 => Math.round((0.75 * 11.13 + 0.25 * 9.4605) * 100) / 100 = 10.71
+    for (let i = 0; i < 10; i++) {
+      const lowRes = await app.request("/api/v1/scores", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chart_id: "starry_sky",
+          chart_title: "繁星",
+          chart_hash: "hash_ss_ex",
+          difficulty: "Expert",
+          difficulty_level: 10.0,
+          score: 450000,
+          accuracy: 45.0,
+          max_combo: 40,
+          grade: "D",
+          perfect_count: 45,
+          great_count: 0,
+          good_count: 0,
+          bad_count: 0,
+          miss_count: 55,
+          total_judgments: 100,
+          synergy_count: 0,
+          is_full_combo: false,
+          is_all_perfect: false,
+          assisted: false,
+        }),
+      });
+      assert.equal(lowRes.status, 201);
+    }
+
+    const loginRes = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraMaster", password: "sakura123456" }),
+    });
+    assert.equal(loginRes.status, 200);
+    const loginJson = (await loginRes.json()) as { user: { sakura_rating: number } };
+    assert.equal(loginJson.user.sakura_rating, 10.71);
+
+    // 7. Leaderboards & Daily Challenge entries expose sakura_rating
+    const lbRes = await app.request("/api/v1/leaderboards/sakura_breath?difficulty=Hard");
+    assert.equal(lbRes.status, 200);
+    const lbJson = (await lbRes.json()) as { entries: Array<{ username: string; sakura_rating: number }> };
+    assert.equal(lbJson.entries.length, 1);
+    assert.equal(lbJson.entries[0].username, "SakuraMaster");
+    assert.equal(lbJson.entries[0].sakura_rating, 10.71);
+
+    const targetDate = "2026-11-26";
+    const dailySpec = computeDailyChallenge(targetDate);
+    const dailySubmit = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${regJson.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: targetDate,
+        chart_id: dailySpec.chartId,
+        chart_title: dailySpec.chartTitle,
+        chart_hash: "hash_daily_v200",
+        difficulty: dailySpec.difficulty,
+        difficulty_level: dailySpec.difficultyLevel,
+        score: 990000,
+        accuracy: 99.5,
+        max_combo: 250,
+        grade: "S",
+        perfect_count: 248,
+        great_count: 2,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 250,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(dailySubmit.status, 201);
+
+    const dailyGet = await app.request(`/api/v1/daily?date=${targetDate}`);
+    assert.equal(dailyGet.status, 200);
+    const dailyGetJson = (await dailyGet.json()) as { entries: Array<{ sakura_rating: number }> };
+    assert.equal(dailyGetJson.entries[0].sakura_rating, 10.71);
+
+    const dailyLb = await app.request(`/api/v1/daily/leaderboard?date=${targetDate}`);
+    assert.equal(dailyLb.status, 200);
+    const dailyLbJson = (await dailyLb.json()) as { entries: Array<{ sakura_rating: number }> };
+    assert.equal(dailyLbJson.entries[0].sakura_rating, 10.71);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  // 8. PostgresCompatibleAdapter getUserSakuraRating stub check
+  const pgDir = path.join(process.cwd(), `.sakura-v200-pg-${crypto.randomUUID()}`);
+  fs.mkdirSync(pgDir, { recursive: true });
+  const pgAdapter = new PostgresCompatibleAdapter("postgres://localhost:5432/sakura", pgDir);
+  try {
+    const u = pgAdapter.registerUser("PgUser", "hash");
+    assert.equal(pgAdapter.getUserSakuraRating(u.id), 0);
+  } finally {
+    pgAdapter.close();
+    fs.rmSync(pgDir, { recursive: true, force: true });
   }
 });

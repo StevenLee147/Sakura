@@ -77,6 +77,15 @@ std::string JsonStringOr(const nlohmann::json& obj, const char* key, const std::
     return obj.value(key, fallback);
 }
 
+double JsonSakuraRatingOr(const nlohmann::json& obj)
+{
+    if (obj.contains("sakura_rating") && obj["sakura_rating"].is_number())
+        return obj["sakura_rating"].get<double>();
+    if (obj.contains("rating") && obj["rating"].is_number())
+        return obj["rating"].get<double>();
+    return 0.0;
+}
+
 LeaderboardRow ParseLeaderboardRowJson(const nlohmann::json& item)
 {
     LeaderboardRow row;
@@ -99,6 +108,7 @@ LeaderboardRow ParseLeaderboardRowJson(const nlohmann::json& item)
         ? (item["has_replay"].get<int>() != 0)
         : item.value("has_replay", false);
     row.playedAt     = item.value("played_at", 0LL);
+    row.sakuraRating = JsonSakuraRatingOr(item);
     row.danBadge     = (item.contains("dan_badge") && item["dan_badge"].is_null())
         ? std::string{}
         : item.value("dan_badge", "");
@@ -130,13 +140,14 @@ void APIClient::LoadFromConfig()
     std::string rawUrl = cfg.Get<std::string>("online.server_url", kDefaultOnlineServerUrl);
     if (rawUrl == "http://127.0.0.1:8787")
         rawUrl = kDefaultOnlineServerUrl;
-    m_serverUrl     = TrimTrailingSlash(rawUrl);
-    m_authToken     = cfg.Get<std::string>("online.auth_token", "");
-    m_user.id       = cfg.Get<std::string>("online.user_id", "");
-    m_user.username = cfg.Get<std::string>("online.username", "");
-    m_user.isGuest  = cfg.Get<bool>("online.is_guest", true);
-    m_user.totalPP  = cfg.Get<double>("online.total_pp", 0.0);
-    m_user.danBadge = cfg.Get<std::string>("online.dan_badge", "");
+    m_serverUrl         = TrimTrailingSlash(rawUrl);
+    m_authToken         = cfg.Get<std::string>("online.auth_token", "");
+    m_user.id           = cfg.Get<std::string>("online.user_id", "");
+    m_user.username     = cfg.Get<std::string>("online.username", "");
+    m_user.isGuest      = cfg.Get<bool>("online.is_guest", true);
+    m_user.totalPP      = cfg.Get<double>("online.total_pp", 0.0);
+    m_user.sakuraRating = cfg.Get<double>("online.sakura_rating", 0.0);
+    m_user.danBadge     = cfg.Get<std::string>("online.dan_badge", "");
 }
 
 void APIClient::SaveToConfig() const
@@ -149,6 +160,7 @@ void APIClient::SaveToConfig() const
     cfg.Set("online.username", m_user.username);
     cfg.Set("online.is_guest", m_user.isGuest);
     cfg.Set("online.total_pp", m_user.totalPP);
+    cfg.Set("online.sakura_rating", m_user.sakuraRating);
     cfg.Set("online.dan_badge", m_user.danBadge);
     cfg.Save();
 }
@@ -317,12 +329,13 @@ AuthResult APIClient::HandleAuthResponse(const HttpResponse& res)
         else
             out.token = GetAuthToken();
 
-        const auto& u     = j.at("user");
-        out.user.id       = u.value("id", "");
-        out.user.username = u.value("username", "");
-        out.user.isGuest  = u.value("is_guest", false);
-        out.user.totalPP  = u.value("total_pp", 0.0);
-        out.user.danBadge = (u.contains("dan_badge") && u["dan_badge"].is_null())
+        const auto& u         = j.at("user");
+        out.user.id           = u.value("id", "");
+        out.user.username     = u.value("username", "");
+        out.user.isGuest      = u.value("is_guest", false);
+        out.user.totalPP      = u.value("total_pp", 0.0);
+        out.user.sakuraRating = JsonSakuraRatingOr(u);
+        out.user.danBadge     = (u.contains("dan_badge") && u["dan_badge"].is_null())
             ? std::string{}
             : u.value("dan_badge", "");
 
@@ -478,6 +491,8 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
         {
             std::lock_guard lock(m_stateMutex);
             m_user.totalPP = out.totalPP;
+            if (j.contains("sakura_rating") && j["sakura_rating"].is_number())
+                m_user.sakuraRating = j["sakura_rating"].get<double>();
         }
         SaveToConfig();
         return out;
@@ -1581,11 +1596,16 @@ DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
         out.newBest = (j.contains("new_best") && j["new_best"].is_boolean())
             ? j["new_best"].get<bool>()
             : j.value("new_best", false);
-        if (j.contains("total_pp") && j["total_pp"].is_number())
+        const bool hasTotalPP      = j.contains("total_pp") && j["total_pp"].is_number();
+        const bool hasSakuraRating = j.contains("sakura_rating") && j["sakura_rating"].is_number();
+        if (hasTotalPP || hasSakuraRating)
         {
             {
                 std::lock_guard lock(m_stateMutex);
-                m_user.totalPP = j["total_pp"].get<double>();
+                if (hasTotalPP)
+                    m_user.totalPP = j["total_pp"].get<double>();
+                if (hasSakuraRating)
+                    m_user.sakuraRating = j["sakura_rating"].get<double>();
             }
             SaveToConfig();
         }

@@ -134,6 +134,38 @@ export function computeAuthoritativePP(sub: ScoreSubmission): number {
   return Math.round(pp * 100) / 100;
 }
 
+export function computeChartRating(
+  level: number,
+  accuracy: number,
+  isFullCombo: boolean,
+  isAllPerfect: boolean,
+  synergyCount = 0
+): number {
+  const L = Math.max(0, level || 0);
+  const acc = Math.max(0, Math.min(100, accuracy || 0));
+  if (L <= 0) return 0;
+
+  let base = 0;
+  if (acc >= 100) {
+    base = L + 2.0;
+  } else if (acc >= 99.5) {
+    base = L + 1.5 + (acc - 99.5) * 1.0;
+  } else if (acc >= 98.0) {
+    base = L + 1.0 + (acc - 98.0) / 3.0;
+  } else if (acc >= 95.0) {
+    base = L + (acc - 95.0) / 3.0;
+  } else if (acc >= 90.0) {
+    base = Math.max(0, L - 1.0 + (acc - 90.0) / 5.0);
+  } else {
+    base = Math.max(0, (L - 1.0) * Math.pow(acc / 90.0, 2));
+  }
+
+  const bonus =
+    (isAllPerfect ? 0.12 : isFullCombo ? 0.06 : 0) +
+    Math.min(0.06, Math.max(0, synergyCount || 0) * 0.002);
+  return base + bonus;
+}
+
 export function validateScoreSubmission(sub: ScoreSubmission): void {
   if (sub.assisted) {
     throw new Error("Assisted plays are rejected from ranked leaderboards.");
@@ -460,6 +492,75 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     return Math.round(total * 100) / 100;
   }
 
+  getUserSakuraRating(userId: string): number {
+    const bestByChartDiff = new Map<string, number>();
+    const recentRatings: number[] = [];
+
+    const scoreRows = this.db.prepare(`
+      SELECT chart_id, difficulty, difficulty_level, accuracy, synergy_count, is_full_combo, is_all_perfect
+      FROM scores
+      WHERE user_id = ?
+      ORDER BY played_at DESC, rowid DESC
+    `).all(userId) as Array<Record<string, unknown>>;
+
+    for (const r of scoreRows) {
+      const rating = computeChartRating(
+        Number(r.difficulty_level),
+        Number(r.accuracy),
+        Number(r.is_full_combo) !== 0,
+        Number(r.is_all_perfect) !== 0,
+        Number(r.synergy_count || 0)
+      );
+      const key = `${String(r.chart_id)}::${String(r.difficulty)}`;
+      const prev = bestByChartDiff.get(key);
+      if (prev === undefined || rating > prev) {
+        bestByChartDiff.set(key, rating);
+      }
+      if (recentRatings.length < 20) {
+        recentRatings.push(rating);
+      }
+    }
+
+    const cloudRows = this.db.prepare(`
+      SELECT chart_id, difficulty, difficulty_level, accuracy, is_full_combo, is_all_perfect
+      FROM cloud_best_scores
+      WHERE user_id = ?
+    `).all(userId) as Array<Record<string, unknown>>;
+
+    for (const r of cloudRows) {
+      const rating = computeChartRating(
+        Number(r.difficulty_level),
+        Number(r.accuracy),
+        Number(r.is_full_combo) !== 0,
+        Number(r.is_all_perfect) !== 0,
+        0
+      );
+      const key = `${String(r.chart_id)}::${String(r.difficulty)}`;
+      const prev = bestByChartDiff.get(key);
+      if (prev === undefined || rating > prev) {
+        bestByChartDiff.set(key, rating);
+      }
+    }
+
+    if (bestByChartDiff.size === 0) {
+      return 0;
+    }
+
+    const top30 = Array.from(bestByChartDiff.values())
+      .sort((a, b) => b - a)
+      .slice(0, 30);
+    const b30Avg = top30.reduce((sum, v) => sum + v, 0) / top30.length;
+
+    let rawR10 = b30Avg;
+    if (recentRatings.length > 0) {
+      const top10 = [...recentRatings].sort((a, b) => b - a).slice(0, 10);
+      rawR10 = top10.reduce((sum, v) => sum + v, 0) / top10.length;
+    }
+    const r10Avg = Math.max(b30Avg * 0.85, rawR10);
+
+    return Math.round((0.75 * b30Avg + 0.25 * r10Avg) * 100) / 100;
+  }
+
   submitScore(userId: string, sub: ScoreSubmission): { scoreId: string; pp: number; rank: number; newBest: boolean } {
     validateScoreSubmission(sub);
     const prev = this.db.prepare(
@@ -534,6 +635,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
           maxCombo: Number(r.max_combo),
           grade: String(r.grade),
           pp: Number(r.pp),
+          sakuraRating: this.getUserSakuraRating(uid),
           isFullCombo: Number(r.is_full_combo) !== 0,
           isAllPerfect: Number(r.is_all_perfect) !== 0,
           hasReplay: Number(r.has_replay) !== 0,
@@ -636,6 +738,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
           maxCombo: Number(r.max_combo),
           grade: String(r.grade),
           pp: Number(r.pp),
+          sakuraRating: this.getUserSakuraRating(uid),
           isFullCombo: Number(r.is_full_combo) !== 0,
           isAllPerfect: Number(r.is_all_perfect) !== 0,
           hasReplay,

@@ -50,19 +50,26 @@ private:
     sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
 
     std::unique_ptr<sakura::ui::Button> m_btnBack;
+    std::unique_ptr<sakura::ui::Button> m_btnExportB30;
+    std::unique_ptr<sakura::ui::Button> m_btnToggleB30Overlay;
     std::unique_ptr<sakura::ui::Button> m_btnAchievements;
     std::unique_ptr<sakura::ui::Button> m_btnCloseOverlay;
     std::unique_ptr<sakura::ui::ScrollList> m_achievementList;
 
     bool m_showAchievements = false;
+    bool m_showB30Overlay   = false;
 
     StatsSnapshot m_stats;
+    sakura::game::RatingSummary m_ratingSummary;
+    std::string m_danBadge;
     std::vector<sakura::game::GameResult> m_recentScores;
     std::vector<sakura::game::PPPlay> m_topPPPlays;
     std::vector<sakura::game::AchievementProgress> m_achievements;
 
     void RefreshData();
     void RefreshAchievementList();
+    void RenderB30MatrixContent(sakura::core::Renderer& renderer, bool exportCardMode = false);
+    bool ExportCareerCardPng(const std::string& outputPath = {});
     static std::string FormatDuration(double seconds);
 };
 

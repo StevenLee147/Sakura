@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { hashPassword, JwtPayload, signJwt, verifyJwt, verifyPassword } from "./auth.js";
-import { computeDailyChallenge } from "./storage/sqlite_adapter.js";
+import { computeChartRating, computeDailyChallenge } from "./storage/sqlite_adapter.js";
 import {
   ArenaRoomRecord,
   CloudAchievementRecord,
@@ -13,7 +13,7 @@ import {
   ScoreSubmission,
 } from "./storage/types.js";
 
-export { computeDailyChallenge };
+export { computeChartRating, computeDailyChallenge };
 
 function serializeLeaderboardEntry(e: LeaderboardEntry) {
   return {
@@ -27,6 +27,7 @@ function serializeLeaderboardEntry(e: LeaderboardEntry) {
     max_combo: e.maxCombo,
     grade: e.grade,
     pp: e.pp,
+    sakura_rating: e.sakuraRating,
     is_full_combo: e.isFullCombo,
     is_all_perfect: e.isAllPerfect,
     has_replay: e.hasReplay,
@@ -169,7 +170,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.7.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.0.0";
 
   app.use("*", cors());
 
@@ -196,13 +197,37 @@ export function createApp(opts: AppOptions): Hono {
   app.get("/api/v1/version", (c) => {
     const tag = process.env.SAKURA_LATEST_VERSION || serverVersion;
     const normalizedTag = tag.startsWith("v") ? tag : `v${tag}`;
+    const baseDownloadUrl = `https://github.com/StevenLee147/Sakura/releases/download/${normalizedTag}`;
+    const installerAssetName = `Sakura-${normalizedTag}-win64-setup.exe`;
+    const portableAssetName = `Sakura-${normalizedTag}-win64.zip`;
+    const sha256AssetName = `Sakura-${normalizedTag}-SHA256SUMS.txt`;
+    const installerExeUrl = `${baseDownloadUrl}/${installerAssetName}`;
+    const portableZipUrl = `${baseDownloadUrl}/${portableAssetName}`;
+    const sha256SumsUrl = `${baseDownloadUrl}/${sha256AssetName}`;
     return c.json({
       tag_name: normalizedTag,
       latest_version: normalizedTag,
       name: `Sakura-樱 ${normalizedTag}`,
       html_url: `https://github.com/StevenLee147/Sakura/releases/tag/${normalizedTag}`,
-      download_url: `https://github.com/StevenLee147/Sakura/releases/download/${normalizedTag}/Sakura-${normalizedTag}-win64-setup.exe`,
-      body: "Sakura-樱 Online Ecosystem Update: Global Leaderboards, Replay Sharing & Auto-Updater.",
+      download_url: installerExeUrl,
+      portable_zip_url: portableZipUrl,
+      installer_exe_url: installerExeUrl,
+      sha256_sums_url: sha256SumsUrl,
+      assets: [
+        {
+          name: installerAssetName,
+          browser_download_url: installerExeUrl,
+        },
+        {
+          name: portableAssetName,
+          browser_download_url: portableZipUrl,
+        },
+        {
+          name: sha256AssetName,
+          browser_download_url: sha256SumsUrl,
+        },
+      ],
+      body: "Sakura-樱 Online Ecosystem Update: Global Leaderboards, Replay Sharing, Sakura Rating & Auto-Updater.",
       published_at: new Date().toISOString(),
     });
   });
@@ -225,6 +250,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: true,
         total_pp: 0,
+        sakura_rating: 0,
         dan_badge: user.danBadge,
       },
     }, 201);
@@ -258,6 +284,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: false,
         total_pp: 0,
+        sakura_rating: 0,
         dan_badge: user.danBadge,
       },
     }, 201);
@@ -278,6 +305,7 @@ export function createApp(opts: AppOptions): Hono {
     }
     const token = signJwt({ sub: user.id, username: user.username, guest: false }, jwtSecret);
     const totalPp = storage.getUserTotalPP(user.id);
+    const sakuraRating = storage.getUserSakuraRating(user.id);
     return c.json({
       ok: true,
       token,
@@ -286,6 +314,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: false,
         total_pp: totalPp,
+        sakura_rating: sakuraRating,
         dan_badge: user.danBadge,
       },
     });
@@ -307,6 +336,7 @@ export function createApp(opts: AppOptions): Hono {
         username: user.username,
         is_guest: user.isGuest,
         total_pp: storage.getUserTotalPP(user.id),
+        sakura_rating: storage.getUserSakuraRating(user.id),
         dan_badge: user.danBadge,
       },
     });
@@ -327,6 +357,7 @@ export function createApp(opts: AppOptions): Hono {
       const sub = parseScoreSubmission(body);
       const res = storage.submitScore(auth.sub, sub);
       const totalPp = storage.getUserTotalPP(auth.sub);
+      const sakuraRating = storage.getUserSakuraRating(auth.sub);
       return c.json({
         ok: true,
         score_id: res.scoreId,
@@ -334,6 +365,7 @@ export function createApp(opts: AppOptions): Hono {
         rank: res.rank,
         new_best: res.newBest,
         total_pp: totalPp,
+        sakura_rating: sakuraRating,
       }, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Score validation failed.";
@@ -405,6 +437,7 @@ export function createApp(opts: AppOptions): Hono {
         date: res.date,
         rank: res.rank,
         new_best: res.newBest,
+        sakura_rating: storage.getUserSakuraRating(auth.sub),
       }, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Daily score validation failed.";

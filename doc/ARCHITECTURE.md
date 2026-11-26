@@ -1,59 +1,52 @@
-# Sakura-樱 架构设计文档
+# Sakura-樱 架构设计文档 (v2.0)
 
-> C++20 / SDL3 / SDL3 GPU API / CMake / vcpkg / MSVC
+> C++20 / SDL3 / miniaudio + WSOLA / SQLite3 / WinHTTP + TypeScript Hono Online Stack
 
 ---
 
 ## 1. 整体架构
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                     main.cpp                         │
-│                  Application Entry                   │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│                    App (core/)                       │
-│  ┌─────────┐ ┌──────────┐ ┌─────────┐ ┌──────────┐ │
-│  │ Window  │ │ Renderer │ │  Input  │ │  Timer   │ │
-│  └─────────┘ └──────────┘ └─────────┘ └──────────┘ │
-│  ┌──────────────────┐  ┌────────────────────┐       │
-│  │ ResourceManager  │  │    Logger (spdlog) │       │
-│  └──────────────────┘  └────────────────────┘       │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│               SceneManager (scene/)                  │
-│                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐             │
-│  │  Menu    │ │  Select  │ │   Game   │   ...       │
-│  │  Scene   │ │  Scene   │ │  Scene   │             │
-│  └──────────┘ └──────────┘ └──────────┘             │
-│  每个场景继承 Scene 基类                              │
-└────────────────────────┬─────────────────────────────┘
-                         │
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│  Game Logic  │ │   UI System  │ │   Effects    │
-│  (game/)     │ │   (ui/)      │ │  (effects/)  │
-│              │ │              │ │              │
-│ • PlaySession│ │ • Button     │ │ • Particles  │
-│ • Note/Chart3│ │ • ScrollList │ │ • VideoBGA   │
-│ • Judge/Score│ │ • TextInput  │ │ • Shader/Glow│
-│ • Replay v2  │ │ • VisualStyle│ │ • ScreenShake│
-│ • GameState  │ │ • Toast      │ │ • Background │
-└──────────────┘ └──────────────┘ └──────────────┘
-         │
-         ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│    Audio     │ │  Data & Zip  │ │   Network    │
-│  (audio/)    │ │ (data/utils) │ │   (net/)     │
-│              │ │              │ │              │
-│ • Manager    │ │ • SQLite3 DB │ │ • HttpClient │
-│ • WSOLA Pitch│ │ • .sakura Zip│ │ • APIClient  │
-│ • ClockSync  │ │ • Atomic I/O │ │ • Updater    │
-└──────────────┘ └──────────────┘ └──────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                          main.cpp                            │
+│         Application Entry / CLI Smoke & Record Runner        │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────┐
+│                         App (core/)                          │
+│  ┌─────────┐ ┌──────────┐ ┌─────────┐ ┌───────────────────┐ │
+│  │ Window  │ │ Renderer │ │  Input  │ │ Timer / ClockSync │ │
+│  └─────────┘ └──────────┘ └─────────┘ └───────────────────┘ │
+│  ┌─────────────────┐ ┌──────────────┐ ┌───────────────────┐ │
+│  │ ResourceManager │ │ SkinManager  │ │ Updater v2 HotSwap│ │
+│  └─────────────────┘ └──────────────┘ └───────────────────┘ │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────┐
+│                    SceneManager (scene/)                     │
+│  Menu / Select / Game / Result / Course / Arena / Market /   │
+│  Stats (B30 Card) / Editor / Tutorial / Calibration / Settings│
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+         ┌─────────────────────┼─────────────────────┐
+         ▼                     ▼                     ▼
+┌────────────────────┐ ┌──────────────┐ ┌────────────────────┐
+│  Game Logic (game/)│ │  UI (ui/)    │ │ Effects (effects/) │
+│ • PlaySession/Judge│ │ • Button/Tab │ │ • Particles/Trails │
+│ • Chart v4 & Lyrics│ │ • ScrollList │ │ • VideoBGA (MP4)   │
+│ • CourseSession    │ │ • TextInput  │ │ • Stage v4 Events  │
+│ • GhostRunner      │ │ • VisualStyle│ │ • Shader / Glow    │
+│ • ChartConverter   │ │ • Toast/Panel│ │ • ScreenShake      │
+│ • PPCalculator B30 │ │              │ │ • Moonlit BG       │
+└─────────┬──────────┘ └──────────────┘ └────────────────────┘
+          │
+          ▼
+┌────────────────────┐ ┌────────────────────┐ ┌──────────────┐
+│   Audio (audio/)   │ │ Data/Zip(data/util)│ │ Net & Server │
+│ • AudioManager     │ │ • SQLite3 Database │ │ • HttpClient │
+│ • WSOLA Stretcher  │ │ • PKZIP + Deflate  │ │ • APIClient  │
+│ • 6x Hitsound SFX  │ │ • FIPS SHA-256/CRC │ │ • Hono Server│
+└────────────────────┘ └────────────────────┘ └──────────────┘
 ```
 
 ---
@@ -212,20 +205,21 @@ namespace sakura::scene
 }
 ```
 
-### 2.4 Note & Judge (game/)
+### 2.4 Note, Chart v4, Judge & Rating (game/)
 
-音符和判定系统设计。
+双区音符、Chart Format v4 舞台事件与潜力值系统设计（跨平台纯逻辑层 `sakura-game-logic`）。
 
 ```cpp
 namespace sakura::game
 {
-    // --- 音符类型 ---
+    // --- 音符类型（Chart v1~v4 向后兼容） ---
     struct KeyboardNote
     {
         int time;            // 触发时间 (ms)
-        int lane;            // 轨道 (0-3)
-        NoteType type;       // Tap/Hold
+        int lane;            // 轨道 (0-3 为 A/S/D/F，4 为 Space 樱枝横梁)
+        NoteType type;       // Tap / Hold
         int duration = 0;    // Hold 持续时间
+        int linkId = 0;      // 跨区同押连携 ID
 
         // 运行时状态
         bool isJudged = false;
@@ -236,8 +230,10 @@ namespace sakura::game
     {
         int time;
         float x, y;          // 归一化坐标 (0.0~1.0)
-        NoteType type;       // Circle/Slider
+        NoteType type;       // Circle / Slider
         int sliderDuration = 0;
+        int linkId = 0;      // 跨区连携 ID
+        int modifierKey = -1;// 樱绽组合技协同修饰键
         std::vector<std::pair<float, float>> sliderPath;
 
         bool isJudged = false;
@@ -405,6 +401,18 @@ CREATE TABLE achievements (
     progress REAL DEFAULT 0.0
 );
 
+-- 樱华道场段位认定通关记录（幂等迁移）
+CREATE TABLE course_records (
+    course_id TEXT PRIMARY KEY,
+    badge_text TEXT NOT NULL,
+    dan_rank INTEGER NOT NULL,
+    total_score INTEGER NOT NULL,
+    avg_accuracy REAL NOT NULL,
+    remaining_life REAL NOT NULL,
+    cleared BOOLEAN DEFAULT FALSE,
+    cleared_at INTEGER DEFAULT 0
+);
+
 -- 玩家统计
 CREATE TABLE statistics (
     key TEXT PRIMARY KEY,
@@ -415,43 +423,43 @@ CREATE TABLE statistics (
 
 ---
 
-## 6. 在线生态与双模网络架构 (`src/net/` + `server/`)
+## 6. 在线生态、原子热更新与双模网络架构 (`src/net/` + `src/core/updater.*` + `server/`)
 
 - **客户端跨平台传输层 (`src/net/http_client.h/.cpp`)**：抽象纯 C++20 `IHttpTransport` 接口（纳入无 SDL 依赖的 `sakura-game-logic`）。Windows 主程序通过系统原生 `WinHttpTransport` 支持 TLS 1.2/1.3 HTTPS 与流式下载进度回调；Linux CI 与单元测试注入内存 `MockHttpTransport`。
-- **异步 API 客户端与自动更新 (`src/net/api_client.h/.cpp`、`src/core/updater.h/.cpp`)**：后台工作线程执行登录鉴权、防作弊成绩与 `.skr` 回放上报、离线待传队列刷新、`SceneMarket` `.sakura` 谱面包上传/检索/评分/SHA-256 校验安装、多端幂等云存档同步（`SyncCloudSave`）以及 SemVer 版本更新检测，主线程在 `App::Update` 中通过 `PumpCallbacks()` 无锁阻塞风险地消费 UI 回调。
-- **仓库内建双模服务端 (`server/`)**：基于 Node.js 22 + TypeScript + Hono 构建，内置 `SqliteStorageAdapter`（零外部依赖支持本地与 GitHub Actions `--verify-online` 实服闭环）与 `PostgresCompatibleAdapter` 云端生产接口，提供 PKZIP 内存解包防穿越校验、权威 PP 复算、全球排行榜、在线谱面市场与幂等云同步 REST API。
+- **异步 API 客户端 (`src/net/api_client.h/.cpp`)**：后台工作线程执行登录鉴权、防作弊成绩与 `.skr` 回放上报、每日挑战日榜提交、`SceneArena` 多人房间同步、`SceneMarket` `.sakura` 谱面包上传/检索/评分/SHA-256 校验安装及多端幂等云存档同步（`SyncCloudSave`），主线程在 `App::Update` 中通过 `PumpCallbacks()` 安全消费 UI 回调。
+- **Updater v2 原子热替换自更新架构 (`src/core/updater.h/.cpp`)**：解析 GitHub Releases 资产与 `SHA256SUMS.txt`，通过 `DetectInstallMode` 自动识别安装版（存在 `unins000.exe` 时匹配 `-win64-setup.exe`）与免安装便携版（匹配 `-win64.zip`）；后台流式下载至临时暂存目录并校验 FIPS 180-4 SHA-256 摘要，校验通过后由 `BuildHotSwapPowerShellScript` 生成带当前进程 PID 等待锁、核心文件回滚备份及用户存档（`%APPDATA%` / `userdata/`）保护的 PowerShell 原子热替换脚本（或拉起 Inno Setup `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`）完成无缝自重启。
+- **仓库内建双模服务端 (`server/`)**：基于 Node.js 22 + TypeScript + Hono 构建，内置 `SqliteStorageAdapter`（零外部依赖支持本地与 CI `--verify-online` 实服闭环）与生产持久化接口，提供 PKZIP 内存解包防穿越校验、权威 PP / Sakura Rating 复算、全球排行榜、每日挑战榜、多人对战房间状态机、在线谱面市场与幂等云同步 REST API。
 
 ---
 
 ## 7. 场景流程图
 
 ```
-                    ┌──────────────┐
-                    │   启动画面   │
-                    │   (Splash)   │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-              ┌─────│   主菜单     │─────┐
-              │     │   (Menu)     │     │
-              │     └──────┬───────┘     │
-              │            │             │
-    ┌─────────▼──┐  ┌──────▼───────┐  ┌──▼──────────┐
-    │   设置     │  │   选歌       │  │   编辑器    │
-    │ (Settings) │  │  (Select)    │  │  (Editor)   │
-    └────────────┘  └──────┬───────┘  └─────────────┘
-                           │
-                    ┌──────▼───────┐
-                    │   游戏       │
-                    │   (Game)     │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-                    │   结算       │
-                    │  (Result)    │
-                    └──────┬───────┘
-                           │
-                    返回选歌/重玩
+                             ┌──────────────┐
+                             │   启动画面   │
+                             │   (Splash)   │
+                             └──────┬───────┘
+                                    │
+                             ┌──────▼───────┐
+     ┌───────────┬───────────│   主菜单     │───────────┬───────────┐
+     │           │           │   (Menu)     │           │           │
+┌────▼─────┐┌────▼─────┐     └──┬───────┬───┘     ┌─────▼────┐┌─────▼────┐
+│ 个人统计 ││ 樱华道场 │        │       │         │ 多人对战 ││ 谱面市场 │
+│ (Stats)  ││ (Course) │  ┌─────▼────┐┌─▼────────┐│ (Arena)  ││ (Market) │
+│B30名片导出│└────┬─────┘  │   选歌   ││ 编辑器/  │└─────┬────┘└─────┬────┘
+└──────────┘     │        │ (Select) ││ 设置/教程│      │           │
+                 │        └─────┬────┘└──────────┘      │      一键安装跳选歌
+                 └──────────────┼───────────────────────┘
+                                │
+                         ┌──────▼───────┐
+                         │   演奏舞台   │ (支持 GhostRunner 伴跑 /
+                         │   (Game)     │  CourseGauge / Arena 同步)
+                         └──────┬───────┘
+                                │
+                         ┌──────▼───────┐
+                         │ 结算 / 领奖台│
+                         │   (Result)   │
+                         └──────────────┘
 ```
 
 ---
@@ -460,22 +468,24 @@ CREATE TABLE statistics (
 
 | 模式 | 应用位置 | 说明 |
 |------|----------|------|
-| 状态机 | SceneManager | 场景切换管理 |
-| 观察者 | 事件系统 | 输入事件分发 |
-| 单例 | ResourceManager, AudioManager | 全局唯一资源 |
-| 命令 | 编辑器撤销/重做 | Command 模式 |
-| 对象池 | 粒子系统 | 固定大小粒子池 |
-| 工厂 | 音符创建 | 根据类型创建对应音符 |
-| 策略 | 缓动函数 | 可替换的缓动算法 |
+| 状态机 | SceneManager / CourseSession | 场景栈过渡管理与多曲连奏段位状态流转 |
+| 观察者 | 事件系统 / APIClient 回调泵 | 输入事件分发与主线程无锁异步通知 |
+| 单例 | ResourceManager, AudioManager, SkinManager, Updater | 全局核心服务访问 |
+| 命令 | 编辑器撤销/重做 (`EditorCommand`) | 可逆编辑历史栈 |
+| 对象池 | 粒子系统 (`ParticleSystem`) | 固定容量预分配零 GC 抖动 |
+| 策略 / 适配器 | `IHttpTransport` / `IStorageAdapter` / `Easing` | 跨平台网络 Mock 注入、双模存储与缓动曲线 |
 
 ---
 
-## 9. 在线生态架构 (v1.1 ~ v1.2)
+## 9. 核心扩展与在线生态架构模块表 (v1.1 ~ v2.0)
 
 | 模块 | 位置 | 职责说明 |
 |------|------|----------|
-| HTTP 传输抽象 | `src/net/http_client.h/.cpp` | `IHttpTransport` 纯 C++20 接口；Windows 使用原生 `winhttp.lib` 支持 TLS 1.2/1.3 与系统代理，Linux CI 与单元测试注入 `MockHttpTransport` |
-| 在线业务客户端 | `src/net/api_client.h/.cpp` | 封装账号鉴权、成绩与 `.skr` 回放防作弊上报、全球排行榜查询、谱面市场检索/评分/SHA-256 校验安装、工房 `.sakura` 直传与多端云存档同步 |
-| 自动更新器 | `src/core/updater.h/.cpp` | 后台异步查询 GitHub Releases SemVer，弹出非阻断更新提示并支持设置页一键跳转下载 |
-| 在线谱面市场 | `src/scene/scene_market.h/.cpp` | `0.0~1.0` 归一化毛玻璃卡片市场界面，支持搜索筛选、星级评价与一键下载安装开玩 |
-| 双模在线服务端 | `server/src/` | Node.js + TypeScript + Hono 服务端，`IStorageAdapter` 默认零配置 SQLite + 本地包存储，兼容生产环境容器与反向代理部署 |
+| 主题皮肤与打击音管理 (`SkinManager`) | `src/core/skin_manager.h/.cpp` | 纯 C++20 零 SDL 头文件设计；内置 4 套主题色板与 6 套打击音映射，支持扫描用户 `skins/<id>/skin.json` 与 `hitsounds/*.wav` 热切换覆盖 |
+| 樱华道场、日榜与曲单 (`CourseSession` / `SceneCourse`) | `src/game/course.h/.cpp`、`src/scene/scene_course.h/.cpp` | 管理 6 阶段位认定多曲连奏、继承制生命槽（`CourseGauge`）与段位徽章，内置 UTC+8 FNV-1a 确定性每日挑战算法与 `CollectionManager` 命名多曲单并集同步 |
+| 幽灵伴跑与多人竞技 (`GhostRunner` / `SceneArena`) | `src/game/ghost_runner.h/.cpp`、`src/scene/scene_arena.h/.cpp` | `GhostRunner` 基于 `.skr` 回放流提供实时双向分差与幽灵光标伴跑；`SceneArena` 实现在线建房/房间码加入、谱面哈希一致性校验、局内实时名次与赛后多人领奖台 |
+| 跨生态谱面转换与原生 Deflate (`ChartConverter` / `InflateRawDeflate`) | `src/game/chart_converter.h/.cpp`、`src/utils/archive.h/.cpp` | 自研零外部依赖 PKZIP Store + RFC 1951 `InflateRawDeflate` 解压与 SHA-256 校验；原生解析 Phira `.pez`（Official / RPE JSON）、osu! `.osz`（Mode 0/3）与 StepMania `.sm`，执行 $\Delta t$ 自适应防重叠布局并转换为双区 Chart v4 |
+| B30/R10 Sakura Rating 与生涯名片 (`PPCalculator` / `SceneStats`) | `src/game/pp_calculator.h/.cpp`、`src/scene/scene_stats.h/.cpp` | 结合小数定数与准度曲线计算 `0.75 * B30 + 0.25 * R10` 综合潜力值（含防退化保护）与五阶星徽；`SceneStats` 提供 5×6 B30 矩阵视图并支持离线渲染导出 `1920×1080` 月夜墨樱生涯名片 PNG |
+| 原子热替换自更新器 (`Updater` v2) | `src/core/updater.h/.cpp` | 自动识别便携版与安装版，后台流式下载 Release 产物并校验 `SHA256SUMS.txt`，生成带 PID 等待锁与回滚保护的 PowerShell 热替换自重启脚本或拉起静默安装升级 |
+| HTTP 传输与在线客户端 (`HttpClient` / `APIClient` / `SceneMarket`) | `src/net/http_client.h/.cpp`、`src/net/api_client.h/.cpp`、`src/scene/scene_market.h/.cpp` | Windows 原生 `WinHttpTransport` + Linux CI `MockHttpTransport`；封装账号通行证、排行榜、在线谱面市场搜索/评分/一键安装、工房直传与幂等云存档同步 |
+| 双模在线服务端 | `server/src/` | Node.js + TypeScript + Hono 后端，支持零配置 SQLite 与生产环境 `https://steven-lee.tech:233` 部署，统一承载鉴权、排行榜、日榜、多人房间、谱面市场与云同步 |

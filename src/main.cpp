@@ -142,7 +142,11 @@ private:
             if (name == "arena") scene = std::make_unique<SceneArena>(manager);
             if (name.starts_with("settings")) scene = std::make_unique<SceneSettings>(manager);
             if (name == "tutorial") scene = std::make_unique<SceneTutorial>(manager);
-            if (name == "stats") scene = std::make_unique<SceneStats>(manager);
+            if (name == "stats") {
+                std::error_code statsEc;
+                std::filesystem::remove(sakura::core::Paths::User("exports/sakura_b30_card.png"), statsEc);
+                scene = std::make_unique<SceneStats>(manager);
+            }
             if (name.starts_with("editor") && name != "editor_return") scene = std::make_unique<SceneEditor>(manager, m_chart.folderPath, m_chart.difficulties[0].chartFile);
             if (name == "create" || name == "create_complete") scene = std::make_unique<SceneChartWizard>(manager);
             if (name == "calibration") scene = std::make_unique<SceneCalibration>(manager);
@@ -214,6 +218,7 @@ private:
                 for(int i=0;i<tabs;++i)Key(SDL_SCANCODE_TAB);
             }
             if(name=="select_practice")Click(0.73f,0.615f);
+            if(name=="stats")Click(0.66f,0.955f);
             if(name=="editor_properties")Click(0.585f,0.852f);
             if(name=="editor_preview")Key(SDL_SCANCODE_F5);
             if(name=="result_detail")Key(SDL_SCANCODE_TAB);
@@ -282,6 +287,12 @@ private:
         if(name=="market")m_semantic=dynamic_cast<SceneMarket*>(current)!=nullptr;
         if(name=="course")m_semantic=dynamic_cast<SceneCourse*>(current)!=nullptr;
         if(name=="arena")m_semantic=dynamic_cast<SceneArena*>(current)!=nullptr;
+        if(name=="stats"){
+            auto* statsScene=dynamic_cast<SceneStats*>(current);
+            const std::filesystem::path cardPath(sakura::core::Paths::User("exports/sakura_b30_card.png"));
+            std::error_code statsEc;
+            m_semantic=statsScene!=nullptr&&std::filesystem::exists(cardPath,statsEc)&&std::filesystem::file_size(cardPath,statsEc)>4096;
+        }
         if(name.starts_with("settings")){const auto* settings=dynamic_cast<SceneSettings*>(current);int page=name=="settings"?0:name=="settings_audio"?1:name=="settings_controls"?2:name=="settings_display"?3:name=="settings_visual"?4:5;m_semantic=settings&&settings->CurrentPage()==page;}
         if(name=="game"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&game->Session().Score().GetJudgedCount()>0;}
         if(name=="game_bga_f3"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&IsDiagnosticsOverlayVisible();SetDiagnosticsOverlayVisible(false);}
@@ -341,7 +352,8 @@ bool RunVerifyOnline(const std::string& baseUrl)
     if (!api.CheckHealth()) return false;
 
     const auto upd = sakura::core::Updater::GetInstance().CheckNow("v0.9.1-beta", nullptr, baseUrl + "/api/v1/version");
-    if (!upd.ok || !upd.hasUpdate) return false;
+    if (!upd.ok || !upd.hasUpdate || upd.installerExeUrl.empty() || upd.portableZipUrl.empty() || upd.sha256SumsUrl.empty())
+        return false;
 
     const auto guest = api.LoginGuest("SakuraGuest");
     if (!guest.ok) return false;
@@ -419,6 +431,9 @@ bool RunVerifyOnline(const std::string& baseUrl)
     // Valid unassisted score + .skr upload
     const auto submitted = api.SubmitScore(liveResult);
     if (!submitted.ok || submitted.rank != 1 || submitted.pp <= 0.0 || submitted.scoreId.empty())
+        return false;
+    const auto profAfterScore = api.RefreshProfile();
+    if (!profAfterScore.ok || profAfterScore.user.sakuraRating <= 0.0)
         return false;
 
     // Fetch leaderboard and verify #1 entry & myRank
@@ -625,8 +640,8 @@ bool RunVerifyOnline(const std::string& baseUrl)
     const auto syncV140 = api.SyncCloudSave();
     if (!syncV140.ok) return failStep("SyncCloudSaveV140", syncV140.error);
     const auto profV140 = api.RefreshProfile();
-    if (!profV140.ok || profV140.user.danBadge != "皆传")
-        return failStep("RefreshProfileDanBadge", profV140.error + " badge=" + profV140.user.danBadge);
+    if (!profV140.ok || profV140.user.danBadge != "皆传" || profV140.user.sakuraRating <= 0.0)
+        return failStep("RefreshProfileDanBadge", profV140.error + " badge=" + profV140.user.danBadge + " rating=" + std::to_string(profV140.user.sakuraRating));
     db.Shutdown();
 
     // v1.6.0 E2E: GhostRunner deterministic parity + 2-player Arena room match

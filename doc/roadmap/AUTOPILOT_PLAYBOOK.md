@@ -1,10 +1,12 @@
 # Sakura-樱 Autopilot 全自动持续更新与发布手册
 
-本文档定义了 Copilot 在 **无人值守（Unattended Autopilot）** 模式下连续完成多个版本开发、验证、打包、打标与 GitHub Release 发布的标准作业协议。
+本文档定义了 Copilot 在 **无人值守（Unattended Autopilot）** 模式下连续完成多个版本开发、验证、打包、打标、GitHub Release 发布与线上服同步的标准作业协议。
 
-## 一键投喂 Prompt（支持任意新会话断点续跑）
+> **当前战役归档状态（v0.8.0-alpha → v2.0.0）**：首轮规划的全部 **13 个里程碑版本**（`v0.8.0-alpha`、`v0.8.1-alpha`、`v0.9.0-beta`、`v0.9.1-beta`、`v1.0.0`、`v1.1.0`、`v1.2.0`、`v1.3.0`、`v1.4.0`、`v1.5.0`、`v1.6.0`、`v1.7.0`、`v2.0.0`）已 **100% 完成研发、门禁验证并上线 GitHub Releases 与 `https://steven-lee.tech:233`**。本手册继续保留为后续 **`v2.x` 系列扩展版本**的标准复用模板。
 
-将以下提示词直接发给处于 Autopilot 模式的 Copilot 即可从当前进度自动续跑直至全部版本发版完成：
+## 一键投喂 Prompt（支持未来 `v2.x` 新里程碑断点续跑）
+
+在 `doc/ROADMAP.md` 与下表登记新的 `v2.x` 目标版本后，将以下提示词直接发给处于 Autopilot 模式的 Copilot 即可自动续跑直至目标版本全部发版完成：
 
 ```text
 请阅读 doc/roadmap/AUTOPILOT_PLAYBOOK.md 与 doc/ROADMAP.md，进入全程零人工介入的持续更新+自动发布循环：
@@ -13,7 +15,7 @@
 3. 中间提交统一设置 VERSION_HOOK_BUMP=no-bump 防止弹窗阻塞；每完成一个里程碑版本的功能与测试后，调用 python scripts/autopilot_release.py 执行本地 Release 编译、CTest、--smoke-test、发行打包、非交互式升版打 Tag、直推 main 与 Tag、并阻塞等待远端 GitHub Actions 成功创建 GitHub Release 且校验发行资产。
 4. 若本地测试或远端 GitHub Actions 失败，立即读取错误日志原地修复并重跑，严禁跳过或禁用功能。
 5. 每个正式版本 GitHub Release 验证通过后，脚本会自动通过免密 SSH 将最新 server/ 部署至 steven-lee.tech (/srv/sakura-online) 并校验 https://steven-lee.tech:233/api/v1/health 版本号一致。
-6. 当前版本全链路验收通过后，不要停下询问我，立即自动进入下一个版本的开发与发布，直至 v2.0.0 正式发布并验收通过。
+6. 当前版本全链路验收通过后，不要停下询问我，立即自动进入下一个规划版本的开发与发布，直至路线图中所有待发版本（如 v2.x 系列目标版本）正式发布并验收通过。
 ```
 
 ---
@@ -22,15 +24,16 @@
 
 仓库使用 `.githooks/pre-commit` + `scripts/sync_repo_version.py` 维护版本同步，每次提交时若未传入 `VERSION_HOOK_BUMP` 会弹出 GUI 选择框阻塞自动化。因此**必须严格按照下表传入通道与升级参数**：
 
-| 序号 | 目标 Tag | 升级前通道动作 | `VERSION_HOOK_BUMP` | 核心规格文档 | 远端必检产物与线上探针 |
-|------|----------|----------------|---------------------|--------------|------------------------|
+| 序号 | 目标 Tag | 升级前通道动作 | `VERSION_HOOK_BUMP` | 核心规格文档 | 远端必检产物与线上探针状态 |
+|------|----------|----------------|---------------------|--------------|----------------------------|
 | 1~7 | `v0.8.0-alpha` ~ `v1.2.0` | 已发布归档 | — | `V0_8` ~ `V1_1_1_2` | ✅ 已全部发布上线 |
-| 8 | `v1.3.0` | `stable` (`clear`) | `minor` | `V1_3_GAMEPLAY_FEEL_AND_RECHART.md` | 双产物 + SHA256 + `:233` `v1.3.0` |
-| 9 | `v1.4.0` | `stable` (`clear`) | `minor` | `V1_4_COURSE_DAILY_AND_COLLECTIONS.md` | 双产物 + SHA256 + `:233` `v1.4.0` |
-| 10 | `v1.5.0` | `stable` (`clear`) | `minor` | `V1_5_SKINS_AND_STAGE_V4.md` | 双产物 + SHA256 + `:233` `v1.5.0` |
-| 11 | `v1.6.0` | `stable` (`clear`) | `minor` | `V1_6_GHOST_AND_MULTIPLAYER.md` | 双产物 + SHA256 + `:233` `v1.6.0` |
-| 12 | `v1.7.0` | `stable` (`clear`) | `minor` | `V1_7_PHIRA_CONVERTER_AND_VOL4.md` | 双产物 + SHA256 + `:233` `v1.7.0` |
-| 13 | `v2.0.0` | `stable` (`clear`) | `major` | `V2_0_SELF_UPDATER_AND_CAREER.md` | 双产物 + SHA256 + `:233` `v2.0.0` |
+| 8 | `v1.3.0` | `stable` (`clear`) | `minor` | `V1_3_GAMEPLAY_FEEL_AND_RECHART.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 9 | `v1.4.0` | `stable` (`clear`) | `minor` | `V1_4_COURSE_DAILY_AND_COLLECTIONS.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 10 | `v1.5.0` | `stable` (`clear`) | `minor` | `V1_5_SKINS_AND_STAGE_V4.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 11 | `v1.6.0` | `stable` (`clear`) | `minor` | `V1_6_GHOST_AND_MULTIPLAYER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 12 | `v1.7.0` | `stable` (`clear`) | `minor` | `V1_7_PHIRA_CONVERTER_AND_VOL4.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 13 | `v2.0.0` | `stable` (`clear`) | `major` | `V2_0_SELF_UPDATER_AND_CAREER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 14+ | `v2.x.0` / `v2.0.x`（后续扩展模板） | `stable` (`clear`) | `minor` / `patch` | `V2_X_<FEATURE_SPEC>.md` | 预留扩展槽位（双产物 + SHA256 + `:233` 同版本探针） |
 
 ---
 
@@ -98,8 +101,17 @@ python scripts/autopilot_release.py --release \
 
 ---
 
+## `v2.x` 后续扩展快速接入清单
+
+当规划 `v2.1.0` 及后续 `v2.x` 扩展版本时，按以下三步即可无缝复用本自动化管线：
+1. 在 `doc/roadmap/` 下新建对应规格文件（如 `V2_1_<TOPIC>.md`），明确跨平台逻辑层（`sakura-game-logic`）、UI 归一化布局、SQLite 幂等迁移与服务端契约。
+2. 在 `doc/ROADMAP.md` 里程碑表与本文件发布阶梯表中追加目标 Tag（常规功能迭代使用 `--channel stable --bump minor`，热修补丁使用 `--channel stable --bump patch`）。
+3. 启动 Autopilot 会话运行 `python scripts/autopilot_release.py --status`，按上述 10 路互斥文件域并行开发与全量门禁闭环直推上线，客户端内置的 `Updater` v2 将自动向存量玩家推送 SHA-256 校验热更新。
+
+---
+
 ## 工程红线速查
 
 1. **禁止硬编码像素**：坐标、间距、线宽、字号一律基于 `0.0~1.0` 归一化比例。
-2. **禁止破坏存档与旧谱面**：SQLite 升级必须支持幂等列/表迁移；ChartLoader 必须同时兼容 v1、v2、v3；Replay 必须兼容 v1 与 v2。
+2. **禁止破坏存档与旧谱面**：SQLite 升级必须支持幂等列/表迁移；ChartLoader 必须同时兼容 v1、v2、v3、v4；Replay 必须兼容 v1 与 v2；热更新脚本必须确保 `%APPDATA%` 与 `userdata/` 零数据丢失。
 3. **禁止提交构建产物与用户隐私数据**：`build/`、`userdata/`、`download/` 保持忽略，临时验证统一输出到 `build/qa/`。

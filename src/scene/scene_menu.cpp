@@ -17,6 +17,7 @@
 #include "core/config.h"
 #include "core/paths.h"
 #include "game/chart_loader.h"
+#include "game/pp_calculator.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "effects/particle_system.h"
@@ -494,27 +495,42 @@ void SceneMenu::RefreshAccountCapsuleText()
 {
     if (!m_btnAccountCapsule) return;
     auto& api = sakura::net::APIClient::GetInstance();
-    const auto highest = sakura::data::Database::GetInstance().GetHighestClearedCourse();
-    const std::string badge = (highest && highest->cleared)
-        ? highest->badgeText
-        : api.GetCurrentUser().danBadge;
+    auto& db  = sakura::data::Database::GetInstance();
+
+    static uint64_t s_lastDbSampleMs = 0;
+    static double   s_cachedLocalRating = 0.0;
+    static std::string s_cachedCourseBadge;
+    const uint64_t nowMs = SDL_GetTicks();
+    if (m_enterTimer < 0.05f || s_lastDbSampleMs == 0 || (nowMs - s_lastDbSampleMs) >= 500)
+    {
+        s_lastDbSampleMs = nowMs == 0 ? 1 : nowMs;
+        s_cachedLocalRating = sakura::game::PPCalculator::CalculateSakuraRating(
+            db.GetAllBestScores(), db.GetRecentScores(20)).sakuraRating;
+        const auto highest = db.GetHighestClearedCourse();
+        s_cachedCourseBadge = (highest && highest->cleared) ? highest->badgeText : std::string{};
+    }
+
+    const auto user = api.GetCurrentUser();
+    const std::string badge = !s_cachedCourseBadge.empty() ? s_cachedCourseBadge : user.danBadge;
     const std::string badgePrefix = badge.empty() ? "" : ("[" + badge + "] ");
 
     if (api.IsAuthenticated())
     {
-        const auto user = api.GetCurrentUser();
+        const double rating = std::max(s_cachedLocalRating, user.sakuraRating);
+        const std::string ratingStr = "★" + sakura::game::PPCalculator::FormatRating(rating);
         const int ppInt = static_cast<int>(std::round(user.totalPP));
         const std::string tag = badgePrefix
             + (api.GetStatus() == sakura::net::OnlineStatus::Offline ? "○ " : "● ")
-            + user.username + "  ·  " + std::to_string(ppInt) + " PP";
+            + user.username + " · " + ratingStr + " · " + std::to_string(ppInt) + " PP";
         m_btnAccountCapsule->SetText(tag);
     }
     else
     {
+        const std::string ratingStr = "★" + sakura::game::PPCalculator::FormatRating(s_cachedLocalRating);
         const auto pending = api.GetPendingScoreCount();
         const std::string base = pending > 0
-            ? ("○ 在线账号 / 待传 " + std::to_string(pending))
-            : "○ 在线账号 / 登录排行榜";
+            ? ("○ " + ratingStr + " · 待传 " + std::to_string(pending))
+            : ("○ " + ratingStr + " · 在线账号");
         m_btnAccountCapsule->SetText(badgePrefix + base);
     }
 }

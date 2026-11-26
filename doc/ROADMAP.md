@@ -74,7 +74,7 @@ v2.0.0       (2.0 终极收官：游戏内静默流式热更新原子自重启 +
 | v1.5.0 | stable | 自定义皮肤包与 Chart v4 演出 | 落地 `skin_path`（4套内置皮肤+打击音包）、Chart v4 舞台演出事件与时间轴双语歌词 | ✅ 已完成 |
 | v1.6.0 | stable | 幽灵伴跑竞速与在线多人对战 | 单人 PB/线上回放实时分差条与幽灵光标、`SceneArena` 多人建房同步竞技与领奖台 | ✅ 已完成 |
 | v1.7.0 | stable | Phira/osu!/SM 转换与曲包 Vol.04 | 原生解析 Phira `.pez` (Official/RPE)、`.osz`、`.sm` 转双区谱面、6首原创曲包 Vol.04 | ✅ 已完成 |
-| v2.0.0 | stable | 静默热更新自重启与 B30 生涯名片 | 后台流式下载+SHA256校验+PowerShell原子热替换自重启、B30/R10 Rating 与高清 PNG 名片导出 | ⏳ 待发布 |
+| v2.0.0 | stable | 静默热更新自重启与 B30 生涯名片 | 后台流式下载+SHA256校验+PowerShell原子热替换自重启、B30/R10 Rating 与高清 PNG 名片导出 | ✅ 已完成 |
 
 ---
 
@@ -115,6 +115,6 @@ v2.0.0       (2.0 终极收官：游戏内静默流式热更新原子自重启 +
 
 ## 当前状态
 
-- **当前版本：** v1.7.0
-- **当前交付：** 跨格式双区智能谱面转换引擎（`ChartConverter` 原生支持 Phira `.pez` Official/RPE、osu! `.osz` Mode 0/3、StepMania `.sm` 拖拽与文件选择器一键转双区 Chart v4，内置 RFC 1951 Deflate ZIP 解压）、官方原声 `.ogg` 曲包 Vol.04（内置曲库零合成 WAV 占位曲）、单人 PB/线上回放幽灵对手同屏竞速（`GhostRunner`）、在线多人对战大厅（`SceneArena`）、完整双域协同演奏（Chart v4 舞台演出与双语同步歌词）、`SkinManager` 4 套内置主题皮肤与打击音包、樱华道场 6 阶段位认定、UTC+8 每日挑战日榜、命名多曲单、在线谱面市场与多端幂等云存档同步。
-- **里程碑状态：** `v0.8.0-alpha` 至 `v1.7.0` 全部十二个规划版本已完成研发与验证。
+- **当前版本：** v2.0.0
+- **当前交付：** 游戏内静默流式热更新与原子自重启引擎（`Updater` v2 自动识别安装版/便携版、`SHA256SUMS.txt` 严格摘要校验与 PowerShell / Inno Setup 保档热替换重启）、双区潜力值 **Sakura Rating (B30 + R10)** 星阶体系与 `SceneStats` 5×6 矩阵及 `1920×1080` 月夜墨樱生涯战绩名片 PNG 导出、跨格式双区智能谱面转换引擎（`ChartConverter` 原生支持 Phira `.pez` Official/RPE、osu! `.osz` Mode 0/3、StepMania `.sm` 拖拽与文件选择器一键转双区 Chart v4，内置 RFC 1951 Deflate ZIP 解压）、15 首纯 Suno OGG 官方原创曲库（Vol.02～Vol.04 共 43 张多难度谱面，零合成 WAV 占位曲）、单人 PB/线上回放幽灵对手同屏竞速（`GhostRunner`）、在线多人对战大厅（`SceneArena`）、完整双域协同演奏（Chart v4 舞台演出与双语同步歌词）、`SkinManager` 4 套内置主题皮肤与 6 套打击音包、樱华道场 6 阶段位认定、UTC+8 每日挑战全球日榜、命名多曲单、在线谱面市场（`SceneMarket`）与多端幂等云存档同步。
+- **里程碑状态：** `v0.8.0-alpha` 至 `v2.0.0` 全部十三个规划里程碑版本已 100% 完成研发、全链路验证并正式发布上线（GitHub Releases 双产物及官方生产在线服 `https://steven-lee.tech:233` 均已同步运行）。

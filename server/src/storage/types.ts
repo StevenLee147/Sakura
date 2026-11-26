@@ -42,6 +42,7 @@ export interface LeaderboardEntry {
   maxCombo: number;
   grade: string;
   pp: number;
+  sakuraRating: number;
   isFullCombo: boolean;
   isAllPerfect: boolean;
   hasReplay: boolean;
@@ -220,6 +221,7 @@ export interface IStorageAdapter {
   findUserByUsername(username: string): UserRecord | null;
   findUserById(id: string): UserRecord | null;
   getUserTotalPP(userId: string): number;
+  getUserSakuraRating(userId: string): number;
   submitScore(userId: string, sub: ScoreSubmission): { scoreId: string; pp: number; rank: number; newBest: boolean };
   getLeaderboard(chartId: string, difficulty: string, limit: number, currentUserId?: string): {
     entries: LeaderboardEntry[];

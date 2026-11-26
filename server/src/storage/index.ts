@@ -25,6 +25,10 @@ export class PostgresCompatibleAdapter extends SqliteStorageAdapter {
     this.connectionUrl = connectionUrl;
   }
 
+  public override getUserSakuraRating(userId: string): number {
+    return super.getUserSakuraRating(userId);
+  }
+
   public override submitDailyScore(
     userId: string,
     sub: ScoreSubmission,

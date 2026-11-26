@@ -16,6 +16,7 @@
 #include "utils/file_io.h"
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <ctime>
@@ -321,25 +322,82 @@ void SceneSettings::BuildPages()
         });
     }
     AddToggle(5, "自动检查更新", "启动时后台静默检测 GitHub Releases 新版本", "online.auto_check_updates");
-    AddAction(5, "版本更新", std::string("当前版本 v") + SAKURA_VERSION_STRING + " · 检测并前往最新发布页", "检查更新", []
+    AddAction(5, "版本更新", std::string("当前版本 v") + SAKURA_VERSION_STRING + " · 后台核验 SHA-256 并执行原子热更新", "检查并热更新", []
     {
+        static std::atomic<bool> s_updateBusy{ false };
+        if (s_updateBusy.exchange(true))
+        {
+            ToastManager::Instance().Show("更新任务正在后台执行中，请稍候...", ToastType::Info, 2.5f);
+            return;
+        }
         ToastManager::Instance().Show("正在后台检查最新版本...", ToastType::Info, 2.2f);
         Updater::GetInstance().CheckAsync(SAKURA_VERSION_STRING, [](const UpdateCheckResult& res)
         {
             if (!res.ok)
             {
+                s_updateBusy.store(false);
                 ToastManager::Instance().Show("检查更新不可用：" + res.error, ToastType::Warning, 3.8f);
                 return;
             }
-            if (res.hasUpdate)
+            if (!res.hasUpdate)
             {
-                ToastManager::Instance().Show("发现新版本 " + res.latestVer + "，正在打开发布页", ToastType::Success, 4.5f);
-                SDL_OpenURL(res.releaseUrl.c_str());
-            }
-            else
-            {
+                s_updateBusy.store(false);
                 ToastManager::Instance().Show(std::string("当前已是最新版本 (v") + SAKURA_VERSION_STRING + ")", ToastType::Success, 3.2f);
+                return;
             }
+
+            ToastManager::Instance().Show(
+                "发现新版本 " + res.latestVer + " · 正在后台流式下载并核验 SHA-256...",
+                ToastType::Info, 4.5f);
+
+            const char* basePath = SDL_GetBasePath();
+            const std::filesystem::path appDir = (basePath && *basePath)
+                ? std::filesystem::path(basePath)
+                : std::filesystem::current_path();
+            const auto installMode = Updater::DetectInstallMode(appDir);
+            const std::filesystem::path stagingDir = std::filesystem::path(Paths::User("updates")) / res.latestVer;
+
+            auto progressNotified = std::make_shared<bool>(false);
+            auto onProgress = [progressNotified, ver = res.latestVer](float ratio)
+            {
+                if (!*progressNotified && ratio >= 0.5f && ratio < 1.0f)
+                {
+                    *progressNotified = true;
+                    ToastManager::Instance().Show(
+                        "正在下载更新包 " + ver + " (50%+)...",
+                        ToastType::Info, 2.2f);
+                }
+            };
+
+            auto onComplete = [res](StagedUpdateResult staged)
+            {
+                s_updateBusy.store(false);
+                if (!staged.ok)
+                {
+                    ToastManager::Instance().Show(
+                        "自动热更新未完成（" + staged.error + "），正在打开发布页",
+                        ToastType::Warning, 4.5f);
+                    SDL_OpenURL(res.releaseUrl.c_str());
+                    return;
+                }
+
+                ToastManager::Instance().Show(
+                    "校验通过，正在原子热替换并重启 Sakura...",
+                    ToastType::Success, 4.0f);
+                if (Updater::LaunchHotSwapScript(staged.scriptPath))
+                {
+                    SDL_Event q{};
+                    q.type = SDL_EVENT_QUIT;
+                    SDL_PushEvent(&q);
+                }
+                else
+                {
+                    SDL_OpenURL(res.releaseUrl.c_str());
+                }
+            };
+
+            Updater::GetInstance().DownloadAndStageUpdateAsync(
+                res, installMode, appDir, stagingDir, std::move(onProgress), std::move(onComplete));
         });
     });
 

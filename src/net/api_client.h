@@ -29,8 +29,9 @@ struct OnlineUser
 {
     std::string id;
     std::string username;
-    bool        isGuest = true;
-    double      totalPP = 0.0;
+    bool        isGuest      = true;
+    double      totalPP      = 0.0;
+    double      sakuraRating = 0.0;
     std::string danBadge;
 };
 
@@ -68,7 +69,8 @@ struct LeaderboardRow
     bool        isFullCombo = false;
     bool        isAllPerfect = false;
     bool        hasReplay = false;
-    long long   playedAt = 0;
+    long long   playedAt     = 0;
+    double      sakuraRating = 0.0;
     std::string danBadge;
 };
 
