@@ -204,9 +204,17 @@ void SceneSelect::Select(int index,int difficulty) {
         m_globalMyRank.reset();
         m_leaderboardStatus.clear();
         m_leaderboardLoading=false;
+        m_leaderboardPendingFetch=false;
+        m_leaderboardDebounce=0.0f;
     }
-    if(m_showGlobalLeaderboard || (m_options.ghostMode==GhostMode::OnlineRival && m_globalEntries.empty())) {
-        FetchGlobalLeaderboard();
+    if(m_showGlobalLeaderboard || (m_options.ghostMode==GhostMode::OnlineRival && (changed || diffChanged || m_globalEntries.empty()))) {
+        const std::string& chartId=c.id;
+        const std::string& diffName=c.difficulties[m_difficulty].name;
+        if(!ApplyCachedLeaderboard(chartId,diffName)) {
+            m_leaderboardStatus="正在加载全球排行榜...";
+        }
+        m_leaderboardPendingFetch=true;
+        m_leaderboardDebounce=0.18f;
     }
     m_rebuild=true;
     const auto it=std::find(m_visible.begin(),m_visible.end(),index);
@@ -222,22 +230,39 @@ bool SceneSelect::SelectChart(const std::string& id,int difficulty) {
     for(int i:m_visible) if(m_charts[i].id==id) {Select(i,difficulty);return true;}
     return false;
 }
+bool SceneSelect::ApplyCachedLeaderboard(const std::string& chartId, const std::string& diffName) {
+    auto cached=sakura::net::APIClient::GetInstance().GetCachedLeaderboard(chartId,diffName);
+    if(!cached.has_value()) return false;
+    m_globalEntries=std::move(cached->entries);
+    m_globalMyRank=cached->myRank;
+    m_leaderboardLoading=false;
+    m_leaderboardStatus=m_globalEntries.empty()?"暂无上榜记录 · 完成正式演奏抢占榜首":"";
+    return true;
+}
 void SceneSelect::FetchGlobalLeaderboard() {
     if(m_selected<0) return;
     const auto& c=m_charts[m_selected];
     const std::string chartId=c.id;
     const std::string diffName=c.difficulties[m_difficulty].name;
+    m_leaderboardPendingFetch=false;
+    m_leaderboardDebounce=0.0f;
+    if(m_globalEntries.empty()) {
+        ApplyCachedLeaderboard(chartId,diffName);
+    }
+    const bool hadCachedEntries=!m_globalEntries.empty();
     m_leaderboardLoading=true;
-    m_leaderboardStatus="正在加载全球排行榜...";
-    m_globalEntries.clear();
-    m_globalMyRank.reset();
+    if(!hadCachedEntries) {
+        m_leaderboardStatus="正在加载全球排行榜...";
+    }
     auto alive=m_alive;
     sakura::net::APIClient::GetInstance().FetchLeaderboardAsync(chartId,diffName,6,[this,alive,chartId,diffName](sakura::net::LeaderboardResult res){
         if(!*alive) return;
         if(m_selected<0 || m_charts[m_selected].id!=chartId || m_charts[m_selected].difficulties[m_difficulty].name!=diffName) return;
         m_leaderboardLoading=false;
         if(!res.ok) {
-            m_leaderboardStatus="离线或暂不可用："+res.error;
+            if(m_globalEntries.empty()) {
+                m_leaderboardStatus="离线或暂不可用："+res.error;
+            }
             m_rebuild=true;
             return;
         }
@@ -394,7 +419,10 @@ void SceneSelect::BuildDetail() {
     }
     m_detailButtons.push_back(Button({0.664f,0.185f,0.082f,0.036f},m_showGlobalLeaderboard?"本地面板":"全球排行",[this]{
         m_showGlobalLeaderboard=!m_showGlobalLeaderboard;
-        if(m_showGlobalLeaderboard) FetchGlobalLeaderboard();
+        if(m_showGlobalLeaderboard && m_selected>=0) {
+            ApplyCachedLeaderboard(m_charts[m_selected].id,m_charts[m_selected].difficulties[m_difficulty].name);
+            FetchGlobalLeaderboard();
+        }
         m_rebuild=true;
     },m_showGlobalLeaderboard,0.0165f));
     m_detailButtons.push_back(Button({0.752f,0.185f,0.060f,0.036f},m_favorites.contains(c.id)?"已收藏":"收藏",[this]{Favorite();},m_favorites.contains(c.id),0.0165f));
@@ -434,8 +462,10 @@ void SceneSelect::BuildDetail() {
             m_detailButtons.push_back(Button({0.515f,0.712f,0.235f,0.036f},GhostModeLabel(m_options.ghostMode),[this]{
                 const int next=(static_cast<int>(m_options.ghostMode)+1)%3;
                 m_options.ghostMode=static_cast<GhostMode>(next);
-                if(m_options.ghostMode==GhostMode::OnlineRival && m_globalEntries.empty() && !m_leaderboardLoading) {
-                    FetchGlobalLeaderboard();
+                if(m_options.ghostMode==GhostMode::OnlineRival && m_selected>=0 && m_globalEntries.empty() && !m_leaderboardLoading) {
+                    ApplyCachedLeaderboard(m_charts[m_selected].id,m_charts[m_selected].difficulties[m_difficulty].name);
+                    m_leaderboardPendingFetch=true;
+                    m_leaderboardDebounce=0.18f;
                 }
                 m_rebuild=true;
             },m_options.ghostMode!=GhostMode::Off,0.0165f));
@@ -675,7 +705,18 @@ void SceneSelect::OnExit(){
 }
 
 void SceneSelect::OnUpdate(float dt) {
-    m_time+=dt;if(m_rebuild)BuildDetail();
+    m_time+=dt;
+    if(m_leaderboardPendingFetch) {
+        m_leaderboardDebounce-=dt;
+        if(m_leaderboardDebounce<=0.0f) {
+            m_leaderboardDebounce=0.0f;
+            m_leaderboardPendingFetch=false;
+            if(m_selected>=0 && (m_showGlobalLeaderboard || m_options.ghostMode==GhostMode::OnlineRival)) {
+                FetchGlobalLeaderboard();
+            }
+        }
+    }
+    if(m_rebuild)BuildDetail();
     std::string imported;{std::lock_guard lock(m_dialog->mutex);if(m_dialog->ready){imported=std::move(m_dialog->path);m_dialog->ready=false;}}if(!imported.empty())AcceptImport(imported);
     m_search->Update(dt);m_startInput->Update(dt);m_endInput->Update(dt);
     m_bgCover.Update(dt);
@@ -840,7 +881,7 @@ void SceneSelect::OnRender(Renderer& r) {
                     if(!m_globalEntries.empty() && m_globalEntries[0].hasReplay && !m_globalEntries[0].scoreId.empty()) {
                         ghostHint="对手 #1 "+m_globalEntries[0].username;
                         ghostColor=gold;
-                    } else if(m_leaderboardLoading) {
+                    } else if(m_leaderboardLoading || m_leaderboardPendingFetch) {
                         ghostHint="正在同步榜首...";
                         ghostColor=dim;
                     } else {

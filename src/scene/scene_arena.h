@@ -12,6 +12,7 @@
 #include "ui/button.h"
 #include "ui/text_input.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -43,8 +44,14 @@ private:
     int   m_petalEmitter = -1;
     float m_time         = 0.0f;
     float m_pollTimer    = 0.0f;
+    float m_chatCooldown = 0.0f;
     bool  m_busy         = false;
     bool  m_launchingMatch = false;
+    bool  m_chartSyncing = false;
+    float m_chartSyncProgress = 0.0f;
+    std::string m_roomChartCheckKey;
+    bool  m_roomChartMissing      = false;
+    bool  m_roomChartHashMismatch = false;
     std::string m_statusText;
 
     std::vector<sakura::game::ChartInfo>   m_charts;
@@ -72,7 +79,12 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnNextDiff;
     std::unique_ptr<sakura::ui::Button> m_btnApplyChart;
     std::unique_ptr<sakura::ui::Button> m_btnReadyOrStart;
+    std::array<std::unique_ptr<sakura::ui::Button>, 6> m_chatButtons;
 
+    void RescanLocalCharts();
+    void UpdateRoomChartSyncState(const sakura::net::ArenaRoomState& room);
+    void StartRoomChartSync();
+    void SendQuickChat(int phraseId);
     void RefreshLobby();
     void CreateRoom();
     void DoCreateRoom();

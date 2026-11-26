@@ -800,6 +800,165 @@ bool RunVerifyOnline(const std::string& baseUrl)
         apiV210Reloaded.Shutdown();
     }
 
+    // v2.2.0 E2E: OnlineCache + ETag 304 revalidation, Arena auto marketChartId, DownloadMarketChartById & delta quick-chat
+    {
+        struct V220SpyTransport final : public sakura::net::IHttpTransport
+        {
+            std::shared_ptr<sakura::net::IHttpTransport> inner = sakura::net::CreateDefaultHttpTransport();
+            std::mutex                                   spyMutex;
+            int                                          lbRequests  = 0;
+            int                                          lb304Count  = 0;
+            std::string                                  lastIfNoneMatch;
+            std::string                                  lastEtag;
+
+            sakura::net::HttpResponse Send(const sakura::net::HttpRequest& request) override
+            {
+                sakura::net::HttpResponse response = inner->Send(request);
+                if (request.url.find("/api/v1/leaderboards/") != std::string::npos)
+                {
+                    std::lock_guard<std::mutex> lk(spyMutex);
+                    ++lbRequests;
+                    lastIfNoneMatch.clear();
+                    for (const auto& [hk, hv] : request.headers)
+                    {
+                        if (hk == "If-None-Match" || hk == "if-none-match")
+                            lastIfNoneMatch = hv;
+                    }
+                    const std::string etagHeader = response.GetHeader("ETag");
+                    if (!etagHeader.empty())
+                        lastEtag = etagHeader;
+                    if (response.IsNotModified())
+                        ++lb304Count;
+                }
+                return response;
+            }
+        };
+
+        auto spyV220                = std::make_shared<V220SpyTransport>();
+        const auto prevTransport220 = api.GetTransport();
+        struct RestoreTransportGuard
+        {
+            sakura::net::APIClient&                      client;
+            std::shared_ptr<sakura::net::IHttpTransport> saved;
+            ~RestoreTransportGuard() { client.SetTransport(saved); }
+        } restoreTransport{ api, prevTransport220 };
+
+        api.SetTransport(spyV220);
+        api.SetServerUrl(baseUrl);
+        api.GetOnlineCache().Clear();
+
+        const auto lbColdV220 = api.FetchLeaderboard("sakura_breath", "Expert", 10);
+        if (!lbColdV220.ok || lbColdV220.entries.empty() ||
+            spyV220->lbRequests != 1 || spyV220->lastEtag.empty() ||
+            !api.GetCachedLeaderboard("sakura_breath", "Expert").has_value())
+        {
+            return failStep("V220LeaderboardColdCache",
+                lbColdV220.error + " reqs=" + std::to_string(spyV220->lbRequests) + " etag=" + spyV220->lastEtag);
+        }
+
+        const auto lbSoftV220 = api.FetchLeaderboard("sakura_breath", "Expert", 10);
+        if (!lbSoftV220.ok || lbSoftV220.entries.empty() || spyV220->lbRequests != 1)
+        {
+            return failStep("V220LeaderboardSoftTtlHit",
+                lbSoftV220.error + " reqs=" + std::to_string(spyV220->lbRequests));
+        }
+
+        api.GetOnlineCache().MarkStale("leaderboard:sakura_breath:");
+        const auto lbRevalV220 = api.FetchLeaderboard("sakura_breath", "Expert", 10);
+        if (!lbRevalV220.ok || lbRevalV220.entries.empty() ||
+            lbRevalV220.entries[0].score != liveResult.score ||
+            spyV220->lbRequests != 2 || spyV220->lastIfNoneMatch.empty() ||
+            spyV220->lb304Count != 1 ||
+            api.GetOnlineCache().Lookup("leaderboard:sakura_breath:Expert").isStale)
+        {
+            return failStep("V220LeaderboardETag304",
+                lbRevalV220.error + " reqs=" + std::to_string(spyV220->lbRequests) +
+                " c304=" + std::to_string(spyV220->lb304Count) +
+                " inm=" + spyV220->lastIfNoneMatch);
+        }
+
+        // Create Arena room with mktSlug (omitting marketChartId) -> server must auto-populate marketChartId
+        const auto roomResV220 = api.CreateArenaRoom(
+            "E2E v2.2 AutoSync Room",
+            mktSlug,
+            "E2E Blossom " + mktSlug,
+            "Expert",
+            10.8f,
+            mktResult.chartHash);
+        if (!roomResV220.ok || roomResV220.room.code.empty() ||
+            roomResV220.room.marketChartId != pubRes.chart.id)
+        {
+            return failStep("V220CreateArenaRoomAutoMarketId",
+                roomResV220.error + " got=" + roomResV220.room.marketChartId +
+                " expected=" + pubRes.chart.id);
+        }
+        const std::string codeV220 = roomResV220.room.code;
+
+        std::error_code ecV220;
+        const fs::path queueRivalV220 = e2eDir / "queue_rival_v220.json";
+        const fs::path authRivalV220  = e2eDir / "auth_rival_v220.json";
+        fs::remove(queueRivalV220, ecV220);
+        fs::remove(authRivalV220, ecV220);
+
+        sakura::net::APIClient apiRivalV220(nullptr, queueRivalV220.string(), authRivalV220.string());
+        apiRivalV220.SetServerUrl(baseUrl);
+        const auto loginRivalV220 = apiRivalV220.Login(rivalName, "SakuraPass123!");
+        if (!loginRivalV220.ok || !apiRivalV220.IsAuthenticated())
+            return failStep("V220RivalLogin", loginRivalV220.error);
+
+        const auto joinedV220 = apiRivalV220.JoinArenaRoom(codeV220);
+        if (!joinedV220.ok || joinedV220.room.players.size() < 2 ||
+            joinedV220.room.marketChartId != pubRes.chart.id)
+        {
+            return failStep("V220JoinArenaRoom",
+                joinedV220.error + " mktId=" + joinedV220.room.marketChartId);
+        }
+
+        const fs::path arenaAutoDlDir = e2eDir / "arena_auto_dl_charts";
+        fs::remove_all(arenaAutoDlDir, ecV220);
+        float arenaAutoDlProgress = 0.0f;
+        const auto arenaAutoDlRes = apiRivalV220.DownloadMarketChartById(
+            joinedV220.room.marketChartId,
+            arenaAutoDlDir.string(),
+            [&](float p) { arenaAutoDlProgress = std::max(arenaAutoDlProgress, p); });
+        if (!arenaAutoDlRes.ok || arenaAutoDlRes.chartId != mktSlug || arenaAutoDlProgress <= 0.0f)
+        {
+            return failStep("V220DownloadMarketChartById",
+                arenaAutoDlRes.error + " chartId=" + arenaAutoDlRes.chartId +
+                " prog=" + std::to_string(arenaAutoDlProgress));
+        }
+
+        const auto syncedArenaCharts = mktLoader.ScanCharts(arenaAutoDlDir.string());
+        if (syncedArenaCharts.size() != 1 || syncedArenaCharts[0].id != mktSlug)
+        {
+            return failStep("V220ScanArenaSyncedChart",
+                "count=" + std::to_string(syncedArenaCharts.size()));
+        }
+
+        const int revBeforeChat = joinedV220.room.revision;
+        const auto chatResV220  = apiRivalV220.SendArenaChat(codeV220, 0);
+        if (!chatResV220.ok || chatResV220.room.messages.empty() ||
+            chatResV220.room.messages.back().phraseId != 0 ||
+            chatResV220.room.revision <= revBeforeChat)
+        {
+            return failStep("V220SendArenaChat",
+                chatResV220.error + " msgs=" + std::to_string(chatResV220.room.messages.size()) +
+                " rev=" + std::to_string(chatResV220.room.revision) +
+                " prevRev=" + std::to_string(revBeforeChat));
+        }
+
+        const auto deltaResV220 = api.FetchArenaRoomState(codeV220, chatResV220.room.revision);
+        if (!deltaResV220.ok || !deltaResV220.unchanged)
+        {
+            return failStep("V220FetchArenaRoomStateUnchanged",
+                deltaResV220.error + " unchanged=" + std::to_string(deltaResV220.unchanged));
+        }
+
+        (void)apiRivalV220.LeaveArenaRoom(codeV220);
+        (void)api.LeaveArenaRoom(codeV220);
+        apiRivalV220.Shutdown();
+    }
+
     const nlohmann::json report = {
         { "verified", true },
         { "username", uname },

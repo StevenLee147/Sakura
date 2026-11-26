@@ -25,8 +25,13 @@ namespace sakura::net
 
 namespace
 {
-constexpr const char* kDefaultOnlineServerUrl = "https://steven-lee.tech:233";
+constexpr const char* kDefaultOnlineServerUrl      = "https://steven-lee.tech:233";
 constexpr long long   kProactiveRefreshLeadSeconds = 86400LL;
+constexpr int         kOnlineCacheSoftTtlSec       = 20;
+constexpr int         kOnlineCacheHardTtlSec       = 86400;
+constexpr std::size_t kWorkerPoolThreadCount       = 2;
+
+thread_local bool g_inTransferPoolTask = false;
 
 long long NowUnixSeconds()
 {
@@ -192,6 +197,89 @@ LeaderboardRow ParseLeaderboardRowJson(const nlohmann::json& item)
         : item.value("dan_badge", "");
     return row;
 }
+
+std::string ExtractETagHeader(const HttpResponse& res)
+{
+    std::string etag = res.GetHeader("ETag");
+    if (!etag.empty())
+        return etag;
+    for (const auto& kv : res.headers)
+    {
+        if (AsciiLower(kv.first) == "etag")
+            return kv.second;
+    }
+    return {};
+}
+
+std::string ExtractHttpErrorReason(const HttpResponse& res)
+{
+    if (!res.body.empty())
+    {
+        try
+        {
+            const auto j = nlohmann::json::parse(res.body);
+            if (j.is_object() && j.contains("error") && j["error"].is_string())
+                return j["error"].get<std::string>();
+        }
+        catch (...)
+        {
+        }
+    }
+    if (!res.error.empty())
+        return res.error;
+    return "HTTP " + std::to_string(res.statusCode);
+}
+
+std::string ComputeGameResultSubmissionHash(const sakura::game::GameResult& result)
+{
+    std::ostringstream oss;
+    oss << result.chartId << '|'
+        << (result.chartHash.empty() ? result.chartId : result.chartHash) << '|'
+        << result.difficulty << '|'
+        << result.score << '|'
+        << result.accuracy << '|'
+        << result.maxCombo << '|'
+        << result.perfectCount << '|'
+        << result.greatCount << '|'
+        << result.goodCount << '|'
+        << result.badCount << '|'
+        << result.missCount << '|'
+        << result.synergyCount << '|'
+        << result.playbackRate << '|'
+        << result.playedAt << '|'
+        << result.replayFile;
+    return sakura::utils::ComputeSha256Hex(oss.str()).substr(0, 32);
+}
+
+LeaderboardResult ParseLeaderboardBodyJson(const std::string& body)
+{
+    LeaderboardResult out;
+    try
+    {
+        const auto j = nlohmann::json::parse(body);
+        if (!j.value("ok", false))
+        {
+            out.error = j.value("error", "获取排行榜失败");
+            return out;
+        }
+        out.ok = true;
+        if (j.contains("my_rank") && j["my_rank"].is_number_integer())
+            out.myRank = j["my_rank"].get<int>();
+        if (j.contains("entries") && j["entries"].is_array())
+        {
+            for (const auto& item : j["entries"])
+            {
+                out.entries.push_back(ParseLeaderboardRowJson(item));
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        out.ok    = false;
+        out.error = std::string("排行榜解析失败: ") + e.what();
+    }
+    return out;
+}
 }
 
 APIClient& APIClient::GetInstance()
@@ -202,6 +290,8 @@ APIClient& APIClient::GetInstance()
 
 APIClient::APIClient(SingletonTag)
     : m_transport(CreateDefaultHttpTransport())
+    , m_onlineCache(&OnlineCache::GetInstance())
+    , m_offlineQueue(&OfflineQueue::GetInstance())
 {
 }
 
@@ -232,27 +322,73 @@ APIClient::APIClient(std::shared_ptr<IHttpTransport> transport,
         fs::path tmpDir = fs::temp_directory_path(ec);
         if (ec || tmpDir.empty())
             tmpDir = fs::path(".");
-        const fs::path isolated = tmpDir / ("sakura_apiclient_isolated_"
-            + std::to_string(stamp) + "_" + std::to_string(seq) + "_auth.json");
-        m_isolatedAuthStorePath    = isolated.string();
+        const std::string prefix = "sakura_apiclient_isolated_"
+            + std::to_string(stamp) + "_" + std::to_string(seq);
+        m_isolatedAuthStorePath    = (tmpDir / (prefix + "_auth.json")).string();
+        m_isolatedCachePath        = (tmpDir / (prefix + "_cache.json")).string();
+        m_isolatedQueuePath        = (tmpDir / (prefix + "_queue.json")).string();
         m_cleanupIsolatedAuthStore = true;
         m_ownedAuthStore           = std::make_shared<sakura::core::AuthStore>(m_isolatedAuthStorePath);
     }
+
+    if (!m_customQueuePath.empty())
+    {
+        const fs::path qPath(m_customQueuePath);
+        const fs::path derivedCache = qPath.parent_path() / (qPath.stem().string() + "_online_cache.json");
+        m_ownedOnlineCache  = std::make_shared<OnlineCache>(derivedCache.string());
+        m_ownedOfflineQueue = std::make_shared<OfflineQueue>(m_customQueuePath, m_customQueuePath);
+    }
+    else if (!authStorePath.empty())
+    {
+        const fs::path aPath(authStorePath);
+        const fs::path derivedCache = aPath.parent_path() / (aPath.stem().string() + "_online_cache.json");
+        const fs::path derivedQueue = aPath.parent_path() / (aPath.stem().string() + "_pending_actions.json");
+        m_ownedOnlineCache  = std::make_shared<OnlineCache>(derivedCache.string());
+        m_ownedOfflineQueue = std::make_shared<OfflineQueue>(derivedQueue.string(), derivedQueue.string());
+    }
+    else
+    {
+        m_ownedOnlineCache  = std::make_shared<OnlineCache>(m_isolatedCachePath);
+        m_ownedOfflineQueue = std::make_shared<OfflineQueue>(m_isolatedQueuePath, m_isolatedQueuePath);
+    }
+
+    m_onlineCache  = m_ownedOnlineCache.get();
+    m_offlineQueue = m_ownedOfflineQueue.get();
+    m_onlineCache->Load();
+    m_offlineQueue->Load();
 }
 
 APIClient::~APIClient()
 {
     Shutdown();
-    if (m_cleanupIsolatedAuthStore && !m_isolatedAuthStorePath.empty())
+    m_ownedOnlineCache.reset();
+    m_ownedOfflineQueue.reset();
+    m_ownedAuthStore.reset();
+    if (m_cleanupIsolatedAuthStore)
     {
         std::error_code ec;
-        std::filesystem::remove(m_isolatedAuthStorePath, ec);
+        if (!m_isolatedAuthStorePath.empty())
+            std::filesystem::remove(m_isolatedAuthStorePath, ec);
+        if (!m_isolatedCachePath.empty())
+            std::filesystem::remove(m_isolatedCachePath, ec);
+        if (!m_isolatedQueuePath.empty())
+            std::filesystem::remove(m_isolatedQueuePath, ec);
     }
 }
 
 sakura::core::AuthStore& APIClient::MutableAuthStore() const
 {
     return m_ownedAuthStore ? *m_ownedAuthStore : sakura::core::AuthStore::GetInstance();
+}
+
+OnlineCache& APIClient::MutableOnlineCache() const
+{
+    return m_onlineCache ? *m_onlineCache : OnlineCache::GetInstance();
+}
+
+OfflineQueue& APIClient::MutableOfflineQueue() const
+{
+    return m_offlineQueue ? *m_offlineQueue : OfflineQueue::GetInstance();
 }
 
 sakura::core::AuthStore& APIClient::GetAuthStore()
@@ -263,6 +399,34 @@ sakura::core::AuthStore& APIClient::GetAuthStore()
 const sakura::core::AuthStore& APIClient::GetAuthStore() const
 {
     return MutableAuthStore();
+}
+
+OnlineCache& APIClient::GetOnlineCache()
+{
+    return MutableOnlineCache();
+}
+
+const OnlineCache& APIClient::GetOnlineCache() const
+{
+    return MutableOnlineCache();
+}
+
+OfflineQueue& APIClient::GetOfflineQueue()
+{
+    return MutableOfflineQueue();
+}
+
+const OfflineQueue& APIClient::GetOfflineQueue() const
+{
+    return MutableOfflineQueue();
+}
+
+void APIClient::MarkAllUserScopedCachesStale()
+{
+    auto& cache = MutableOnlineCache();
+    cache.MarkStale("leaderboard:");
+    cache.MarkStale("daily:");
+    cache.MarkStale("market:");
 }
 
 void APIClient::SyncServerUrlToConfig(const std::string& serverUrl) const
@@ -310,6 +474,9 @@ void APIClient::MarkOnlineFromAuthenticatedSuccess()
 
 void APIClient::LoadFromConfig()
 {
+    MutableOnlineCache().Load();
+    MutableOfflineQueue().Load();
+
     auto& cfg   = sakura::core::Config::GetInstance();
     auto& store = GetAuthStore();
     store.Load(&cfg);
@@ -408,21 +575,13 @@ void APIClient::SaveToConfig() const
 
 void APIClient::Shutdown()
 {
-    {
-        std::lock_guard lock(m_workerMutex);
-        if (!m_workerRunning)
-            return;
-        m_stopping = true;
-    }
-    m_workerCv.notify_all();
-    if (m_worker.joinable())
-        m_worker.join();
-    {
-        std::lock_guard lock(m_workerMutex);
-        m_workerRunning = false;
-        m_stopping      = false;
-        m_tasks.clear();
-    }
+    CancelChannel(m_leaderboardChannel);
+    CancelChannel(m_marketListChannel);
+    ShutdownPool(m_interactivePool);
+    ShutdownPool(m_transferPool);
+    m_activeTransferCount.store(0, std::memory_order_release);
+    m_activeTransferProgress.store(0.0f, std::memory_order_release);
+    m_bgFlushScheduled.store(false, std::memory_order_release);
     {
         std::lock_guard lock(m_cbMutex);
         m_callbacks.clear();
@@ -443,9 +602,16 @@ std::shared_ptr<IHttpTransport> APIClient::GetTransport() const
 
 void APIClient::SetServerUrl(const std::string& url)
 {
+    bool changed = false;
     {
         std::lock_guard lock(m_stateMutex);
-        m_serverUrl = TrimTrailingSlash(url);
+        const std::string normalized = TrimTrailingSlash(url);
+        changed     = (m_serverUrl != normalized);
+        m_serverUrl = normalized;
+    }
+    if (changed)
+    {
+        MarkAllUserScopedCachesStale();
     }
     SaveToConfig();
 }
@@ -532,32 +698,44 @@ void APIClient::Logout()
         m_user      = {};
         m_authState = AuthState::Unauthenticated;
     }
+    MarkAllUserScopedCachesStale();
     SyncServerUrlToConfig(serverUrl);
-}
-
-std::string APIClient::ResolveQueuePath() const
-{
-    if (!m_customQueuePath.empty())
-        return m_customQueuePath;
-    return sakura::core::Paths::User("data/pending_scores.json");
 }
 
 std::size_t APIClient::GetPendingScoreCount() const
 {
-    const std::string qPath = ResolveQueuePath();
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(qPath, ec))
-        return 0;
-    try
-    {
-        std::ifstream ifs(qPath);
-        const auto arr = nlohmann::json::parse(ifs);
-        return arr.is_array() ? arr.size() : 0;
-    }
-    catch (...)
-    {
-        return 0;
-    }
+    return static_cast<std::size_t>(MutableOfflineQueue().GetCount());
+}
+
+int APIClient::GetActiveTransferCount() const
+{
+    return std::max(0, m_activeTransferCount.load(std::memory_order_acquire));
+}
+
+float APIClient::GetActiveTransferProgress() const
+{
+    return std::clamp(m_activeTransferProgress.load(std::memory_order_acquire), 0.0f, 1.0f);
+}
+
+uint64_t APIClient::NextRequestSeq()
+{
+    return m_requestSeq.fetch_add(1, std::memory_order_acq_rel) + 1;
+}
+
+std::optional<LeaderboardResult> APIClient::GetCachedLeaderboard(const std::string& chartId,
+                                                                 const std::string& difficulty) const
+{
+    if (chartId.empty() || difficulty.empty())
+        return std::nullopt;
+    const std::string cacheKey  = "leaderboard:" + chartId + ":" + difficulty;
+    const CacheLookupResult hit = MutableOnlineCache().Lookup(
+        cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
+    if (!hit.found || hit.payloadJson.empty())
+        return std::nullopt;
+    LeaderboardResult parsed = ParseLeaderboardBodyJson(hit.payloadJson);
+    if (!parsed.ok)
+        return std::nullopt;
+    return parsed;
 }
 
 HttpRequest APIClient::MakeRequest(const std::string& method, const std::string& path,
@@ -586,6 +764,13 @@ HttpRequest APIClient::MakeRequest(const std::string& method, const std::string&
 
 HttpResponse APIClient::SendWithAuthRetry(HttpRequest req)
 {
+    if (req.cancelToken && req.cancelToken->IsCancelled())
+    {
+        HttpResponse cancelledRes;
+        cancelledRes.cancelled = true;
+        return cancelledRes;
+    }
+
     const long long nowSec = NowUnixSeconds();
     long long initialExpiresAt = 0;
     std::string initialRefresh;
@@ -639,6 +824,12 @@ HttpResponse APIClient::SendWithAuthRetry(HttpRequest req)
     SetBearerHeader(req, usedToken);
     HttpResponse res = GetTransport()->Send(req);
 
+    if (res.cancelled || (req.cancelToken && req.cancelToken->IsCancelled()))
+    {
+        res.cancelled = true;
+        return res;
+    }
+
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
         MarkOfflinePreserveSession();
@@ -647,7 +838,7 @@ HttpResponse APIClient::SendWithAuthRetry(HttpRequest req)
 
     if (res.statusCode != 401)
     {
-        if (res.IsSuccess())
+        if (res.IsSuccess() || res.IsNotModified())
             MarkOnlineFromAuthenticatedSuccess();
         else
             m_status.store(OnlineStatus::Online);
@@ -746,11 +937,16 @@ HttpResponse APIClient::SendWithAuthRetry(HttpRequest req)
 
         SetBearerHeader(req, retryToken);
         HttpResponse retryRes = GetTransport()->Send(req);
+        if (retryRes.cancelled || (req.cancelToken && req.cancelToken->IsCancelled()))
+        {
+            retryRes.cancelled = true;
+            return retryRes;
+        }
         if (retryRes.IsNetworkError() || retryRes.statusCode >= 500)
         {
             MarkOfflinePreserveSession();
         }
-        else if (retryRes.IsSuccess())
+        else if (retryRes.IsSuccess() || retryRes.IsNotModified())
         {
             MarkOnlineFromAuthenticatedSuccess();
         }
@@ -986,6 +1182,10 @@ AuthResult APIClient::HandleAuthResponse(const HttpResponse& res, bool preserveM
                 ? AuthState::AuthenticatedOnline
                 : AuthState::Unauthenticated;
         }
+        if (prevUser.id != out.user.id)
+        {
+            MarkAllUserScopedCachesStale();
+        }
         SaveToConfig();
         return out;
     }
@@ -1152,6 +1352,7 @@ AuthResult APIClient::SwitchSavedAccount(const std::string& userId)
         else
             m_authState = AuthState::AuthenticatedOffline;
     }
+    MarkAllUserScopedCachesStale();
     SyncServerUrlToConfig(resolvedUrl);
 
     if (sess.accessToken.empty() && sess.refreshToken.empty())
@@ -1247,31 +1448,6 @@ bool APIClient::RemoveSavedAccount(const std::string& userId)
     return removed;
 }
 
-void APIClient::EnqueueOfflineScorePayload(const std::string& payloadJson)
-{
-    const std::string qPath = ResolveQueuePath();
-    nlohmann::json arr = nlohmann::json::array();
-    std::error_code ec;
-    if (std::filesystem::is_regular_file(qPath, ec))
-    {
-        try
-        {
-            std::ifstream ifs(qPath);
-            auto existing = nlohmann::json::parse(ifs);
-            if (existing.is_array())
-                arr = std::move(existing);
-        }
-        catch (...) {}
-    }
-    try
-    {
-        arr.push_back(nlohmann::json::parse(payloadJson));
-        std::filesystem::create_directories(std::filesystem::path(qPath).parent_path(), ec);
-        sakura::utils::AtomicWrite(qPath, arr.dump(2));
-    }
-    catch (...) {}
-}
-
 ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
 {
     ScoreSubmitResult out;
@@ -1284,8 +1460,10 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
     const int totalJudged = result.totalJudgments > 0
         ? result.totalJudgments
         : (result.perfectCount + result.greatCount + result.goodCount + result.badCount + result.missCount);
+    const std::string subHash = ComputeGameResultSubmissionHash(result);
 
     nlohmann::json payload = {
+        { "client_submission_id", subHash },
         { "chart_id", result.chartId },
         { "chart_title", result.chartTitle },
         { "chart_hash", result.chartHash.empty() ? result.chartId : result.chartHash },
@@ -1308,14 +1486,17 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
         { "playback_rate", result.playbackRate }
     };
 
+    if (!result.replayFile.empty())
+        payload["replay_file"] = result.replayFile;
     const std::string replayRaw = ReadWholeFileUtf8(result.replayFile);
     if (!replayRaw.empty())
         payload["replay_data"] = replayRaw;
 
-    const std::string bodyStr = payload.dump();
+    const std::string bodyStr  = payload.dump();
+    const std::string dedupeId = "score:" + subHash;
     if (!IsAuthenticated())
     {
-        EnqueueOfflineScorePayload(bodyStr);
+        MutableOfflineQueue().Enqueue(PendingActionType::StandardScore, bodyStr, std::string{}, dedupeId);
         out.queuedOffline = true;
         out.error         = "未登录，已缓存至待同步队列";
         return out;
@@ -1325,7 +1506,7 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
         MarkOfflinePreserveSession();
-        EnqueueOfflineScorePayload(bodyStr);
+        MutableOfflineQueue().Enqueue(PendingActionType::StandardScore, bodyStr, std::string{}, dedupeId);
         out.queuedOffline = true;
         out.error         = "网络离线，成绩已加入待同步队列";
         return out;
@@ -1352,6 +1533,10 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
             if (j.contains("sakura_rating") && j["sakura_rating"].is_number())
                 m_user.sakuraRating = j["sakura_rating"].get<double>();
         }
+        if (!result.chartId.empty())
+        {
+            MutableOnlineCache().MarkStale("leaderboard:" + result.chartId + ":");
+        }
         SaveToConfig();
         return out;
     }
@@ -1362,154 +1547,511 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
     }
 }
 
-int APIClient::FlushPendingScores()
+bool APIClient::EnqueueCourseRecordOffline(const sakura::game::CourseRecord& record)
+{
+    if (record.courseId.empty())
+        return false;
+
+    const nlohmann::json payload = {
+        { "course_id", record.courseId },
+        { "badge_text", record.badgeText },
+        { "dan_rank", record.danRank },
+        { "total_score", record.totalScore },
+        { "avg_accuracy", record.avgAccuracy },
+        { "remaining_life", record.remainingLife },
+        { "cleared", record.cleared },
+        { "cleared_at", record.clearedAt }
+    };
+    const std::string dedupeId = "course:" + record.courseId + ":" + std::to_string(record.totalScore)
+        + ":" + (record.cleared ? "1" : "0");
+    const std::string actionId = MutableOfflineQueue().Enqueue(
+        PendingActionType::DanCourseRecord, payload.dump(), std::string{}, dedupeId);
+    return !actionId.empty();
+}
+
+int APIClient::FlushPendingActions()
 {
     if (!IsAuthenticated())
         return 0;
-    const std::string qPath = ResolveQueuePath();
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(qPath, ec))
+
+    std::lock_guard flushLock(m_flushMutex);
+    if (!IsAuthenticated())
         return 0;
 
-    nlohmann::json arr;
-    try
-    {
-        std::ifstream ifs(qPath);
-        arr = nlohmann::json::parse(ifs);
-        if (!arr.is_array() || arr.empty())
-            return 0;
-    }
-    catch (...)
-    {
+    auto& queue = MutableOfflineQueue();
+    const auto readyItems = queue.GetReadyItems();
+    if (readyItems.empty())
         return 0;
-    }
 
-    nlohmann::json remaining = nlohmann::json::array();
-    int flushed = 0;
-    for (std::size_t idx = 0; idx < arr.size(); ++idx)
+    int flushed        = 0;
+    bool userMetaDirty = false;
+
+    for (const auto& item : readyItems)
     {
-        const auto& item = arr[idx];
-        const auto res   = SendWithAuthRetry(MakeRequest("POST", "/api/v1/scores", item.dump(), true));
-        if (res.IsNetworkError() || res.statusCode >= 500)
+        HttpRequest req;
+        std::string scoreChartId;
+
+        if (item.type == PendingActionType::StandardScore)
         {
-            MarkOfflinePreserveSession();
-            for (std::size_t remIdx = idx; remIdx < arr.size(); ++remIdx)
-                remaining.push_back(arr[remIdx]);
-            break;
+            std::string bodyStr = item.payloadJson;
+            try
+            {
+                auto bodyJson = nlohmann::json::parse(item.payloadJson, nullptr, false);
+                if (bodyJson.is_object())
+                {
+                    scoreChartId = JsonStringOr(bodyJson, "chart_id", "");
+                    if (!bodyJson.contains("replay_data") && bodyJson.contains("replay_file") &&
+                        bodyJson["replay_file"].is_string())
+                    {
+                        const std::string replayRaw = ReadWholeFileUtf8(bodyJson["replay_file"].get<std::string>());
+                        if (!replayRaw.empty())
+                        {
+                            bodyJson["replay_data"] = replayRaw;
+                            bodyStr                 = bodyJson.dump();
+                        }
+                    }
+                }
+            }
+            catch (...)
+            {
+            }
+            req = MakeRequest("POST", "/api/v1/scores", bodyStr, true);
         }
-        else if (res.statusCode == 401)
+        else if (item.type == PendingActionType::DailyScore)
         {
-            for (std::size_t remIdx = idx; remIdx < arr.size(); ++remIdx)
-                remaining.push_back(arr[remIdx]);
-            break;
+            std::string bodyStr = item.payloadJson;
+            try
+            {
+                auto bodyJson = nlohmann::json::parse(item.payloadJson, nullptr, false);
+                if (bodyJson.is_object())
+                {
+                    if (!item.dateUtc8.empty() && !bodyJson.contains("date"))
+                        bodyJson["date"] = item.dateUtc8;
+                    if (!bodyJson.contains("replay_data") && bodyJson.contains("replay_file") &&
+                        bodyJson["replay_file"].is_string())
+                    {
+                        const std::string replayRaw = ReadWholeFileUtf8(bodyJson["replay_file"].get<std::string>());
+                        if (!replayRaw.empty())
+                            bodyJson["replay_data"] = replayRaw;
+                    }
+                    bodyStr = bodyJson.dump();
+                }
+            }
+            catch (...)
+            {
+            }
+            req = MakeRequest("POST", "/api/v1/daily/scores", bodyStr, true);
         }
-        else if (res.IsSuccess())
+        else
+        {
+            auto parsedCourse = nlohmann::json::parse(item.payloadJson, nullptr, false);
+            std::string bodyStr;
+            if (parsedCourse.is_object() && parsedCourse.contains("course_records"))
+            {
+                bodyStr = parsedCourse.dump();
+            }
+            else if (parsedCourse.is_object())
+            {
+                const nlohmann::json syncBody = {
+                    { "scores", nlohmann::json::array() },
+                    { "achievements", nlohmann::json::array() },
+                    { "course_records", nlohmann::json::array({ parsedCourse }) },
+                    { "settings", nlohmann::json::object() },
+                    { "settings_updated_at", 0 }
+                };
+                bodyStr = syncBody.dump();
+            }
+            else
+            {
+                bodyStr = item.payloadJson;
+            }
+            req = MakeRequest("POST", "/api/v1/sync/push", bodyStr, true);
+        }
+
+        const HttpResponse res = SendWithAuthRetry(std::move(req));
+        if (res.IsSuccess())
         {
             MarkOnlineFromAuthenticatedSuccess();
+            if (item.type == PendingActionType::StandardScore)
+            {
+                if (!scoreChartId.empty())
+                    MutableOnlineCache().MarkStale("leaderboard:" + scoreChartId + ":");
+            }
+            else if (item.type == PendingActionType::DailyScore)
+            {
+                MutableOnlineCache().MarkStale("daily:");
+            }
+
+            try
+            {
+                if (!res.body.empty())
+                {
+                    const auto j = nlohmann::json::parse(res.body, nullptr, false);
+                    if (j.is_object())
+                    {
+                        const bool hasPP     = j.contains("total_pp") && j["total_pp"].is_number();
+                        const bool hasRating = j.contains("sakura_rating") && j["sakura_rating"].is_number();
+                        if (hasPP || hasRating)
+                        {
+                            std::lock_guard stateLock(m_stateMutex);
+                            if (hasPP)
+                                m_user.totalPP = j["total_pp"].get<double>();
+                            if (hasRating)
+                                m_user.sakuraRating = j["sakura_rating"].get<double>();
+                            userMetaDirty = true;
+                        }
+                    }
+                }
+            }
+            catch (...)
+            {
+            }
+
+            queue.MarkSucceeded(item.id);
             ++flushed;
         }
-        // 4xx validation errors are dropped rather than retried forever
+        else if (res.IsNetworkError() || res.statusCode >= 500 || res.statusCode == 408 || res.statusCode == 429)
+        {
+            if (res.IsNetworkError() || res.statusCode >= 500)
+                MarkOfflinePreserveSession();
+            queue.MarkRetryableFailure(item.id, ExtractHttpErrorReason(res));
+        }
+        else if (res.statusCode == 401 || res.statusCode == 403)
+        {
+            break;
+        }
+        else if (res.statusCode == 400 || res.statusCode == 422 || (res.statusCode >= 400 && res.statusCode < 500))
+        {
+            queue.MarkPermanentFailure(item.id, ExtractHttpErrorReason(res));
+        }
     }
 
-    if (remaining.empty())
-        std::filesystem::remove(qPath, ec);
-    else
-        sakura::utils::AtomicWrite(qPath, remaining.dump(2));
+    if (userMetaDirty)
+        SaveToConfig();
+
     return flushed;
+}
+
+int APIClient::FlushPendingScores()
+{
+    return FlushPendingActions();
+}
+
+LeaderboardResult APIClient::FetchLeaderboardInternal(const std::string& chartId,
+                                                      const std::string& difficulty,
+                                                      int limit,
+                                                      const std::shared_ptr<CancelToken>& cancelToken)
+{
+    LeaderboardResult out;
+    const int safeLimit       = std::max(1, limit);
+    const std::string cacheKey = "leaderboard:" + chartId + ":" + difficulty;
+    auto& cache                = MutableOnlineCache();
+    const CacheLookupResult cached = cache.Lookup(cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
+
+    auto applyLimit = [safeLimit](LeaderboardResult& lb)
+    {
+        if (lb.entries.size() > static_cast<std::size_t>(safeLimit))
+            lb.entries.resize(static_cast<std::size_t>(safeLimit));
+    };
+
+    if (cached.found && !cached.isStale && !cached.payloadJson.empty())
+    {
+        LeaderboardResult parsed = ParseLeaderboardBodyJson(cached.payloadJson);
+        if (parsed.ok)
+        {
+            applyLimit(parsed);
+            return parsed;
+        }
+    }
+
+    const std::string path = "/api/v1/leaderboards/" + UrlEncode(chartId)
+        + "?difficulty=" + UrlEncode(difficulty)
+        + "&scope=global&limit=" + std::to_string(safeLimit);
+
+    HttpRequest req = MakeRequest("GET", path, {}, IsAuthenticated());
+    req.cancelToken = cancelToken;
+    if (cached.found && cached.isStale && !cached.etag.empty())
+    {
+        req.headers.emplace_back("If-None-Match", cached.etag);
+    }
+
+    const HttpResponse res = IsAuthenticated()
+        ? SendWithAuthRetry(std::move(req))
+        : GetTransport()->Send(req);
+
+    if (res.cancelled || (cancelToken && cancelToken->IsCancelled()))
+    {
+        out.error = "请求已取消";
+        return out;
+    }
+
+    if (res.IsNotModified() && cached.found && !cached.payloadJson.empty())
+    {
+        if (!IsAuthenticated())
+            m_status.store(OnlineStatus::Online);
+        cache.TouchFresh(cacheKey);
+        LeaderboardResult parsed = ParseLeaderboardBodyJson(cached.payloadJson);
+        if (parsed.ok)
+        {
+            applyLimit(parsed);
+            return parsed;
+        }
+    }
+
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        if (cached.found && !cached.payloadJson.empty())
+        {
+            LeaderboardResult fallback = ParseLeaderboardBodyJson(cached.payloadJson);
+            if (fallback.ok)
+            {
+                applyLimit(fallback);
+                return fallback;
+            }
+        }
+        out.error = res.error.empty() ? "离线：无法获取全球排行榜" : res.error;
+        return out;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    if (!res.IsSuccess())
+    {
+        try
+        {
+            const auto j = nlohmann::json::parse(res.body);
+            out.error    = j.value("error", "获取排行榜失败");
+        }
+        catch (...)
+        {
+            out.error = "获取排行榜失败";
+        }
+        return out;
+    }
+
+    LeaderboardResult parsed = ParseLeaderboardBodyJson(res.body);
+    if (parsed.ok)
+    {
+        cache.Put(cacheKey, res.body, ExtractETagHeader(res));
+        applyLimit(parsed);
+    }
+    return parsed;
 }
 
 LeaderboardResult APIClient::FetchLeaderboard(const std::string& chartId, const std::string& difficulty, int limit)
 {
-    LeaderboardResult out;
-    const std::string path = "/api/v1/leaderboards/" + UrlEncode(chartId)
-        + "?difficulty=" + UrlEncode(difficulty)
-        + "&scope=global&limit=" + std::to_string(std::max(1, limit));
-
-    const auto res = IsAuthenticated()
-        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
-        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
-    if (res.IsNetworkError() || res.statusCode >= 500)
-    {
-        MarkOfflinePreserveSession();
-        out.error = res.error.empty() ? "离线：无法获取全球排行榜" : res.error;
-        return out;
-    }
-    m_status.store(OnlineStatus::Online);
-    try
-    {
-        const auto j = nlohmann::json::parse(res.body);
-        if (!res.IsSuccess() || !j.value("ok", false))
-        {
-            out.error = j.value("error", "获取排行榜失败");
-            return out;
-        }
-        out.ok = true;
-        if (j.contains("my_rank") && j["my_rank"].is_number_integer())
-            out.myRank = j["my_rank"].get<int>();
-        if (j.contains("entries") && j["entries"].is_array())
-        {
-            for (const auto& item : j["entries"])
-            {
-                out.entries.push_back(ParseLeaderboardRowJson(item));
-            }
-        }
-        return out;
-    }
-    catch (const std::exception& e)
-    {
-        out.error = std::string("排行榜解析失败: ") + e.what();
-        return out;
-    }
+    return FetchLeaderboardInternal(chartId, difficulty, limit, nullptr);
 }
 
 bool APIClient::DownloadReplay(const std::string& scoreId, const std::string& destPath)
 {
     if (scoreId.empty() || destPath.empty())
         return false;
-    const auto res = SendWithAuthRetry(MakeRequest("GET", "/api/v1/replays/" + UrlEncode(scoreId), {}, true));
+
+    const bool trackHere = !g_inTransferPoolTask;
+    if (trackHere)
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+    struct SyncTransferScope
+    {
+        APIClient* self = nullptr;
+        ~SyncTransferScope()
+        {
+            if (self)
+                self->OnTransferFinished();
+        }
+    } guard{ trackHere ? this : nullptr };
+
+    m_activeTransferProgress.store(0.0f, std::memory_order_release);
+
+    HttpRequest req = MakeRequest("GET", "/api/v1/replays/" + UrlEncode(scoreId), {}, true);
+    req.onProgress  = [this](std::size_t dl, std::size_t total)
+    {
+        const float frac = total > 0
+            ? std::clamp(static_cast<float>(dl) / static_cast<float>(total), 0.0f, 1.0f)
+            : 0.5f;
+        m_activeTransferProgress.store(frac, std::memory_order_release);
+    };
+
+    const auto res = SendWithAuthRetry(std::move(req));
     if (!res.IsSuccess() || res.body.empty())
         return false;
+
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(destPath).parent_path(), ec);
-    return sakura::utils::AtomicWrite(destPath, res.body);
+    const bool wrote = sakura::utils::AtomicWrite(destPath, res.body);
+    if (wrote)
+        m_activeTransferProgress.store(1.0f, std::memory_order_release);
+    return wrote;
 }
 
-void APIClient::EnsureWorker()
+void APIClient::EnsurePoolStarted(TaskPool& pool, std::size_t threadCount)
 {
-    std::lock_guard lock(m_workerMutex);
-    if (m_workerRunning)
+    std::lock_guard lock(pool.mutex);
+    if (pool.running)
         return;
-    m_stopping      = false;
-    m_workerRunning = true;
-    m_worker = std::thread([this]()
+    pool.stopping = false;
+    pool.running  = true;
+    pool.threads.reserve(threadCount);
+    for (std::size_t i = 0; i < threadCount; ++i)
     {
-        for (;;)
+        pool.threads.emplace_back([&pool]()
         {
-            std::function<void()> task;
+            for (;;)
             {
-                std::unique_lock ulock(m_workerMutex);
-                m_workerCv.wait(ulock, [this] { return m_stopping || !m_tasks.empty(); });
-                if (m_stopping && m_tasks.empty())
-                    break;
-                task = std::move(m_tasks.front());
-                m_tasks.pop_front();
+                std::function<void()> task;
+                {
+                    std::unique_lock ulock(pool.mutex);
+                    pool.cv.wait(ulock, [&pool]() { return pool.stopping || !pool.tasks.empty(); });
+                    if (pool.stopping && pool.tasks.empty())
+                        break;
+                    task = std::move(pool.tasks.front());
+                    pool.tasks.pop_front();
+                }
+                if (task)
+                {
+                    try
+                    {
+                        task();
+                    }
+                    catch (...)
+                    {
+                    }
+                }
             }
-            if (task)
-            {
-                try { task(); } catch (...) {}
-            }
+        });
+    }
+}
+
+void APIClient::ShutdownPool(TaskPool& pool)
+{
+    {
+        std::lock_guard lock(pool.mutex);
+        if (!pool.running)
+            return;
+        pool.stopping = true;
+    }
+    pool.cv.notify_all();
+    for (auto& worker : pool.threads)
+    {
+        if (worker.joinable())
+            worker.join();
+    }
+    {
+        std::lock_guard lock(pool.mutex);
+        pool.threads.clear();
+        pool.tasks.clear();
+        pool.running  = false;
+        pool.stopping = false;
+    }
+}
+
+std::pair<uint64_t, std::shared_ptr<CancelToken>> APIClient::BeginChannelRequest(ChannelState& channel)
+{
+    std::lock_guard lock(channel.mutex);
+    if (channel.activeToken)
+        channel.activeToken->Cancel();
+    const uint64_t seq      = NextRequestSeq();
+    auto           newToken = std::make_shared<CancelToken>();
+    channel.latestSeq       = seq;
+    channel.activeToken     = newToken;
+    return { seq, std::move(newToken) };
+}
+
+bool APIClient::IsChannelRequestCurrent(const ChannelState& channel,
+                                        uint64_t seq,
+                                        const std::shared_ptr<CancelToken>& token)
+{
+    if (token && token->IsCancelled())
+        return false;
+    std::lock_guard lock(channel.mutex);
+    return channel.latestSeq == seq;
+}
+
+void APIClient::CancelChannel(ChannelState& channel)
+{
+    std::lock_guard lock(channel.mutex);
+    if (channel.activeToken)
+        channel.activeToken->Cancel();
+    channel.activeToken.reset();
+}
+
+void APIClient::OnTransferFinished() noexcept
+{
+    int prev = m_activeTransferCount.fetch_sub(1, std::memory_order_acq_rel);
+    if (prev <= 1)
+    {
+        int expected = m_activeTransferCount.load(std::memory_order_acquire);
+        while (expected < 0 && !m_activeTransferCount.compare_exchange_weak(
+                                   expected, 0, std::memory_order_acq_rel))
+        {
         }
+    }
+}
+
+void APIClient::ScheduleBackgroundOfflineFlush()
+{
+    if (!IsAuthenticated() || MutableOfflineQueue().GetCount() == 0)
+        return;
+    bool expected = false;
+    if (!m_bgFlushScheduled.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        return;
+
+    PostTransferTask([this]()
+    {
+        struct ResetFlag
+        {
+            std::atomic<bool>& flag;
+            ~ResetFlag() { flag.store(false, std::memory_order_release); }
+        } reset{ m_bgFlushScheduled };
+        (void)FlushPendingActions();
     });
 }
 
 void APIClient::PostTask(std::function<void()> workerTask)
 {
-    EnsureWorker();
+    if (!workerTask)
+        return;
+    EnsurePoolStarted(m_interactivePool, kWorkerPoolThreadCount);
     {
-        std::lock_guard lock(m_workerMutex);
-        m_tasks.push_back(std::move(workerTask));
+        std::lock_guard lock(m_interactivePool.mutex);
+        if (m_interactivePool.stopping)
+            return;
+        m_interactivePool.tasks.push_back(std::move(workerTask));
     }
-    m_workerCv.notify_one();
+    m_interactivePool.cv.notify_one();
+}
+
+void APIClient::PostTransferTask(std::function<void()> transferTask)
+{
+    if (!transferTask)
+        return;
+    EnsurePoolStarted(m_transferPool, kWorkerPoolThreadCount);
+    {
+        std::lock_guard lock(m_transferPool.mutex);
+        if (m_transferPool.stopping)
+            return;
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+        std::shared_ptr<int> token(new int(1), [this](int* p)
+        {
+            delete p;
+            OnTransferFinished();
+        });
+        m_transferPool.tasks.push_back([task = std::move(transferTask), token = std::move(token)]() mutable
+        {
+            const bool prevInPool = g_inTransferPoolTask;
+            g_inTransferPoolTask  = true;
+            try
+            {
+                task();
+            }
+            catch (...)
+            {
+            }
+            g_inTransferPoolTask = prevInPool;
+            token.reset();
+        });
+    }
+    m_transferPool.cv.notify_one();
 }
 
 void APIClient::PostMainCallback(std::function<void()> mainCallback)
@@ -1527,7 +2069,8 @@ void APIClient::PumpCallbacks()
     }
     for (auto& fn : batch)
     {
-        if (fn) fn();
+        if (fn)
+            fn();
     }
 }
 
@@ -1537,8 +2080,10 @@ void APIClient::LoginGuestAsync(const std::string& nickname, std::function<void(
     PostTask([this, nickname, cb = std::move(cb)]() mutable
     {
         auto res = LoginGuest(nickname);
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1548,8 +2093,10 @@ void APIClient::RegisterAsync(const std::string& username, const std::string& pa
     PostTask([this, username, password, cb = std::move(cb)]() mutable
     {
         auto res = Register(username, password);
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1559,8 +2106,10 @@ void APIClient::LoginAsync(const std::string& username, const std::string& passw
     PostTask([this, username, password, cb = std::move(cb)]() mutable
     {
         auto res = Login(username, password);
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1569,8 +2118,10 @@ void APIClient::RefreshProfileAsync(std::function<void(AuthResult)> cb)
     PostTask([this, cb = std::move(cb)]() mutable
     {
         auto res = RefreshProfile();
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1581,8 +2132,10 @@ void APIClient::UpgradeGuestAsync(const std::string& username, const std::string
     PostTask([this, username, password, cb = std::move(cb)]() mutable
     {
         auto res = UpgradeGuest(username, password);
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1592,7 +2145,8 @@ void APIClient::ChangePasswordAsync(const std::string& oldPassword, const std::s
     PostTask([this, oldPassword, newPassword, cb = std::move(cb)]() mutable
     {
         auto res = ChangePassword(oldPassword, newPassword);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1602,8 +2156,10 @@ void APIClient::SwitchSavedAccountAsync(const std::string& userId, std::function
     PostTask([this, userId, cb = std::move(cb)]() mutable
     {
         auto res = SwitchSavedAccount(userId);
-        if (res.ok) FlushPendingScores();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (res.ok)
+            ScheduleBackgroundOfflineFlush();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -1612,7 +2168,8 @@ void APIClient::LogoutAsync(std::function<void()> cb)
     PostTask([this, cb = std::move(cb)]() mutable
     {
         Logout();
-        if (cb) PostMainCallback([cb = std::move(cb)]() mutable { cb(); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb)]() mutable { cb(); });
     });
 }
 
@@ -1621,27 +2178,52 @@ void APIClient::SubmitScoreAsync(const sakura::game::GameResult& result, std::fu
     PostTask([this, result, cb = std::move(cb)]() mutable
     {
         auto res = SubmitScore(result);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::FlushPendingActionsAsync(std::function<void(int)> cb)
+{
+    PostTransferTask([this, cb = std::move(cb)]() mutable
+    {
+        const int flushed = FlushPendingActions();
+        if (cb)
+            PostMainCallback([cb = std::move(cb), flushed]() mutable { cb(flushed); });
     });
 }
 
 void APIClient::FetchLeaderboardAsync(const std::string& chartId, const std::string& difficulty, int limit,
                                       std::function<void(LeaderboardResult)> cb)
 {
-    PostTask([this, chartId, difficulty, limit, cb = std::move(cb)]() mutable
+    auto [seq, token] = BeginChannelRequest(m_leaderboardChannel);
+    PostTask([this, chartId, difficulty, limit, seq, token = std::move(token), cb = std::move(cb)]() mutable
     {
-        auto res = FetchLeaderboard(chartId, difficulty, limit);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (!IsChannelRequestCurrent(m_leaderboardChannel, seq, token))
+            return;
+        auto res = FetchLeaderboardInternal(chartId, difficulty, limit, token);
+        if (!IsChannelRequestCurrent(m_leaderboardChannel, seq, token))
+            return;
+        if (cb)
+        {
+            PostMainCallback([this, seq, token, cb = std::move(cb), res = std::move(res)]() mutable
+            {
+                if (!IsChannelRequestCurrent(m_leaderboardChannel, seq, token))
+                    return;
+                cb(std::move(res));
+            });
+        }
     });
 }
 
 void APIClient::DownloadReplayAsync(const std::string& scoreId, const std::string& destPath,
                                     std::function<void(bool, std::string)> cb)
 {
-    PostTask([this, scoreId, destPath, cb = std::move(cb)]() mutable
+    PostTransferTask([this, scoreId, destPath, cb = std::move(cb)]() mutable
     {
         const bool ok = DownloadReplay(scoreId, destPath);
-        if (cb) PostMainCallback([cb = std::move(cb), ok, destPath]() mutable { cb(ok, destPath); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), ok, destPath]() mutable { cb(ok, destPath); });
     });
 }
 
@@ -1775,6 +2357,21 @@ MarketPublishResult APIClient::PublishChartPackage(const std::string& sakuraFile
         return out;
     }
 
+    const bool trackHere = !g_inTransferPoolTask;
+    if (trackHere)
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+    struct SyncTransferScope
+    {
+        APIClient* self = nullptr;
+        ~SyncTransferScope()
+        {
+            if (self)
+                self->OnTransferFinished();
+        }
+    } guard{ trackHere ? this : nullptr };
+
+    m_activeTransferProgress.store(0.0f, std::memory_order_release);
+
     std::string path = "/api/v1/charts";
     if (!description.empty())
         path += "?description=" + UrlEncode(description);
@@ -1802,6 +2399,8 @@ MarketPublishResult APIClient::PublishChartPackage(const std::string& sakuraFile
         }
         out.ok    = true;
         out.chart = ParseMarketChartJson(j.at("chart"));
+        m_activeTransferProgress.store(1.0f, std::memory_order_release);
+        MutableOnlineCache().MarkStale("market:");
         return out;
     }
     catch (const std::exception& e)
@@ -1811,7 +2410,8 @@ MarketPublishResult APIClient::PublishChartPackage(const std::string& sakuraFile
     }
 }
 
-MarketListResult APIClient::FetchMarketCharts(const MarketQuery& query)
+MarketListResult APIClient::FetchMarketChartsInternal(const MarketQuery& query,
+                                                      const std::shared_ptr<CancelToken>& cancelToken)
 {
     MarketListResult out;
     std::ostringstream qs;
@@ -1823,38 +2423,111 @@ MarketListResult APIClient::FetchMarketCharts(const MarketQuery& query)
     if (!query.q.empty())   qs << "&q=" << UrlEncode(query.q);
     if (!query.tag.empty()) qs << "&tag=" << UrlEncode(query.tag);
 
-    const auto res = IsAuthenticated()
-        ? SendWithAuthRetry(MakeRequest("GET", qs.str(), {}, true))
-        : GetTransport()->Send(MakeRequest("GET", qs.str(), {}, false));
+    const std::string queryPath = qs.str();
+    const std::string cacheKey  = "market:" + sakura::utils::ComputeSha256Hex(queryPath).substr(0, 32);
+    auto& cache                 = MutableOnlineCache();
+    const CacheLookupResult cached = cache.Lookup(cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
+
+    auto parseBody = [](const std::string& bodyText) -> MarketListResult
+    {
+        MarketListResult parsed;
+        try
+        {
+            const auto j = nlohmann::json::parse(bodyText);
+            if (!j.value("ok", false))
+            {
+                parsed.error = j.value("error", "获取谱面市场列表失败");
+                return parsed;
+            }
+            parsed.ok    = true;
+            parsed.total = j.value("total", 0);
+            if (j.contains("charts") && j["charts"].is_array())
+            {
+                for (const auto& item : j["charts"])
+                    parsed.charts.push_back(ParseMarketChartJson(item));
+            }
+        }
+        catch (const std::exception& e)
+        {
+            parsed.ok    = false;
+            parsed.error = std::string("市场响应解析失败: ") + e.what();
+        }
+        return parsed;
+    };
+
+    if (cached.found && !cached.isStale && !cached.payloadJson.empty())
+    {
+        MarketListResult parsed = parseBody(cached.payloadJson);
+        if (parsed.ok)
+            return parsed;
+    }
+
+    HttpRequest req = MakeRequest("GET", queryPath, {}, IsAuthenticated());
+    req.cancelToken = cancelToken;
+    if (cached.found && cached.isStale && !cached.etag.empty())
+    {
+        req.headers.emplace_back("If-None-Match", cached.etag);
+    }
+
+    const HttpResponse res = IsAuthenticated()
+        ? SendWithAuthRetry(std::move(req))
+        : GetTransport()->Send(req);
+
+    if (res.cancelled || (cancelToken && cancelToken->IsCancelled()))
+    {
+        out.error = "请求已取消";
+        return out;
+    }
+
+    if (res.IsNotModified() && cached.found && !cached.payloadJson.empty())
+    {
+        if (!IsAuthenticated())
+            m_status.store(OnlineStatus::Online);
+        cache.TouchFresh(cacheKey);
+        MarketListResult parsed = parseBody(cached.payloadJson);
+        if (parsed.ok)
+            return parsed;
+    }
+
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
         MarkOfflinePreserveSession();
+        if (cached.found && !cached.payloadJson.empty())
+        {
+            MarketListResult fallback = parseBody(cached.payloadJson);
+            if (fallback.ok)
+                return fallback;
+        }
         out.error = res.error.empty() ? "离线：无法连接在线谱面市场" : res.error;
         return out;
     }
+
     m_status.store(OnlineStatus::Online);
-    try
+    if (!res.IsSuccess())
     {
-        const auto j = nlohmann::json::parse(res.body);
-        if (!res.IsSuccess() || !j.value("ok", false))
+        try
         {
-            out.error = j.value("error", "获取谱面市场列表失败");
-            return out;
+            const auto j = nlohmann::json::parse(res.body);
+            out.error    = j.value("error", "获取谱面市场列表失败");
         }
-        out.ok    = true;
-        out.total = j.value("total", 0);
-        if (j.contains("charts") && j["charts"].is_array())
+        catch (...)
         {
-            for (const auto& item : j["charts"])
-                out.charts.push_back(ParseMarketChartJson(item));
+            out.error = "获取谱面市场列表失败";
         }
         return out;
     }
-    catch (const std::exception& e)
+
+    MarketListResult parsed = parseBody(res.body);
+    if (parsed.ok)
     {
-        out.error = std::string("市场响应解析失败: ") + e.what();
-        return out;
+        cache.Put(cacheKey, res.body, ExtractETagHeader(res));
     }
+    return parsed;
+}
+
+MarketListResult APIClient::FetchMarketCharts(const MarketQuery& query)
+{
+    return FetchMarketChartsInternal(query, nullptr);
 }
 
 MarketDownloadResult APIClient::DownloadAndInstallChart(const MarketChartItem& item,
@@ -1868,22 +2541,41 @@ MarketDownloadResult APIClient::DownloadAndInstallChart(const MarketChartItem& i
         return out;
     }
 
+    const bool trackHere = !g_inTransferPoolTask;
+    if (trackHere)
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+    struct SyncTransferScope
+    {
+        APIClient* self = nullptr;
+        ~SyncTransferScope()
+        {
+            if (self)
+                self->OnTransferFinished();
+        }
+    } guard{ trackHere ? this : nullptr };
+
+    m_activeTransferProgress.store(0.0f, std::memory_order_release);
+
     HttpRequest req = MakeRequest("GET", "/api/v1/charts/" + UrlEncode(item.id) + "/download", {}, false);
     req.timeoutMs = 30000;
     const std::size_t fallbackTotal = item.packageSize;
-    if (onProgress)
+    req.onProgress = [this, onProgress, fallbackTotal](std::size_t dl, std::size_t total)
     {
-        req.onProgress = [onProgress, fallbackTotal](std::size_t dl, std::size_t total)
-        {
-            const std::size_t denom = total > 0 ? total : fallbackTotal;
-            const float frac = denom > 0
-                ? std::clamp(static_cast<float>(dl) / static_cast<float>(denom), 0.0f, 1.0f)
-                : 0.5f;
+        const std::size_t denom = total > 0 ? total : fallbackTotal;
+        const float frac = denom > 0
+            ? std::clamp(static_cast<float>(dl) / static_cast<float>(denom), 0.0f, 1.0f)
+            : 0.5f;
+        m_activeTransferProgress.store(frac, std::memory_order_release);
+        if (onProgress)
             onProgress(frac);
-        };
-    }
+    };
 
     const auto res = GetTransport()->Send(req);
+    if (res.cancelled)
+    {
+        out.error = "下载已取消";
+        return out;
+    }
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
         MarkOfflinePreserveSession();
@@ -1986,10 +2678,79 @@ MarketDownloadResult APIClient::DownloadAndInstallChart(const MarketChartItem& i
     }
 
     cleanupStage();
+    m_activeTransferProgress.store(1.0f, std::memory_order_release);
     out.ok              = true;
     out.installedFolder = destDir.generic_string();
     out.chartId         = info->id;
     return out;
+}
+
+MarketDownloadResult APIClient::DownloadMarketChartById(const std::string& marketChartId,
+                                                        const std::string& chartsRootDir,
+                                                        std::function<void(float)> onProgress)
+{
+    MarketDownloadResult out;
+    if (marketChartId.empty())
+    {
+        out.error = "无效的市场谱面 ID";
+        return out;
+    }
+
+    const bool trackHere = !g_inTransferPoolTask;
+    if (trackHere)
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+    const bool savedInPool = g_inTransferPoolTask;
+    g_inTransferPoolTask   = true;
+    struct SyncTransferScope
+    {
+        APIClient* self        = nullptr;
+        bool       restoreFlag = false;
+        ~SyncTransferScope()
+        {
+            g_inTransferPoolTask = restoreFlag;
+            if (self)
+                self->OnTransferFinished();
+        }
+    } guard{ trackHere ? this : nullptr, savedInPool };
+
+    const std::string metaPath = "/api/v1/charts/" + UrlEncode(marketChartId);
+    const HttpResponse metaRes = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", metaPath, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", metaPath, {}, false));
+    if (metaRes.cancelled)
+    {
+        out.error = "请求已取消";
+        return out;
+    }
+    if (metaRes.IsNetworkError() || metaRes.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = metaRes.error.empty() ? "离线：无法获取谱面元信息" : metaRes.error;
+        return out;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    MarketChartItem item;
+    try
+    {
+        const auto j = nlohmann::json::parse(metaRes.body);
+        if (!metaRes.IsSuccess() || !j.value("ok", false))
+        {
+            out.error = JsonStringOr(j, "error", "获取市场谱面元信息失败");
+            return out;
+        }
+        const nlohmann::json& chartJson = (j.contains("chart") && j["chart"].is_object()) ? j["chart"] : j;
+        item                            = ParseMarketChartJson(chartJson);
+        if (item.id.empty())
+            item.id = marketChartId;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("谱面元信息解析失败: ") + e.what();
+        return out;
+    }
+
+    return DownloadAndInstallChart(item, chartsRootDir, std::move(onProgress));
 }
 
 MarketRateResult APIClient::RateMarketChart(const std::string& marketChartId, int rating, const std::string& comment)
@@ -2022,6 +2783,7 @@ MarketRateResult APIClient::RateMarketChart(const std::string& marketChartId, in
         out.ratingAvg   = j.value("rating_avg", 0.0);
         out.ratingCount = j.value("rating_count", 0);
         out.myRating    = j.value("my_rating", rating);
+        MutableOnlineCache().MarkStale("market:");
         return out;
     }
     catch (const std::exception& e)
@@ -2040,6 +2802,24 @@ CloudSyncResult APIClient::SyncCloudSave()
         return out;
     }
 
+    const bool trackHere = !g_inTransferPoolTask;
+    if (trackHere)
+        m_activeTransferCount.fetch_add(1, std::memory_order_acq_rel);
+    const bool savedInPool = g_inTransferPoolTask;
+    g_inTransferPoolTask   = true;
+    struct SyncTransferScope
+    {
+        APIClient* self        = nullptr;
+        bool       restoreFlag = false;
+        ~SyncTransferScope()
+        {
+            g_inTransferPoolTask = restoreFlag;
+            if (self)
+                self->OnTransferFinished();
+        }
+    } guard{ trackHere ? this : nullptr, savedInPool };
+
+    m_activeTransferProgress.store(0.0f, std::memory_order_release);
     FlushPendingScores();
 
     auto& db  = sakura::data::Database::GetInstance();
@@ -2309,6 +3089,7 @@ CloudSyncResult APIClient::SyncCloudSave()
 
         cfg.Set("online.last_cloud_sync_ts", out.syncedAt);
         cfg.Save();
+        m_activeTransferProgress.store(1.0f, std::memory_order_release);
         return out;
     }
     catch (const std::exception& e)
@@ -2322,19 +3103,33 @@ CloudSyncResult APIClient::SyncCloudSave()
 void APIClient::PublishChartPackageAsync(const std::string& sakuraFilePath, const std::string& description,
                                          std::function<void(MarketPublishResult)> cb)
 {
-    PostTask([this, sakuraFilePath, description, cb = std::move(cb)]() mutable
+    PostTransferTask([this, sakuraFilePath, description, cb = std::move(cb)]() mutable
     {
         auto res = PublishChartPackage(sakuraFilePath, description);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
 void APIClient::FetchMarketChartsAsync(const MarketQuery& query, std::function<void(MarketListResult)> cb)
 {
-    PostTask([this, query, cb = std::move(cb)]() mutable
+    auto [seq, token] = BeginChannelRequest(m_marketListChannel);
+    PostTask([this, query, seq, token = std::move(token), cb = std::move(cb)]() mutable
     {
-        auto res = FetchMarketCharts(query);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (!IsChannelRequestCurrent(m_marketListChannel, seq, token))
+            return;
+        auto res = FetchMarketChartsInternal(query, token);
+        if (!IsChannelRequestCurrent(m_marketListChannel, seq, token))
+            return;
+        if (cb)
+        {
+            PostMainCallback([this, seq, token, cb = std::move(cb), res = std::move(res)]() mutable
+            {
+                if (!IsChannelRequestCurrent(m_marketListChannel, seq, token))
+                    return;
+                cb(std::move(res));
+            });
+        }
     });
 }
 
@@ -2342,14 +3137,31 @@ void APIClient::DownloadAndInstallChartAsync(const MarketChartItem& item, const 
                                              std::function<void(float)> onProgress,
                                              std::function<void(MarketDownloadResult)> cb)
 {
-    PostTask([this, item, chartsRootDir, onProgress = std::move(onProgress), cb = std::move(cb)]() mutable
+    PostTransferTask([this, item, chartsRootDir, onProgress = std::move(onProgress), cb = std::move(cb)]() mutable
     {
         auto res = DownloadAndInstallChart(item, chartsRootDir, [this, onProgress](float p)
         {
             if (onProgress)
                 PostMainCallback([onProgress, p]() { onProgress(p); });
         });
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::DownloadMarketChartByIdAsync(const std::string& marketChartId, const std::string& chartsRootDir,
+                                             std::function<void(float)> onProgress,
+                                             std::function<void(MarketDownloadResult)> cb)
+{
+    PostTransferTask([this, marketChartId, chartsRootDir, onProgress = std::move(onProgress), cb = std::move(cb)]() mutable
+    {
+        auto res = DownloadMarketChartById(marketChartId, chartsRootDir, [this, onProgress](float p)
+        {
+            if (onProgress)
+                PostMainCallback([onProgress, p]() { onProgress(p); });
+        });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2359,33 +3171,131 @@ void APIClient::RateMarketChartAsync(const std::string& marketChartId, int ratin
     PostTask([this, marketChartId, rating, comment, cb = std::move(cb)]() mutable
     {
         auto res = RateMarketChart(marketChartId, rating, comment);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
 void APIClient::SyncCloudSaveAsync(std::function<void(CloudSyncResult)> cb)
 {
-    PostTask([this, cb = std::move(cb)]() mutable
+    PostTransferTask([this, cb = std::move(cb)]() mutable
     {
         auto res = SyncCloudSave();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
 DailyInfoResult APIClient::FetchDailyChallenge(const std::string& dateUtc8, int limit)
 {
     DailyInfoResult out;
+    const int safeLimit          = std::max(1, limit);
     const std::string targetDate = dateUtc8.empty() ? sakura::game::GetCurrentDateUtc8() : dateUtc8;
-    const std::string path = "/api/v1/daily?date=" + UrlEncode(targetDate)
-        + "&limit=" + std::to_string(std::max(1, limit));
+    const std::string cacheKey   = "daily:" + targetDate;
+    auto& cache                  = MutableOnlineCache();
+    const CacheLookupResult cached = cache.Lookup(cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
 
-    const auto res = IsAuthenticated()
-        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
-        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    auto parseDailyJson = [&targetDate, safeLimit](const std::string& bodyText) -> DailyInfoResult
+    {
+        DailyInfoResult parsed;
+        try
+        {
+            const auto j = nlohmann::json::parse(bodyText);
+            if (!j.value("ok", false))
+            {
+                parsed.error = JsonStringOr(j, "error", "获取每日挑战失败");
+                return parsed;
+            }
+
+            const nlohmann::json& d = (j.contains("daily") && j["daily"].is_object())
+                ? j["daily"]
+                : ((j.contains("challenge") && j["challenge"].is_object())
+                    ? j["challenge"]
+                    : ((j.contains("spec") && j["spec"].is_object()) ? j["spec"] : j));
+
+            parsed.ok                   = true;
+            parsed.offlineFallback      = false;
+            parsed.spec.dateUtc8        = JsonStringOr(d, "date", targetDate);
+            parsed.spec.chartId         = JsonStringOr(d, "chart_id", "");
+            parsed.spec.chartTitle      = JsonStringOr(d, "chart_title", "");
+            parsed.spec.difficultyName  = (d.contains("difficulty") && d["difficulty"].is_string())
+                ? d["difficulty"].get<std::string>()
+                : JsonStringOr(d, "difficulty_name", "Hard");
+            parsed.spec.difficultyLevel = d.value("difficulty_level", 7.0f);
+            parsed.spec.goalText        = JsonStringOr(d, "goal_text", "");
+            parsed.spec.targetScore     = d.value("target_score", 950000);
+
+            const nlohmann::json& lbJson = (j.contains("leaderboard") && j["leaderboard"].is_object())
+                ? j["leaderboard"]
+                : ((j.contains("entries") || j.contains("my_rank")) ? j : d);
+
+            parsed.leaderboard.ok = true;
+            if (lbJson.contains("my_rank") && lbJson["my_rank"].is_number_integer())
+                parsed.leaderboard.myRank = lbJson["my_rank"].get<int>();
+            else if (j.contains("my_rank") && j["my_rank"].is_number_integer())
+                parsed.leaderboard.myRank = j["my_rank"].get<int>();
+
+            if (lbJson.contains("entries") && lbJson["entries"].is_array())
+            {
+                for (const auto& item : lbJson["entries"])
+                {
+                    if (static_cast<int>(parsed.leaderboard.entries.size()) >= safeLimit)
+                        break;
+                    parsed.leaderboard.entries.push_back(ParseLeaderboardRowJson(item));
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            parsed.ok    = false;
+            parsed.error = std::string("每日挑战响应解析失败: ") + e.what();
+        }
+        return parsed;
+    };
+
+    if (cached.found && !cached.isStale && !cached.payloadJson.empty())
+    {
+        DailyInfoResult parsed = parseDailyJson(cached.payloadJson);
+        if (parsed.ok)
+            return parsed;
+    }
+
+    const std::string path = "/api/v1/daily?date=" + UrlEncode(targetDate)
+        + "&limit=" + std::to_string(safeLimit);
+
+    HttpRequest req = MakeRequest("GET", path, {}, IsAuthenticated());
+    if (cached.found && cached.isStale && !cached.etag.empty())
+    {
+        req.headers.emplace_back("If-None-Match", cached.etag);
+    }
+
+    const HttpResponse res = IsAuthenticated()
+        ? SendWithAuthRetry(std::move(req))
+        : GetTransport()->Send(req);
+
+    if (res.IsNotModified() && cached.found && !cached.payloadJson.empty())
+    {
+        if (!IsAuthenticated())
+            m_status.store(OnlineStatus::Online);
+        cache.TouchFresh(cacheKey);
+        DailyInfoResult parsed = parseDailyJson(cached.payloadJson);
+        if (parsed.ok)
+            return parsed;
+    }
+
     if (res.IsNetworkError() || res.statusCode >= 500 || res.statusCode == 404)
     {
         if (res.IsNetworkError() || res.statusCode >= 500)
             MarkOfflinePreserveSession();
+        if (cached.found && !cached.payloadJson.empty())
+        {
+            DailyInfoResult fallback = parseDailyJson(cached.payloadJson);
+            if (fallback.ok)
+            {
+                fallback.offlineFallback = true;
+                return fallback;
+            }
+        }
         out.ok              = true;
         out.offlineFallback = true;
         out.spec            = sakura::game::ComputeOfflineDailyChallenge(targetDate);
@@ -2393,67 +3303,32 @@ DailyInfoResult APIClient::FetchDailyChallenge(const std::string& dateUtc8, int 
     }
 
     m_status.store(OnlineStatus::Online);
-    try
+    if (!res.IsSuccess())
     {
-        const auto j = nlohmann::json::parse(res.body);
-        if (!res.IsSuccess() || !j.value("ok", false))
+        try
         {
-            out.error = JsonStringOr(j, "error", "获取每日挑战失败");
-            return out;
+            const auto j = nlohmann::json::parse(res.body);
+            out.error    = JsonStringOr(j, "error", "获取每日挑战失败");
         }
-
-        const nlohmann::json& d = (j.contains("daily") && j["daily"].is_object())
-            ? j["daily"]
-            : ((j.contains("challenge") && j["challenge"].is_object())
-                ? j["challenge"]
-                : ((j.contains("spec") && j["spec"].is_object()) ? j["spec"] : j));
-
-        out.ok                   = true;
-        out.offlineFallback      = false;
-        out.spec.dateUtc8        = JsonStringOr(d, "date", targetDate);
-        out.spec.chartId         = JsonStringOr(d, "chart_id", "");
-        out.spec.chartTitle      = JsonStringOr(d, "chart_title", "");
-        out.spec.difficultyName  = (d.contains("difficulty") && d["difficulty"].is_string())
-            ? d["difficulty"].get<std::string>()
-            : JsonStringOr(d, "difficulty_name", "Hard");
-        out.spec.difficultyLevel = d.value("difficulty_level", 7.0f);
-        out.spec.goalText        = JsonStringOr(d, "goal_text", "");
-        out.spec.targetScore     = d.value("target_score", 950000);
-
-        const nlohmann::json& lbJson = (j.contains("leaderboard") && j["leaderboard"].is_object())
-            ? j["leaderboard"]
-            : ((j.contains("entries") || j.contains("my_rank")) ? j : d);
-
-        out.leaderboard.ok = true;
-        if (lbJson.contains("my_rank") && lbJson["my_rank"].is_number_integer())
-            out.leaderboard.myRank = lbJson["my_rank"].get<int>();
-        else if (j.contains("my_rank") && j["my_rank"].is_number_integer())
-            out.leaderboard.myRank = j["my_rank"].get<int>();
-
-        if (lbJson.contains("entries") && lbJson["entries"].is_array())
+        catch (...)
         {
-            for (const auto& item : lbJson["entries"])
-                out.leaderboard.entries.push_back(ParseLeaderboardRowJson(item));
+            out.error = "获取每日挑战失败";
         }
         return out;
     }
-    catch (const std::exception& e)
+
+    DailyInfoResult parsed = parseDailyJson(res.body);
+    if (parsed.ok)
     {
-        out.ok    = false;
-        out.error = std::string("每日挑战响应解析失败: ") + e.what();
-        return out;
+        cache.Put(cacheKey, res.body, ExtractETagHeader(res));
     }
+    return parsed;
 }
 
 DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
                                                    const sakura::game::GameResult& result)
 {
     DailyScoreSubmitResult out;
-    if (!IsAuthenticated())
-    {
-        out.error = "请先登录在线账号后再提交每日挑战成绩";
-        return out;
-    }
     if (result.assisted)
     {
         out.error = "辅助演奏不计入每日挑战排行榜";
@@ -2464,8 +3339,11 @@ DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
     const int totalJudged = result.totalJudgments > 0
         ? result.totalJudgments
         : (result.perfectCount + result.greatCount + result.goodCount + result.badCount + result.missCount);
+    const std::string subHash  = ComputeGameResultSubmissionHash(result);
+    const std::string dedupeId = "daily:" + targetDate + ":" + subHash;
 
     nlohmann::json payload = {
+        { "client_submission_id", dedupeId },
         { "date", targetDate },
         { "chart_id", result.chartId },
         { "chart_title", result.chartTitle },
@@ -2489,15 +3367,28 @@ DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
         { "playback_rate", result.playbackRate }
     };
 
+    if (!result.replayFile.empty())
+        payload["replay_file"] = result.replayFile;
     const std::string replayRaw = ReadWholeFileUtf8(result.replayFile);
     if (!replayRaw.empty())
         payload["replay_data"] = replayRaw;
 
-    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/daily/scores", payload.dump(), true));
+    const std::string bodyStr = payload.dump();
+    if (!IsAuthenticated())
+    {
+        MutableOfflineQueue().Enqueue(PendingActionType::DailyScore, bodyStr, targetDate, dedupeId);
+        out.queuedOffline = true;
+        out.error         = "未登录，每日挑战成绩已缓存至待同步队列";
+        return out;
+    }
+
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/daily/scores", bodyStr, true));
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
         MarkOfflinePreserveSession();
-        out.error = res.error.empty() ? "离线：无法提交每日挑战成绩" : res.error;
+        MutableOfflineQueue().Enqueue(PendingActionType::DailyScore, bodyStr, targetDate, dedupeId);
+        out.queuedOffline = true;
+        out.error         = "网络离线，每日挑战成绩已加入待同步队列";
         return out;
     }
 
@@ -2515,6 +3406,8 @@ DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
         out.newBest = (j.contains("new_best") && j["new_best"].is_boolean())
             ? j["new_best"].get<bool>()
             : j.value("new_best", false);
+        MutableOnlineCache().MarkStale("daily:");
+
         const bool hasTotalPP      = j.contains("total_pp") && j["total_pp"].is_number();
         const bool hasSakuraRating = j.contains("sakura_rating") && j["sakura_rating"].is_number();
         if (hasTotalPP || hasSakuraRating)
@@ -2642,6 +3535,14 @@ ArenaRoomState ParseArenaRoomJson(const nlohmann::json& r)
     room.chartHash       = SafeJsonStringOr(r, "chart_hash", "");
     room.startedAt       = JsonInt64Or(r, "started_at", 0LL);
     room.updatedAt       = JsonInt64Or(r, "updated_at", 0LL);
+    room.revision        = JsonIntOr(r, "revision", 0);
+    room.marketChartId   = r.contains("market_chart_id")
+        ? SafeJsonStringOr(r, "market_chart_id", "")
+        : SafeJsonStringOr(r, "marketChartId", "");
+    const long long rawPkgSize = r.contains("package_size")
+        ? JsonInt64Or(r, "package_size", 0LL)
+        : JsonInt64Or(r, "packageSize", 0LL);
+    room.packageSize = static_cast<std::size_t>(std::max(0LL, rawPkgSize));
 
     if (r.contains("players") && r["players"].is_array())
     {
@@ -2650,19 +3551,46 @@ ArenaRoomState ParseArenaRoomJson(const nlohmann::json& r)
             if (!p.is_object())
                 continue;
             ArenaPlayerState ps;
-            ps.userId    = SafeJsonStringOr(p, "user_id", "");
-            ps.username  = SafeJsonStringOr(p, "username", "");
-            ps.danBadge  = SafeJsonStringOr(p, "dan_badge", "");
-            ps.isHost    = JsonBoolOr(p, "is_host", false);
-            ps.ready     = JsonBoolOr(p, "ready", false);
-            ps.finished  = JsonBoolOr(p, "finished", false);
-            ps.score     = JsonIntOr(p, "score", 0);
-            ps.accuracy  = JsonFloatOr(p, "accuracy", 0.0f);
-            ps.combo     = JsonIntOr(p, "combo", 0);
-            ps.maxCombo  = JsonIntOr(p, "max_combo", 0);
-            ps.grade     = SafeJsonStringOr(p, "grade", "D");
-            ps.placement = JsonIntOr(p, "placement", 0);
+            ps.userId     = SafeJsonStringOr(p, "user_id", "");
+            ps.username   = SafeJsonStringOr(p, "username", "");
+            ps.danBadge   = SafeJsonStringOr(p, "dan_badge", "");
+            ps.isHost     = JsonBoolOr(p, "is_host", false);
+            ps.ready      = JsonBoolOr(p, "ready", false);
+            ps.finished   = JsonBoolOr(p, "finished", false);
+            ps.score      = JsonIntOr(p, "score", 0);
+            ps.accuracy   = JsonFloatOr(p, "accuracy", 0.0f);
+            ps.combo      = JsonIntOr(p, "combo", 0);
+            ps.maxCombo   = JsonIntOr(p, "max_combo", 0);
+            ps.grade      = SafeJsonStringOr(p, "grade", "D");
+            ps.placement  = JsonIntOr(p, "placement", 0);
+            ps.connected  = JsonBoolOr(p, "connected", true);
+            ps.lastSeenAt = p.contains("last_seen_at")
+                ? JsonInt64Or(p, "last_seen_at", 0LL)
+                : JsonInt64Or(p, "lastSeenAt", 0LL);
             room.players.push_back(std::move(ps));
+        }
+    }
+
+    if (r.contains("messages") && r["messages"].is_array())
+    {
+        for (const auto& m : r["messages"])
+        {
+            if (!m.is_object())
+                continue;
+            ArenaChatMessage msg;
+            msg.id       = JsonIntOr(m, "id", 0);
+            msg.userId   = m.contains("user_id")
+                ? SafeJsonStringOr(m, "user_id", "")
+                : SafeJsonStringOr(m, "userId", "");
+            msg.username = SafeJsonStringOr(m, "username", "");
+            msg.phraseId = m.contains("phrase_id")
+                ? JsonIntOr(m, "phrase_id", 0)
+                : JsonIntOr(m, "phraseId", 0);
+            msg.text   = SafeJsonStringOr(m, "text", "");
+            msg.sentAt = m.contains("sent_at")
+                ? JsonInt64Or(m, "sent_at", 0LL)
+                : JsonInt64Or(m, "sentAt", 0LL);
+            room.messages.push_back(std::move(msg));
         }
     }
     return room;
@@ -2671,7 +3599,9 @@ ArenaRoomState ParseArenaRoomJson(const nlohmann::json& r)
 ArenaRoomResult ParseArenaRoomResponse(const HttpResponse& res,
                                        const std::function<void()>& onTransientOffline,
                                        const std::function<void()>& onOnlineReachable,
-                                       const char* fallbackError)
+                                       const char* fallbackError,
+                                       int sinceRevision = 0,
+                                       const std::string& fallbackCode = {})
 {
     ArenaRoomResult out;
     if (res.IsNetworkError() || res.statusCode >= 500)
@@ -2682,12 +3612,33 @@ ArenaRoomResult ParseArenaRoomResponse(const HttpResponse& res,
     }
 
     onOnlineReachable();
+    if (res.IsNotModified())
+    {
+        out.ok            = true;
+        out.unchanged     = true;
+        out.room.code     = fallbackCode;
+        out.room.revision = sinceRevision;
+        return out;
+    }
+
     try
     {
         const auto j = nlohmann::json::parse(res.body);
         if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
         {
             out.error = SafeJsonStringOr(j, "error", fallbackError);
+            return out;
+        }
+        if (JsonBoolOr(j, "unchanged", false))
+        {
+            out.ok        = true;
+            out.unchanged = true;
+            if (j.contains("room") && j["room"].is_object())
+                out.room = ParseArenaRoomJson(j["room"]);
+            if (out.room.code.empty())
+                out.room.code = SafeJsonStringOr(j, "code", fallbackCode);
+            if (out.room.revision == 0)
+                out.room.revision = JsonIntOr(j, "revision", sinceRevision);
             return out;
         }
         const nlohmann::json& roomJson = (j.contains("room") && j["room"].is_object()) ? j["room"] : j;
@@ -2709,9 +3660,10 @@ ArenaRoomResult APIClient::CreateArenaRoom(const std::string& roomName,
                                            const std::string& chartTitle,
                                            const std::string& difficulty,
                                            float difficultyLevel,
-                                           const std::string& chartHash)
+                                           const std::string& chartHash,
+                                           const std::string& marketChartId)
 {
-    const nlohmann::json body = {
+    nlohmann::json body = {
         { "name", roomName },
         { "chart_id", chartId },
         { "chart_title", chartTitle },
@@ -2719,6 +3671,8 @@ ArenaRoomResult APIClient::CreateArenaRoom(const std::string& roomName,
         { "difficulty_level", difficultyLevel },
         { "chart_hash", chartHash }
     };
+    if (!marketChartId.empty())
+        body["market_chart_id"] = marketChartId;
     const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/rooms", body.dump(), true));
     return ParseArenaRoomResponse(
         res,
@@ -2828,7 +3782,8 @@ ArenaRoomResult APIClient::SelectArenaChart(const std::string& code,
                                             const std::string& chartTitle,
                                             const std::string& difficulty,
                                             float difficultyLevel,
-                                            const std::string& chartHash)
+                                            const std::string& chartHash,
+                                            const std::string& marketChartId)
 {
     const std::string trimmed = TrimRoomCode(code);
     if (trimmed.empty())
@@ -2837,13 +3792,15 @@ ArenaRoomResult APIClient::SelectArenaChart(const std::string& code,
         out.error = "房间码不能为空";
         return out;
     }
-    const nlohmann::json body = {
+    nlohmann::json body = {
         { "chart_id", chartId },
         { "chart_title", chartTitle },
         { "difficulty", difficulty },
         { "difficulty_level", difficultyLevel },
         { "chart_hash", chartHash }
     };
+    if (!marketChartId.empty())
+        body["market_chart_id"] = marketChartId;
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/select";
     const auto res = SendWithAuthRetry(MakeRequest("POST", path, body.dump(), true));
     return ParseArenaRoomResponse(
@@ -2907,7 +3864,7 @@ ArenaRoomResult APIClient::ReportArenaProgress(const std::string& code,
         "同步对战进度失败");
 }
 
-ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code)
+ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code, int sinceRevision)
 {
     const std::string trimmed = TrimRoomCode(code);
     if (trimmed.empty())
@@ -2916,15 +3873,41 @@ ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code)
         out.error = "房间码不能为空";
         return out;
     }
-    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/state";
+    std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/state";
+    if (sinceRevision > 0)
+        path += "?since_revision=" + std::to_string(sinceRevision);
+
     const auto res = IsAuthenticated()
         ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
         : GetTransport()->Send(MakeRequest("GET", path, {}, false));
     return ParseArenaRoomResponse(
         res,
         [this]() { MarkOfflinePreserveSession(); },
-        [this, &res]() { if (res.IsSuccess() && IsAuthenticated()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
-        "获取对战房间状态失败");
+        [this, &res]() { if ((res.IsSuccess() || res.IsNotModified()) && IsAuthenticated()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "获取对战房间状态失败",
+        sinceRevision,
+        trimmed);
+}
+
+ArenaRoomResult APIClient::SendArenaChat(const std::string& code, int phraseId)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const nlohmann::json body = {
+        { "phrase_id", phraseId }
+    };
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/chat";
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "发送快捷短语失败");
 }
 
 void APIClient::CreateArenaRoomAsync(const std::string& roomName, const std::string& chartId,
@@ -2932,10 +3915,20 @@ void APIClient::CreateArenaRoomAsync(const std::string& roomName, const std::str
                                      float difficultyLevel, const std::string& chartHash,
                                      std::function<void(ArenaRoomResult)> cb)
 {
-    PostTask([this, roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash, cb = std::move(cb)]() mutable
+    CreateArenaRoomAsync(roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash, std::string{}, std::move(cb));
+}
+
+void APIClient::CreateArenaRoomAsync(const std::string& roomName, const std::string& chartId,
+                                     const std::string& chartTitle, const std::string& difficulty,
+                                     float difficultyLevel, const std::string& chartHash,
+                                     const std::string& marketChartId,
+                                     std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash, marketChartId, cb = std::move(cb)]() mutable
     {
-        auto res = CreateArenaRoom(roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        auto res = CreateArenaRoom(roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash, marketChartId);
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2944,7 +3937,8 @@ void APIClient::ListArenaRoomsAsync(std::function<void(ArenaRoomListResult)> cb)
     PostTask([this, cb = std::move(cb)]() mutable
     {
         auto res = ListArenaRooms();
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2953,7 +3947,8 @@ void APIClient::JoinArenaRoomAsync(const std::string& code, std::function<void(A
     PostTask([this, code, cb = std::move(cb)]() mutable
     {
         auto res = JoinArenaRoom(code);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2962,7 +3957,8 @@ void APIClient::LeaveArenaRoomAsync(const std::string& code, std::function<void(
     PostTask([this, code, cb = std::move(cb)]() mutable
     {
         const bool ok = LeaveArenaRoom(code);
-        if (cb) PostMainCallback([cb = std::move(cb), ok]() mutable { cb(ok); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), ok]() mutable { cb(ok); });
     });
 }
 
@@ -2971,10 +3967,20 @@ void APIClient::SelectArenaChartAsync(const std::string& code, const std::string
                                       float difficultyLevel, const std::string& chartHash,
                                       std::function<void(ArenaRoomResult)> cb)
 {
-    PostTask([this, code, chartId, chartTitle, difficulty, difficultyLevel, chartHash, cb = std::move(cb)]() mutable
+    SelectArenaChartAsync(code, chartId, chartTitle, difficulty, difficultyLevel, chartHash, std::string{}, std::move(cb));
+}
+
+void APIClient::SelectArenaChartAsync(const std::string& code, const std::string& chartId,
+                                      const std::string& chartTitle, const std::string& difficulty,
+                                      float difficultyLevel, const std::string& chartHash,
+                                      const std::string& marketChartId,
+                                      std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, chartId, chartTitle, difficulty, difficultyLevel, chartHash, marketChartId, cb = std::move(cb)]() mutable
     {
-        auto res = SelectArenaChart(code, chartId, chartTitle, difficulty, difficultyLevel, chartHash);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        auto res = SelectArenaChart(code, chartId, chartTitle, difficulty, difficultyLevel, chartHash, marketChartId);
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2984,7 +3990,8 @@ void APIClient::SetArenaReadyAsync(const std::string& code, bool ready, bool sta
     PostTask([this, code, ready, startMatch, cb = std::move(cb)]() mutable
     {
         auto res = SetArenaReady(code, ready, startMatch);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
@@ -2995,16 +4002,31 @@ void APIClient::ReportArenaProgressAsync(const std::string& code, int score, flo
     PostTask([this, code, score, accuracy, combo, maxCombo, grade, finished, cb = std::move(cb)]() mutable
     {
         auto res = ReportArenaProgress(code, score, accuracy, combo, maxCombo, grade, finished);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 
-void APIClient::FetchArenaRoomStateAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb)
+void APIClient::FetchArenaRoomStateAsync(const std::string& code,
+                                         std::function<void(ArenaRoomResult)> cb,
+                                         int sinceRevision)
 {
-    PostTask([this, code, cb = std::move(cb)]() mutable
+    PostTask([this, code, sinceRevision, cb = std::move(cb)]() mutable
     {
-        auto res = FetchArenaRoomState(code);
-        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+        auto res = FetchArenaRoomState(code, sinceRevision);
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::SendArenaChatAsync(const std::string& code, int phraseId,
+                                   std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, phraseId, cb = std::move(cb)]() mutable
+    {
+        auto res = SendArenaChat(code, phraseId);
+        if (cb)
+            PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 

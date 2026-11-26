@@ -55,15 +55,25 @@ constexpr float ROOM_ROW_H        = 0.096f;
 constexpr float ROOM_ROW_STRIDE   = 0.106f;
 
 // 房间内与领奖台双栏归一化布局
-constexpr NormRect ROOM_LEFT_PANEL   { 0.04f, 0.165f, 0.34f, 0.715f };
-constexpr NormRect ROOM_RIGHT_PANEL  { 0.40f, 0.165f, 0.56f, 0.715f };
+constexpr NormRect ROOM_LEFT_PANEL   { 0.04f, 0.165f, 0.34f, 0.720f };
+constexpr NormRect ROOM_RIGHT_PANEL  { 0.40f, 0.165f, 0.56f, 0.720f };
 
 constexpr int   MAX_ARENA_PLAYERS = 8;
 constexpr float PLAYER_CARD_X     = 0.418f;
-constexpr float PLAYER_CARD_Y0    = 0.228f;
+constexpr float PLAYER_CARD_Y0    = 0.218f;
 constexpr float PLAYER_CARD_W     = 0.524f;
-constexpr float PLAYER_CARD_H     = 0.072f;
-constexpr float PLAYER_CARD_STRIDE = 0.079f;
+constexpr float PLAYER_CARD_H     = 0.054f;
+constexpr float PLAYER_CARD_STRIDE = 0.058f;
+
+constexpr int kQuickPhraseCount = 6;
+constexpr const char* kQuickPhraseLabels[kQuickPhraseCount] = {
+    "请多指教！",
+    "准备好了，随时开局！",
+    "稍等，正在同步房间谱面~",
+    "这首定数好高，手下留情！",
+    "精彩演奏！",
+    "再来一局！"
+};
 
 // 选曲按钮在大厅态与房间态的归一化矩形
 constexpr NormRect LOBBY_PREV_SONG_RECT { 0.590f, 0.514f, 0.042f, 0.050f };
@@ -109,6 +119,53 @@ std::string FmtFloat(double val, int prec = 1)
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(prec) << val;
     return oss.str();
+}
+
+std::string FmtBytes(std::size_t bytes)
+{
+    if (bytes >= 1024ULL * 1024ULL)
+        return FmtFloat(static_cast<double>(bytes) / (1024.0 * 1024.0), 2) + " MB";
+    if (bytes >= 1024ULL)
+        return FmtFloat(static_cast<double>(bytes) / 1024.0, 1) + " KB";
+    return std::to_string(bytes) + " B";
+}
+
+const char* QuickPhraseById(int phraseId)
+{
+    if (phraseId >= 0 && phraseId < kQuickPhraseCount)
+        return kQuickPhraseLabels[phraseId];
+    return kQuickPhraseLabels[0];
+}
+
+template <typename MsgT>
+std::string ExtractArenaChatUser(const MsgT& msg)
+{
+    if constexpr (requires { msg.username; })
+    {
+        if (!msg.username.empty())
+            return msg.username;
+    }
+    if constexpr (requires { msg.userId; })
+    {
+        if (!msg.userId.empty())
+            return msg.userId;
+    }
+    return "Player";
+}
+
+template <typename MsgT>
+std::string ExtractArenaChatText(const MsgT& msg)
+{
+    if constexpr (requires { msg.text; })
+    {
+        if (!msg.text.empty())
+            return msg.text;
+    }
+    if constexpr (requires { msg.phraseId; })
+    {
+        return QuickPhraseById(static_cast<int>(msg.phraseId));
+    }
+    return {};
 }
 
 std::string FormatScore(int score)
@@ -291,8 +348,14 @@ void SceneArena::OnEnter()
     m_font           = ResourceManager::GetInstance().GetDefaultFontHandle();
     m_time           = 0.0f;
     m_pollTimer      = 0.0f;
+    m_chatCooldown   = 0.0f;
     m_busy           = false;
     m_launchingMatch = false;
+    m_chartSyncing   = false;
+    m_chartSyncProgress     = 0.0f;
+    m_roomChartCheckKey.clear();
+    m_roomChartMissing      = false;
+    m_roomChartHashMismatch = false;
     m_currentRoom.reset();
     m_rooms.clear();
     m_selectedRoomRow = 0;
@@ -301,29 +364,9 @@ void SceneArena::OnEnter()
     m_petalEmitter = m_particles.EmitContinuous(
         0.5f, -0.02f, 2.8f, sakura::effects::ParticlePresets::SakuraPetal());
 
-    // 扫描本地内置谱面 + 用户自制/市场安装谱面
-    ChartLoader loader;
-    m_charts = loader.ScanCharts("resources/charts");
-    auto userCharts = loader.ScanCharts(Paths::User("charts"));
-    for (auto& c : userCharts)
-    {
-        auto existing = std::find_if(m_charts.begin(), m_charts.end(),
-            [&](const ChartInfo& other) { return !c.id.empty() && other.id == c.id; });
-        if (existing == m_charts.end())
-            m_charts.push_back(std::move(c));
-        else
-            *existing = std::move(c);
-    }
-    std::stable_sort(m_charts.begin(), m_charts.end(), [](const ChartInfo& a, const ChartInfo& b)
-    {
-        const std::string& ta = a.title.empty() ? a.id : a.title;
-        const std::string& tb = b.title.empty() ? b.id : b.title;
-        if (ta != tb) return ta < tb;
-        return a.id < b.id;
-    });
-
     m_selectedChartIdx = 0;
     m_selectedDiffIdx  = 0;
+    RescanLocalCharts();
     if (!m_charts.empty())
     {
         const std::string lastChart = Config::GetInstance().Get<std::string>("library.last_chart", "");
@@ -433,6 +476,23 @@ void SceneArena::OnEnter()
     m_btnReadyOrStart = MakeBtn({ 0.72f, 0.904f, 0.24f, 0.054f }, "✦ 准备就绪  /  READY", m_font,
         [this]() { ToggleReadyOrStart(); }, ButtonVariant::Primary, 0.0205f);
 
+    // 6 条预设快捷短语紧凑按钮（3 列 x 2 行）
+    for (int i = 0; i < kQuickPhraseCount; ++i)
+    {
+        const int col = i % 3;
+        const int row = i / 3;
+        const NormRect phraseRect{
+            0.4180f + static_cast<float>(col) * 0.1773f,
+            0.8000f + static_cast<float>(row) * 0.0380f,
+            0.1693f,
+            0.0325f
+        };
+        m_chatButtons[static_cast<std::size_t>(i)] = MakeBtn(
+            phraseRect, kQuickPhraseLabels[i], m_font,
+            [this, i]() { SendQuickChat(i); },
+            ButtonVariant::Secondary, 0.0130f);
+    }
+
     // 优先检查持久化身份四态：绝不覆盖离线保活或过期会话为临时 SakuraPlayer
     auto& api = APIClient::GetInstance();
     const AuthState enterAuthState = api.GetAuthState();
@@ -487,6 +547,7 @@ void SceneArena::OnEnter()
                 m_statusText = (m_currentRoom->status == "finished")
                     ? "全员完赛 · 赛果领奖台已揭晓"
                     : ("已同步房间 [" + m_currentRoom->code + "] 实时状态");
+                UpdateRoomChartSyncState(*m_currentRoom);
                 TryLaunchArenaMatch(*m_currentRoom);
             }
             else
@@ -495,7 +556,7 @@ void SceneArena::OnEnter()
                 m_initialRoomCode.clear();
                 RefreshLobby();
             }
-        });
+        }, 0);
     }
     else
     {
@@ -530,6 +591,220 @@ void SceneArena::OnExit()
     m_btnNextDiff.reset();
     m_btnApplyChart.reset();
     m_btnReadyOrStart.reset();
+    for (auto& btn : m_chatButtons)
+        btn.reset();
+}
+
+void SceneArena::RescanLocalCharts()
+{
+    ChartLoader loader;
+    m_charts = loader.ScanCharts("resources/charts");
+    auto userCharts = loader.ScanCharts(Paths::User("charts"));
+    for (auto& c : userCharts)
+    {
+        auto existing = std::find_if(m_charts.begin(), m_charts.end(),
+            [&](const ChartInfo& other) { return !c.id.empty() && other.id == c.id; });
+        if (existing == m_charts.end())
+            m_charts.push_back(std::move(c));
+        else
+            *existing = std::move(c);
+    }
+    std::stable_sort(m_charts.begin(), m_charts.end(), [](const ChartInfo& a, const ChartInfo& b)
+    {
+        const std::string& ta = a.title.empty() ? a.id : a.title;
+        const std::string& tb = b.title.empty() ? b.id : b.title;
+        if (ta != tb) return ta < tb;
+        return a.id < b.id;
+    });
+
+    if (!m_charts.empty())
+    {
+        m_selectedChartIdx = std::clamp(m_selectedChartIdx, 0, static_cast<int>(m_charts.size()) - 1);
+        if (!m_charts[m_selectedChartIdx].difficulties.empty())
+        {
+            m_selectedDiffIdx = std::clamp(
+                m_selectedDiffIdx, 0, static_cast<int>(m_charts[m_selectedChartIdx].difficulties.size()) - 1);
+        }
+        else
+        {
+            m_selectedDiffIdx = 0;
+        }
+    }
+    else
+    {
+        m_selectedChartIdx = 0;
+        m_selectedDiffIdx  = 0;
+    }
+}
+
+void SceneArena::UpdateRoomChartSyncState(const sakura::net::ArenaRoomState& room)
+{
+    const std::string checkKey = room.chartId + "\n" + room.chartTitle + "\n" + room.difficulty + "\n" +
+        FmtFloat(room.difficultyLevel, 1) + "\n" + room.chartHash + "\n" + room.marketChartId + "\n" +
+        std::to_string(m_charts.size());
+    if (checkKey == m_roomChartCheckKey)
+        return;
+
+    m_roomChartCheckKey     = checkKey;
+    m_roomChartMissing      = false;
+    m_roomChartHashMismatch = false;
+
+    const ChartInfo* localChart = FindChartInList(m_charts, room.chartId, room.chartTitle);
+    if (!localChart)
+    {
+        m_roomChartMissing = true;
+    }
+    else if (!room.marketChartId.empty() && !room.chartHash.empty() && !localChart->difficulties.empty())
+    {
+        int dIdx = ResolveMatchingDifficultyIndex(*localChart, room.difficulty, room.difficultyLevel);
+        dIdx = std::clamp(dIdx, 0, static_cast<int>(localChart->difficulties.size()) - 1);
+        const std::string localHash = ComputeSelectedChartHash(*localChart, &localChart->difficulties[dIdx]);
+        if (!localHash.empty() && localHash != room.chartHash)
+            m_roomChartHashMismatch = true;
+    }
+
+    const auto me = APIClient::GetInstance().GetCurrentUser();
+    if (!IsCurrentUserRoomHost(room, me) && !m_chartSyncing)
+    {
+        if (m_roomChartMissing || m_roomChartHashMismatch)
+        {
+            if (!room.marketChartId.empty())
+            {
+                m_statusText = m_roomChartHashMismatch
+                    ? "本地谱面版本与房主不一致 · 点击右下角一键同步房间谱面"
+                    : "本地缺少房主所选谱面，可从谱面市场直接同步";
+            }
+            else
+            {
+                m_statusText = "房主使用的是未发布自制谱，请让房主先发布至谱面市场或更换曲目";
+            }
+        }
+    }
+}
+
+void SceneArena::StartRoomChartSync()
+{
+    if (!m_currentRoom.has_value() || m_chartSyncing || m_launchingMatch)
+        return;
+
+    const auto& room = *m_currentRoom;
+    auto& api        = APIClient::GetInstance();
+    if (IsCurrentUserRoomHost(room, api.GetCurrentUser()))
+        return;
+
+    if (room.marketChartId.empty())
+    {
+        m_statusText = "房主使用的是未发布自制谱，请让房主先发布至谱面市场或更换曲目";
+        ToastManager::Instance().Show(m_statusText, ToastType::Warning, 3.8f);
+        return;
+    }
+
+    const std::string code          = room.code;
+    const std::string marketChartId = room.marketChartId;
+    const std::string songTitle     = room.chartTitle.empty() ? room.chartId : room.chartTitle;
+
+    m_chartSyncing      = true;
+    m_chartSyncProgress = 0.0f;
+    m_statusText        = "正在同步房间谱面「" + songTitle + "」... 0%";
+
+    auto alive = m_alive;
+    api.SendArenaChatAsync(code, 2, [this, alive, code](auto chatRes)
+    {
+        if (!*alive) return;
+        if constexpr (requires { chatRes.ok; chatRes.room; })
+        {
+            if (chatRes.ok && m_currentRoom.has_value() && m_currentRoom->code == code && !chatRes.room.code.empty())
+                m_currentRoom = std::move(chatRes.room);
+        }
+    });
+
+    api.DownloadMarketChartByIdAsync(
+        marketChartId,
+        Paths::User("charts"),
+        [this, alive, songTitle](float progress)
+        {
+            if (!*alive) return;
+            m_chartSyncProgress = std::clamp(progress, 0.0f, 1.0f);
+            const int pct = std::clamp(static_cast<int>(std::lround(m_chartSyncProgress * 100.0f)), 0, 100);
+            m_statusText = "正在同步房间谱面「" + songTitle + "」... " + std::to_string(pct) + "%";
+        },
+        [this, alive, songTitle](auto res)
+        {
+            if (!*alive) return;
+            m_chartSyncing = false;
+            if (!res.ok)
+            {
+                m_chartSyncProgress = 0.0f;
+                m_statusText = "同步房间谱面失败：" + res.error;
+                ToastManager::Instance().Show("谱面同步失败：" + res.error, ToastType::Error, 3.8f);
+                return;
+            }
+
+            m_chartSyncProgress = 1.0f;
+            m_roomChartCheckKey.clear();
+            RescanLocalCharts();
+            if (m_currentRoom.has_value())
+            {
+                UpdateRoomChartSyncState(*m_currentRoom);
+                for (int i = 0; i < static_cast<int>(m_charts.size()); ++i)
+                {
+                    if (m_charts[i].id == m_currentRoom->chartId)
+                    {
+                        m_selectedChartIdx = i;
+                        m_selectedDiffIdx  = ResolveMatchingDifficultyIndex(
+                            m_charts[i], m_currentRoom->difficulty, m_currentRoom->difficultyLevel);
+                        break;
+                    }
+                }
+                if (m_currentRoom->status == "playing" && !m_launchingMatch)
+                {
+                    TryLaunchArenaMatch(*m_currentRoom);
+                    return;
+                }
+            }
+            m_statusText = "已同步房间谱面「" + songTitle + "」· 点击右下角准备就绪";
+            ToastManager::Instance().Show("房间谱面同步完成：" + songTitle, ToastType::Success, 3.0f);
+        });
+}
+
+void SceneArena::SendQuickChat(int phraseId)
+{
+    if (!m_currentRoom.has_value() || m_launchingMatch || m_chatCooldown > 0.0f)
+        return;
+    if (phraseId < 0 || phraseId >= kQuickPhraseCount)
+        return;
+
+    const std::string code = m_currentRoom->code;
+    if (code.empty())
+        return;
+
+    m_chatCooldown = 1.5f;
+    auto alive = m_alive;
+    APIClient::GetInstance().SendArenaChatAsync(code, phraseId, [this, alive, code](auto res)
+    {
+        if (!*alive) return;
+        if constexpr (requires { res.ok; })
+        {
+            if (!res.ok)
+            {
+                if constexpr (requires { res.error; })
+                {
+                    if (!res.error.empty())
+                        ToastManager::Instance().Show("短语发送提示：" + res.error, ToastType::Warning, 2.2f);
+                }
+                return;
+            }
+        }
+        if constexpr (requires { res.unchanged; })
+        {
+            if (res.unchanged) return;
+        }
+        if constexpr (requires { res.room; })
+        {
+            if (m_currentRoom.has_value() && m_currentRoom->code == code && !res.room.code.empty())
+                m_currentRoom = std::move(res.room);
+        }
+    });
 }
 
 void SceneArena::RefreshLobby()
@@ -776,7 +1051,9 @@ void SceneArena::DoJoinRoom(const std::string& cleanCode)
                 break;
             }
         }
+        m_roomChartCheckKey.clear();
         m_statusText = "已进入房间 [" + m_currentRoom->code + "]";
+        UpdateRoomChartSyncState(*m_currentRoom);
         ToastManager::Instance().Show("已加入房间 [" + m_currentRoom->code + "]", ToastType::Success, 2.8f);
         TryLaunchArenaMatch(*m_currentRoom);
     });
@@ -790,7 +1067,13 @@ void SceneArena::LeaveCurrentRoom()
     m_currentRoom.reset();
     m_initialRoomCode.clear();
     m_pollTimer      = 0.0f;
+    m_chatCooldown   = 0.0f;
     m_launchingMatch = false;
+    m_chartSyncing   = false;
+    m_chartSyncProgress     = 0.0f;
+    m_roomChartCheckKey.clear();
+    m_roomChartMissing      = false;
+    m_roomChartHashMismatch = false;
     m_busy           = false;
     m_statusText     = "已离开房间 [" + code + "]";
 
@@ -811,6 +1094,7 @@ void SceneArena::PollRoomState()
     if (code.empty())
         return;
 
+    const auto sinceRevision = m_currentRoom->revision;
     auto alive = m_alive;
     APIClient::GetInstance().FetchArenaRoomStateAsync(code, [this, alive, code](ArenaRoomResult res)
     {
@@ -824,14 +1108,18 @@ void SceneArena::PollRoomState()
             return;
         }
 
+        if (res.unchanged)
+            return;
+
         const std::string prevStatus = m_currentRoom->status;
         m_currentRoom = std::move(res.room);
+        UpdateRoomChartSyncState(*m_currentRoom);
         if (prevStatus != "finished" && m_currentRoom->status == "finished")
             m_statusText = "全员完赛 · 赛果领奖台已揭晓";
 
         if (m_currentRoom->status == "playing" && !m_launchingMatch)
             TryLaunchArenaMatch(*m_currentRoom);
-    });
+    }, sinceRevision);
 }
 
 void SceneArena::ApplyHostChartSelection()
@@ -882,19 +1170,35 @@ void SceneArena::ApplyHostChartSelection()
 
 void SceneArena::ToggleReadyOrStart()
 {
-    if (!m_currentRoom.has_value() || m_busy || m_launchingMatch)
+    if (!m_currentRoom.has_value() || m_busy || m_launchingMatch || m_chartSyncing)
         return;
 
-    const auto& room = *m_currentRoom;
+    UpdateRoomChartSyncState(*m_currentRoom);
+    const auto& room   = *m_currentRoom;
+    auto& api          = APIClient::GetInstance();
+    const auto me      = api.GetCurrentUser();
+    const bool isHost  = IsCurrentUserRoomHost(room, me);
+
+    if (!isHost && (m_roomChartMissing || m_roomChartHashMismatch))
+    {
+        if (!room.marketChartId.empty())
+        {
+            StartRoomChartSync();
+        }
+        else
+        {
+            m_statusText = "房主使用的是未发布自制谱，请让房主先发布至谱面市场或更换曲目";
+            ToastManager::Instance().Show(m_statusText, ToastType::Warning, 3.8f);
+        }
+        return;
+    }
+
     if (room.status == "playing")
     {
         TryLaunchArenaMatch(room);
         return;
     }
 
-    auto& api          = APIClient::GetInstance();
-    const auto me      = api.GetCurrentUser();
-    const bool isHost  = IsCurrentUserRoomHost(room, me);
     const auto* meInfo = FindCurrentUserInRoom(room, me);
 
     const bool nextReady  = isHost ? true : !(meInfo && meInfo->ready);
@@ -977,6 +1281,7 @@ void SceneArena::TryLaunchArenaMatch(const sakura::net::ArenaRoomState& room)
 void SceneArena::OnUpdate(float dt)
 {
     m_time += dt;
+    m_chatCooldown = std::max(0.0f, m_chatCooldown - dt);
     m_particles.Update(dt);
 
     if (m_currentRoom.has_value())
@@ -991,12 +1296,14 @@ void SceneArena::OnUpdate(float dt)
             }
         }
 
+        UpdateRoomChartSyncState(*m_currentRoom);
         const auto& room   = *m_currentRoom;
         const auto me      = APIClient::GetInstance().GetCurrentUser();
         const bool isHost  = IsCurrentUserRoomHost(room, me);
         const auto* meInfo = FindCurrentUserInRoom(room, me);
         const bool meDone  = meInfo && meInfo->finished;
         const bool meReady = meInfo && meInfo->ready;
+        const bool needChartSync = !isHost && (m_roomChartMissing || m_roomChartHashMismatch);
 
         if (m_btnLeaveRoom)
         {
@@ -1006,7 +1313,29 @@ void SceneArena::OnUpdate(float dt)
 
         if (m_btnReadyOrStart)
         {
-            if (room.status == "playing")
+            if (!isHost && m_chartSyncing)
+            {
+                const int pct = std::clamp(static_cast<int>(std::lround(m_chartSyncProgress * 100.0f)), 0, 100);
+                m_btnReadyOrStart->SetText("同步中 " + std::to_string(pct) + "%");
+                VisualStyle::ApplyButton(m_btnReadyOrStart.get(), ButtonVariant::Accent);
+                m_btnReadyOrStart->SetEnabled(false);
+            }
+            else if (needChartSync)
+            {
+                if (!room.marketChartId.empty())
+                {
+                    m_btnReadyOrStart->SetText("⬇ 一键同步房间谱面");
+                    VisualStyle::ApplyButton(m_btnReadyOrStart.get(), ButtonVariant::Accent);
+                    m_btnReadyOrStart->SetEnabled(!m_busy && !m_launchingMatch);
+                }
+                else
+                {
+                    m_btnReadyOrStart->SetText("! 缺少未发布自制谱");
+                    VisualStyle::ApplyButton(m_btnReadyOrStart.get(), ButtonVariant::Secondary);
+                    m_btnReadyOrStart->SetEnabled(false);
+                }
+            }
+            else if (room.status == "playing")
             {
                 m_btnReadyOrStart->SetText(meDone ? "等待全员完赛结算..." : "进入对局  →");
                 VisualStyle::ApplyButton(m_btnReadyOrStart.get(), ButtonVariant::Secondary);
@@ -1030,6 +1359,14 @@ void SceneArena::OnUpdate(float dt)
                 m_btnReadyOrStart->SetEnabled(!m_busy && !m_launchingMatch);
             }
             m_btnReadyOrStart->Update(dt);
+        }
+
+        const bool canSendChat = !m_launchingMatch && m_chatCooldown <= 0.0f;
+        for (auto& btn : m_chatButtons)
+        {
+            if (!btn) continue;
+            btn->SetEnabled(canSendChat);
+            btn->Update(dt);
         }
 
         if (isHost)
@@ -1421,10 +1758,21 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
 
     renderer.DrawText(m_font, "CURRENT SONG / 当前对战课题曲", 0.072f, 0.380f, 0.0125f, kDim);
     const ChartInfo* localRoomChart = FindChartInList(m_charts, room.chartId, room.chartTitle);
-    renderer.DrawText(m_font,
-        localRoomChart ? "● 本地已安装" : "! 本地未安装",
-        0.348f, 0.380f, 0.0125f,
-        localRoomChart ? kMint : kCoral, TextAlign::Right);
+    const bool needChartSync = !isHost && (localRoomChart == nullptr || m_roomChartMissing || m_roomChartHashMismatch);
+    std::string installTag = "● 本地已安装";
+    Color installColor     = kMint;
+    if (m_chartSyncing)
+    {
+        const int pct = std::clamp(static_cast<int>(std::lround(m_chartSyncProgress * 100.0f)), 0, 100);
+        installTag   = "↻ 同步中 " + std::to_string(pct) + "%";
+        installColor = kCyan;
+    }
+    else if (needChartSync)
+    {
+        installTag   = !room.marketChartId.empty() ? "⬇ 可一键同步" : "! 未发布自制谱";
+        installColor = !room.marketChartId.empty() ? kGold : kCoral;
+    }
+    renderer.DrawText(m_font, installTag, 0.348f, 0.380f, 0.0125f, installColor, TextAlign::Right);
 
     const std::string roomSongTitle = !room.chartTitle.empty()
         ? room.chartTitle
@@ -1432,10 +1780,12 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
     VisualStyle::DrawTextFit(renderer, m_font, roomSongTitle,
         0.072f, 0.408f, 0.024f, 0.276f, kWhite);
 
-    const std::string roomSongMeta = localRoomChart
+    std::string roomSongMeta = localRoomChart
         ? ((localRoomChart->artist.empty() ? "Unknown Artist" : localRoomChart->artist) +
            "  ·  " + FmtFloat(localRoomChart->bpm, 0) + " BPM")
         : ("谱面 ID: " + room.chartId);
+    if (!localRoomChart && room.packageSize > 0)
+        roomSongMeta += "  ·  " + FmtBytes(static_cast<std::size_t>(room.packageSize));
     VisualStyle::DrawTextFit(renderer, m_font, roomSongMeta,
         0.072f, 0.448f, 0.0145f, 0.276f, kDim);
 
@@ -1510,11 +1860,46 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         renderer.DrawText(m_font, "MATCH SYNC / 对战同步指引", 0.074f, 0.584f, 0.013f, kGold);
         renderer.DrawText(m_font,
             "就绪人数：" + std::to_string(readyCount) + " / " + std::to_string(room.players.size()),
-            0.074f, 0.618f, 0.020f, kMint);
-        renderer.DrawText(m_font, "· 确认本地已安装当前课题谱面", 0.074f, 0.668f, 0.0145f, kDim);
-        renderer.DrawText(m_font, "· 点击右下角「准备就绪」等待房主开局", 0.074f, 0.706f, 0.0145f, kDim);
-        renderer.DrawText(m_font, "· 房主开局后将自动同步切入演奏舞台", 0.074f, 0.744f, 0.0145f, kDim);
-        renderer.DrawText(m_font, "· 全员完赛后揭晓金/银/铜赛果领奖台", 0.074f, 0.782f, 0.0145f, kDim);
+            0.074f, 0.616f, 0.0195f, kMint);
+
+        if (m_chartSyncing)
+        {
+            const int pct = std::clamp(static_cast<int>(std::lround(m_chartSyncProgress * 100.0f)), 0, 100);
+            renderer.DrawText(m_font,
+                "正在从谱面市场下载并校验安装包... " + std::to_string(pct) + "%",
+                0.074f, 0.658f, 0.0145f, kCyan);
+            const NormRect barBg{ 0.074f, 0.688f, 0.272f, 0.016f };
+            renderer.DrawRoundedRect(barBg, 0.008f, { 24, 30, 56, 224 }, true);
+            const float fillW = std::clamp(m_chartSyncProgress, 0.03f, 1.0f) * barBg.width;
+            renderer.DrawRoundedGradientRect(
+                { barBg.x, barBg.y, fillW, barBg.height }, 0.008f,
+                kPink, kGold, kPink, kGold);
+            renderer.DrawText(m_font, "· 下载完成后将自动重扫曲库并切换至准备态", 0.074f, 0.720f, 0.0138f, kDim);
+            renderer.DrawText(m_font, "· 已自动向房间发送同步提示短语", 0.074f, 0.756f, 0.0138f, kDim);
+        }
+        else if (needChartSync && !room.marketChartId.empty())
+        {
+            renderer.DrawText(m_font,
+                m_roomChartHashMismatch ? "! 本地谱面版本与房主不一致" : "! 本地缺少房主所选谱面，可从谱面市场同步",
+                0.074f, 0.660f, 0.0145f, kGold);
+            renderer.DrawText(m_font, "· 点击右下角「⬇ 一键同步房间谱面」自动安装", 0.074f, 0.698f, 0.0142f, kCyan);
+            renderer.DrawText(m_font, "· 同步期间将自动广播「稍等，正在同步房间谱面~」", 0.074f, 0.736f, 0.0138f, kDim);
+            renderer.DrawText(m_font, "· 安装校验完成后自动恢复「准备就绪」按钮", 0.074f, 0.774f, 0.0138f, kDim);
+        }
+        else if (needChartSync && room.marketChartId.empty())
+        {
+            renderer.DrawText(m_font, "! 房主选用了未发布的本地自制谱面", 0.074f, 0.660f, 0.0150f, kCoral);
+            renderer.DrawText(m_font, "· 该谱面尚未上架在线谱面市场，无法自动拉取", 0.074f, 0.698f, 0.0138f, kDim);
+            renderer.DrawText(m_font, "· 请提示房主先发布至谱面市场，或切换其他课题曲", 0.074f, 0.736f, 0.0138f, kGold);
+            renderer.DrawText(m_font, "· 您也可在「本地曲库 → 导入谱面」手动导入后返回", 0.074f, 0.774f, 0.0138f, kDim);
+        }
+        else
+        {
+            renderer.DrawText(m_font, "· 确认本地已安装当前课题谱面", 0.074f, 0.668f, 0.0145f, kDim);
+            renderer.DrawText(m_font, "· 点击右下角「准备就绪」等待房主开局", 0.074f, 0.706f, 0.0145f, kDim);
+            renderer.DrawText(m_font, "· 房主开局后将自动同步切入演奏舞台", 0.074f, 0.744f, 0.0145f, kDim);
+            renderer.DrawText(m_font, "· 全员完赛后揭晓金/银/铜赛果领奖台", 0.074f, 0.782f, 0.0145f, kDim);
+        }
     }
 
     // ── 右栏 ({0.40, 0.165, 0.56, 0.715})：8 人实时排名席位与赛果领奖台 ──────
@@ -1533,9 +1918,11 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
     const std::string rightHeader = (room.status == "finished")
         ? "PODIUM · 赛果领奖台最终名次"
         : ((room.status == "playing") ? "实时竞速积分榜" : "房间选手席位");
-    renderer.DrawText(m_font, rightHeader, 0.604f, 0.180f, 0.0205f, kWhite);
-    renderer.DrawText(m_font, "● 每 1.0s 自动同步", 0.942f, 0.185f, 0.0135f, kCyan, TextAlign::Right);
-    VisualStyle::DrawGildedDivider(renderer, 0.418f, 0.942f, 0.216f, 0.74f);
+    renderer.DrawText(m_font, rightHeader, 0.604f, 0.178f, 0.0200f, kWhite);
+    renderer.DrawText(m_font,
+        "● 增量同步 r" + std::to_string(room.revision),
+        0.942f, 0.183f, 0.0132f, kCyan, TextAlign::Right);
+    VisualStyle::DrawGildedDivider(renderer, 0.418f, 0.942f, 0.211f, 0.74f);
 
     const auto rankedPlayers = BuildRankedPlayers(room);
     const bool showPodiumMedals = (room.status == "finished" || room.status == "playing" ||
@@ -1549,12 +1936,12 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
 
         if (slot >= static_cast<int>(rankedPlayers.size()))
         {
-            renderer.DrawRoundedRect(card, 0.010f, { 14, 18, 36, 138 }, true);
-            renderer.DrawRoundedRectOutlineGradient(card, 0.010f,
-                { 140, 150, 192, 42 }, { 98, 108, 148, 24 }, 0.0010f);
+            renderer.DrawRoundedRect(card, 0.009f, { 14, 18, 36, 134 }, true);
+            renderer.DrawRoundedRectOutlineGradient(card, 0.009f,
+                { 140, 150, 192, 40 }, { 98, 108, 148, 22 }, 0.0010f);
             renderer.DrawText(m_font,
                 "#" + std::to_string(slot + 1) + "   空置席位 · 等待选手加入",
-                card.x + 0.018f, rowY + 0.025f, 0.0155f, Color{ 132, 142, 172, 148 });
+                card.x + 0.016f, rowY + 0.017f, 0.0142f, Color{ 132, 142, 172, 144 });
             continue;
         }
 
@@ -1599,62 +1986,84 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         }
 
         VisualStyle::DrawGlassCard(renderer, card,
-            topTint, botTint, topBorder, botBorder, 0.011f, rank <= 3 ? 0.48f : 0.30f);
+            topTint, botTint, topBorder, botBorder, 0.010f, rank <= 3 ? 0.44f : 0.28f);
 
         if (rank <= 3)
         {
             renderer.DrawRoundedGradientRect(
-                { card.x + 0.0045f, rowY + 0.012f, 0.0034f, PLAYER_CARD_H - 0.024f },
+                { card.x + 0.0045f, rowY + 0.009f, 0.0034f, PLAYER_CARD_H - 0.018f },
                 0.0017f, medalColor, kPink, medalColor, kPink);
         }
 
         // 名次徽章
         VisualStyle::DrawBadgePill(renderer,
-            { card.x + 0.012f, rowY + 0.018f, 0.056f, 0.036f },
-            rankText, m_font, 0.0145f,
+            { card.x + 0.010f, rowY + 0.011f, 0.054f, 0.032f },
+            rankText, m_font, 0.0135f,
             { 28, 26, 48, 224 }, medalColor, medalColor);
 
-        // [danBadge] + 用户名 + 连击副行
-        float nameX = card.x + 0.076f;
+        // 在线 / 断线保位指示圆点
+        const Color connCol = p.connected ? kMint : kCoral;
+        renderer.DrawCircleFilled(card.x + 0.072f, rowY + 0.018f, 0.0038f, connCol, 16);
+
+        // [danBadge] + 用户名 + 连击/断线保位副行
+        float nameX = card.x + 0.080f;
         if (!p.danBadge.empty())
         {
             VisualStyle::DrawBadgePill(renderer,
-                { nameX, rowY + 0.011f, 0.066f, 0.024f },
-                "[" + p.danBadge + "]", m_font, 0.012f,
+                { nameX, rowY + 0.008f, 0.062f, 0.021f },
+                "[" + p.danBadge + "]", m_font, 0.0112f,
                 { 54, 38, 76, 224 }, kGold, kGold);
-            nameX += 0.072f;
+            nameX += 0.067f;
         }
 
         const std::string dispUser = (p.username.empty() ? p.userId : p.username) + (isMe ? " (我)" : "");
-        const float maxNameW = std::max(0.08f, (card.x + 0.275f) - nameX);
+        const float maxNameW = std::max(0.08f, (card.x + 0.278f) - nameX);
         VisualStyle::DrawTextFit(renderer, m_font, dispUser,
-            nameX, rowY + 0.009f, 0.0195f, maxNameW, isMe ? kCyan : kWhite);
+            nameX, rowY + 0.006f, 0.0172f, maxNameW,
+            !p.connected ? kCoral : (isMe ? kCyan : kWhite));
 
-        const std::string comboLine = (p.maxCombo > 0 || p.combo > 0)
-            ? ("连击 " + std::to_string(p.combo) + "x  ·  最大 " + std::to_string(p.maxCombo) + "x")
-            : (p.isHost ? "房间主持人" : "同场挑战者");
-        VisualStyle::DrawTextFit(renderer, m_font, comboLine,
-            card.x + 0.076f, rowY + 0.042f, 0.0132f, 0.198f, kDim);
+        std::string subStatusLine;
+        Color subStatusColor = kDim;
+        if (!p.connected)
+        {
+            subStatusLine  = "⟳ 断线重连保位中 (60s)";
+            subStatusColor = kCoral;
+        }
+        else if (p.maxCombo > 0 || p.combo > 0)
+        {
+            subStatusLine = "● 在线  ·  连击 " + std::to_string(p.combo) + "x / 最大 " + std::to_string(p.maxCombo) + "x";
+        }
+        else
+        {
+            subStatusLine = p.isHost ? "● 在线  ·  房间主持人" : "● 在线  ·  同场挑战者";
+        }
+        VisualStyle::DrawTextFit(renderer, m_font, subStatusLine,
+            card.x + 0.080f, rowY + 0.031f, 0.0122f, 0.198f, subStatusColor);
 
         // 分数与准确率
         renderer.DrawText(m_font, FormatScore(p.score),
-            card.x + 0.376f, rowY + 0.010f, 0.0205f,
+            card.x + 0.376f, rowY + 0.007f, 0.0185f,
             rank == 1 ? kGold : kWhite, TextAlign::Right);
         renderer.DrawText(m_font, FmtFloat(p.accuracy, 2) + "%",
-            card.x + 0.376f, rowY + 0.042f, 0.014f, kGold, TextAlign::Right);
+            card.x + 0.376f, rowY + 0.031f, 0.0128f, kGold, TextAlign::Right);
 
         // 评级徽章 (Grade)
         const std::string gradeStr = p.grade.empty() ? "D" : p.grade;
         const Color gColor = GradeBadgeColor(gradeStr);
         VisualStyle::DrawBadgePill(renderer,
-            { card.x + 0.386f, rowY + 0.018f, 0.042f, 0.036f },
-            gradeStr, m_font, 0.015f,
+            { card.x + 0.384f, rowY + 0.011f, 0.040f, 0.032f },
+            gradeStr, m_font, 0.0138f,
             { 28, 32, 56, 224 }, gColor, gColor);
 
-        // Ready / Host / Finished 状态胶囊
+        // Ready / Host / Finished / Reconnecting 状态胶囊
         std::string pillText = "○ 未准备";
         Color pillColor      = kDim;
-        if (p.finished)
+        if (!p.connected)
+        {
+            pillText  = "⟳ 重连中";
+            pillColor = kCoral;
+        }
+        else if (p.finished)
         {
             pillText  = p.isHost ? "★ 房主·完赛" : "✓ 已完赛";
             pillColor = kGold;
@@ -1675,9 +2084,53 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
             pillColor = kMint;
         }
         VisualStyle::DrawBadgePill(renderer,
-            { card.x + 0.434f, rowY + 0.020f, 0.080f, 0.032f },
-            pillText, m_font, 0.0122f,
+            { card.x + 0.430f, rowY + 0.012f, 0.084f, 0.030f },
+            pillText, m_font, 0.0118f,
             { 28, 34, 58, 220 }, pillColor, pillColor);
+    }
+
+    // ── 房间快捷短语消息流与 6 枚预设短语按钮 ─────────────────────────────────
+    VisualStyle::DrawGildedDivider(renderer, 0.418f, 0.942f, 0.688f, 0.62f);
+    const NormRect chatFeedBox{ 0.418f, 0.696f, 0.524f, 0.096f };
+    renderer.DrawRoundedRect(chatFeedBox, 0.010f, { 14, 18, 36, 196 }, true);
+    renderer.DrawRoundedRectOutlineGradient(chatFeedBox, 0.010f,
+        { 250, 216, 157, 92 }, { 140, 150, 196, 40 }, 0.0010f);
+
+    renderer.DrawText(m_font, "QUICK CHAT · 房间即时短语", 0.430f, 0.703f, 0.0118f, kGold);
+    if (m_chatCooldown > 0.01f)
+    {
+        renderer.DrawText(m_font,
+            "冷却 " + FmtFloat(m_chatCooldown, 1) + "s",
+            0.930f, 0.703f, 0.0115f, kDim, TextAlign::Right);
+    }
+
+    if (room.messages.empty())
+    {
+        renderer.DrawText(m_font,
+            "暂无房间短语消息 · 点击下方快捷短语与同房选手打招呼吧",
+            0.430f, 0.742f, 0.0135f, kDim);
+    }
+    else
+    {
+        const int totalMsgs = static_cast<int>(room.messages.size());
+        const int showMsgs  = std::min(3, totalMsgs);
+        const int firstMsg  = totalMsgs - showMsgs;
+        for (int mIdx = 0; mIdx < showMsgs; ++mIdx)
+        {
+            const auto& msg    = room.messages[static_cast<std::size_t>(firstMsg + mIdx)];
+            const bool isLatest = (mIdx == showMsgs - 1);
+            const float msgY   = 0.723f + static_cast<float>(mIdx) * 0.022f;
+            const std::string line = "[" + ExtractArenaChatUser(msg) + "]: " + ExtractArenaChatText(msg);
+            VisualStyle::DrawTextFit(renderer, m_font, line,
+                0.430f, msgY, 0.0132f, 0.500f,
+                isLatest ? kWhite : kDim);
+        }
+    }
+
+    for (auto& btn : m_chatButtons)
+    {
+        if (btn)
+            btn->Render(renderer);
     }
 
     if (m_btnLeaveRoom)    m_btnLeaveRoom->Render(renderer);
@@ -1698,6 +2151,11 @@ void SceneArena::OnEvent(const SDL_Event& event)
             return;
         if (m_btnReadyOrStart && m_btnReadyOrStart->HandleEvent(event))
             return;
+        for (auto& btn : m_chatButtons)
+        {
+            if (btn && btn->HandleEvent(event))
+                return;
+        }
 
         const auto me = APIClient::GetInstance().GetCurrentUser();
         if (IsCurrentUserRoomHost(*m_currentRoom, me) && m_currentRoom->status != "playing")

@@ -174,6 +174,8 @@ export interface ArenaPlayerRecord {
   isHost: boolean;
   ready: boolean;
   finished: boolean;
+  connected: boolean;
+  lastSeenAt: number;
   score: number;
   accuracy: number;
   combo: number;
@@ -182,20 +184,33 @@ export interface ArenaPlayerRecord {
   placement: number;
 }
 
+export interface ArenaChatMessage {
+  id: number;
+  userId: string;
+  username: string;
+  phraseId: number;
+  text: string;
+  sentAt: number;
+}
+
 export interface ArenaRoomRecord {
   code: string;
   name: string;
   hostId: string;
   hostName: string;
   status: ArenaRoomStatus;
+  revision: number;
   chartId: string;
   chartTitle: string;
   difficulty: string;
   difficultyLevel: number;
   chartHash: string;
+  marketChartId: string;
+  packageSize: number;
   startedAt: number;
   updatedAt: number;
   players: ArenaPlayerRecord[];
+  messages: ArenaChatMessage[];
 }
 
 export interface ArenaCreateRoomInput {
@@ -205,6 +220,7 @@ export interface ArenaCreateRoomInput {
   difficulty: string;
   difficultyLevel: number;
   chartHash?: string;
+  marketChartId?: string;
 }
 
 export interface ArenaChartSelection {
@@ -213,6 +229,7 @@ export interface ArenaChartSelection {
   difficulty: string;
   difficultyLevel: number;
   chartHash?: string;
+  marketChartId?: string;
 }
 
 export interface ArenaProgressInput {
@@ -281,13 +298,15 @@ export interface IStorageAdapter {
     }
   ): { scoresMerged: number; achievementsMerged: number; coursesMerged: number; snapshot: CloudSyncSnapshot };
   pullCloudSync(userId: string): CloudSyncSnapshot;
-  createArenaRoom(userId: string, input: ArenaCreateRoomInput): ArenaRoomRecord;
-  listArenaRooms(limit?: number): ArenaRoomRecord[];
-  joinArenaRoom(code: string, userId: string): ArenaRoomRecord;
-  leaveArenaRoom(code: string, userId: string): ArenaRoomRecord | null;
-  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection): ArenaRoomRecord;
-  setArenaReady(code: string, userId: string, ready: boolean, startMatch?: boolean): ArenaRoomRecord;
-  reportArenaProgress(code: string, userId: string, progress: ArenaProgressInput): ArenaRoomRecord;
-  getArenaRoomState(code: string): ArenaRoomRecord | null;
+  createArenaRoom(userId: string, input: ArenaCreateRoomInput, nowSec?: number): ArenaRoomRecord;
+  listArenaRooms(limit?: number, nowSec?: number): ArenaRoomRecord[];
+  joinArenaRoom(code: string, userId: string, nowSec?: number): ArenaRoomRecord;
+  leaveArenaRoom(code: string, userId: string, nowSec?: number): ArenaRoomRecord | null;
+  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection, nowSec?: number): ArenaRoomRecord;
+  setArenaReady(code: string, userId: string, ready: boolean, startMatch?: boolean, nowSec?: number): ArenaRoomRecord;
+  reportArenaProgress(code: string, userId: string, progress: ArenaProgressInput, nowSec?: number): ArenaRoomRecord;
+  sendArenaChat(code: string, userId: string, phraseId: number, nowSec?: number, nowMs?: number): ArenaRoomRecord;
+  getArenaRoomState(code: string, callerUserId?: string, nowSec?: number): ArenaRoomRecord | null;
+  sweepArenaHeartbeats(nowSec?: number): number;
   close(): void;
 }

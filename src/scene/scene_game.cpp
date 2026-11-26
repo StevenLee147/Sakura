@@ -94,6 +94,60 @@ const char* GradeToArenaString(sakura::game::Grade grade)
 }
 
 }
+
+std::vector<sakura::net::ArenaPlayerState> SceneGame::BuildLiveArenaStandings() const
+{
+    const auto currentUser = sakura::net::APIClient::GetInstance().GetCurrentUser();
+    const auto& sc         = m_session.Score();
+    std::vector<sakura::net::ArenaPlayerState> standings = m_arenaPlayers;
+
+    bool foundSelf = false;
+    for (auto& p : standings)
+    {
+        const bool isSelf = (!currentUser.id.empty() && p.userId == currentUser.id) ||
+            (currentUser.id.empty() && !currentUser.username.empty() && p.username == currentUser.username);
+        if (isSelf)
+        {
+            foundSelf   = true;
+            p.score     = sc.GetScore();
+            p.accuracy  = sc.GetAccuracy();
+            p.combo     = sc.GetCombo();
+            p.maxCombo  = std::max(p.maxCombo, sc.GetMaxCombo());
+            p.grade     = GradeToArenaString(sc.GetGrade());
+            p.connected = true;
+            break;
+        }
+    }
+
+    if (!foundSelf)
+    {
+        sakura::net::ArenaPlayerState selfState;
+        selfState.userId    = currentUser.id;
+        selfState.username  = currentUser.username.empty() ? "Player" : currentUser.username;
+        selfState.danBadge  = currentUser.danBadge;
+        selfState.score     = sc.GetScore();
+        selfState.accuracy  = sc.GetAccuracy();
+        selfState.combo     = sc.GetCombo();
+        selfState.maxCombo  = sc.GetMaxCombo();
+        selfState.grade     = GradeToArenaString(sc.GetGrade());
+        selfState.connected = true;
+        standings.push_back(std::move(selfState));
+    }
+
+    std::stable_sort(standings.begin(), standings.end(),
+        [](const sakura::net::ArenaPlayerState& a, const sakura::net::ArenaPlayerState& b)
+        {
+            if (a.finished && b.finished && a.placement > 0 && b.placement > 0 && a.placement != b.placement)
+                return a.placement < b.placement;
+            if (a.score != b.score)
+                return a.score > b.score;
+            if (std::abs(a.accuracy - b.accuracy) > 0.001f)
+                return a.accuracy > b.accuracy;
+            return a.maxCombo > b.maxCombo;
+        });
+
+    return standings;
+}
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
 SceneGame::SceneGame(SceneManager& mgr,
@@ -116,6 +170,7 @@ void SceneGame::OnEnter()
     *m_alive = true;
     m_arenaSyncTimer = 0.0f;
     m_arenaPlayers.clear();
+    m_arenaHudAnim.clear();
     m_ghostRunner.Reset();
 
     auto& rm = sakura::core::ResourceManager::GetInstance();
@@ -437,27 +492,93 @@ void SceneGame::OnUpdate(float dt)
     {
         m_ghostRunner.AdvanceTo(now, m_session.Score().GetScore());
     }
-    if (m_options.isArenaMatch && !m_options.arenaRoomCode.empty() && m_gameState.IsPlaying())
+    if (m_options.isArenaMatch)
     {
-        m_arenaSyncTimer += dt;
-        if (m_arenaSyncTimer >= 0.80f)
+        if (!m_options.arenaRoomCode.empty() && m_gameState.IsPlaying())
         {
-            m_arenaSyncTimer = std::fmod(m_arenaSyncTimer, 0.80f);
-            const auto& sc = m_session.Score();
-            auto alive = m_alive;
-            sakura::net::APIClient::GetInstance().ReportArenaProgressAsync(
-                m_options.arenaRoomCode,
-                sc.GetScore(),
-                sc.GetAccuracy(),
-                sc.GetCombo(),
-                sc.GetMaxCombo(),
-                GradeToArenaString(sc.GetGrade()),
-                false,
-                [this, alive](sakura::net::ArenaRoomResult res)
+            m_arenaSyncTimer += dt;
+            if (m_arenaSyncTimer >= 0.80f)
+            {
+                m_arenaSyncTimer = std::fmod(m_arenaSyncTimer, 0.80f);
+                const auto& sc = m_session.Score();
+                auto alive = m_alive;
+                sakura::net::APIClient::GetInstance().ReportArenaProgressAsync(
+                    m_options.arenaRoomCode,
+                    sc.GetScore(),
+                    sc.GetAccuracy(),
+                    sc.GetCombo(),
+                    sc.GetMaxCombo(),
+                    GradeToArenaString(sc.GetGrade()),
+                    false,
+                    [this, alive](sakura::net::ArenaRoomResult res)
+                    {
+                        if (!*alive || !res.ok) return;
+                        if (res.unchanged) return;
+                        m_arenaPlayers = std::move(res.room.players);
+                    });
+            }
+        }
+
+        const auto standings = BuildLiveArenaStandings();
+        const auto currentUser = sakura::net::APIClient::GetInstance().GetCurrentUser();
+        const bool reducedMotion = sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false);
+        const float slotLerp = reducedMotion ? 1.0f : (1.0f - std::exp(-dt * 11.5f));
+        const float scoreLerp = reducedMotion ? 1.0f : (1.0f - std::exp(-dt * 16.0f));
+
+        int selfIdx = -1;
+        for (int i = 0; i < static_cast<int>(standings.size()); ++i)
+        {
+            const auto& p = standings[static_cast<std::size_t>(i)];
+            if ((!currentUser.id.empty() && p.userId == currentUser.id) ||
+                (currentUser.id.empty() && !currentUser.username.empty() && p.username == currentUser.username))
+            {
+                selfIdx = i;
+                break;
+            }
+        }
+
+        std::vector<int> visIndices;
+        const int topN = std::min(4, static_cast<int>(standings.size()));
+        visIndices.reserve(5);
+        for (int i = 0; i < topN; ++i)
+            visIndices.push_back(i);
+        if (selfIdx >= 4)
+            visIndices.push_back(selfIdx);
+
+        for (int slot = 0; slot < static_cast<int>(visIndices.size()); ++slot)
+        {
+            const int sIdx = visIndices[static_cast<std::size_t>(slot)];
+            const auto& p = standings[static_cast<std::size_t>(sIdx)];
+            const std::string key = !p.userId.empty() ? p.userId : ("u:" + p.username);
+            const int liveRank = sIdx + 1;
+            auto it = std::find_if(m_arenaHudAnim.begin(), m_arenaHudAnim.end(),
+                [&](const ArenaHudTrackEntry& e) { return e.key == key; });
+            if (it == m_arenaHudAnim.end())
+            {
+                ArenaHudTrackEntry entry;
+                entry.key          = key;
+                entry.visualSlot   = static_cast<float>(slot);
+                entry.targetSlot   = static_cast<float>(slot);
+                entry.displayScore = static_cast<float>(p.score);
+                entry.lastRank     = liveRank;
+                entry.rankFlash    = 0.0f;
+                m_arenaHudAnim.push_back(std::move(entry));
+            }
+            else
+            {
+                it->targetSlot = static_cast<float>(slot);
+                if (it->lastRank != liveRank)
                 {
-                    if (!*alive || !res.ok) return;
-                    m_arenaPlayers = std::move(res.room.players);
-                });
+                    it->rankFlash = 1.0f;
+                    it->lastRank  = liveRank;
+                }
+                else
+                {
+                    it->rankFlash = std::max(0.0f, it->rankFlash - dt * 2.5f);
+                }
+                it->visualSlot   += (it->targetSlot - it->visualSlot) * slotLerp;
+                it->displayScore += (static_cast<float>(p.score) - it->displayScore) * scoreLerp;
+            }
         }
     }
     if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive())
@@ -2009,7 +2130,9 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         const auto& gs = m_ghostRunner.GetSnapshot();
         const int delta = gs.deltaScore;
         const bool ahead = (delta >= 0);
-        const NormRect paceRect{ 0.73f, 0.088f, 0.23f, 0.026f };
+        const NormRect paceRect = m_options.isArenaMatch
+            ? NormRect{ 0.408f, 0.088f, 0.220f, 0.026f }
+            : NormRect{ 0.73f, 0.088f, 0.23f, 0.026f };
 
         const Color edgeTop = ahead ? Color{ 108, 236, 188, 185 } : Color{ 236, 86, 122, 185 };
         const Color edgeBot = ahead ? Color{ 250, 216, 157, 120 } : Color{ 246, 162, 196, 120 };
@@ -2076,65 +2199,162 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
 
     if (m_options.isArenaMatch)
     {
+        // 紧凑实时对战名次浮层（严格位于右上安全条 X=0.635..0.985, Y=0.086..0.156，
+        // 零遮挡 4K 轨道 X=0.05..0.40 与右侧鼠标判定区 X=0.45..0.95, Y=0.16..0.82）
         const auto currentUser = sakura::net::APIClient::GetInstance().GetCurrentUser();
-        std::vector<sakura::net::ArenaPlayerState> standings = m_arenaPlayers;
-        if (standings.empty())
+        const auto standings   = BuildLiveArenaStandings();
+
+        int selfIdx = 0;
+        for (int i = 0; i < static_cast<int>(standings.size()); ++i)
         {
-            sakura::net::ArenaPlayerState selfState;
-            selfState.userId    = currentUser.id;
-            selfState.username  = currentUser.username.empty() ? "Player" : currentUser.username;
-            selfState.score     = m_session.Score().GetScore();
-            selfState.placement = 1;
-            standings.push_back(std::move(selfState));
-        }
-        else
-        {
-            std::stable_sort(standings.begin(), standings.end(),
-                [](const sakura::net::ArenaPlayerState& a, const sakura::net::ArenaPlayerState& b)
-                {
-                    if (a.placement > 0 && b.placement > 0 && a.placement != b.placement)
-                        return a.placement < b.placement;
-                    return a.score > b.score;
-                });
+            const auto& p = standings[static_cast<std::size_t>(i)];
+            if ((!currentUser.id.empty() && p.userId == currentUser.id) ||
+                (currentUser.id.empty() && !currentUser.username.empty() && p.username == currentUser.username))
+            {
+                selfIdx = i;
+                break;
+            }
         }
 
-        const int pillCount = std::min(4, static_cast<int>(standings.size()));
-        for (int idx = 0; idx < pillCount; ++idx)
-        {
-            const auto& p = standings[idx];
-            const int placement = (p.placement > 0) ? p.placement : (idx + 1);
-            const bool isSelf = (!currentUser.id.empty() && p.userId == currentUser.id);
-            const bool isFirst = (placement == 1);
-            const NormRect standRect{ 0.74f, 0.120f + static_cast<float>(idx) * 0.025f, 0.21f, 0.022f };
+        std::vector<int> visIndices;
+        const int topN = std::min(4, static_cast<int>(standings.size()));
+        visIndices.reserve(5);
+        for (int i = 0; i < topN; ++i)
+            visIndices.push_back(i);
+        if (selfIdx >= 4)
+            visIndices.push_back(selfIdx);
 
-            const Color bgLeft  = isSelf ? Color{ 34, 42, 74, 218 } : Color{ 18, 22, 42, 204 };
-            const Color bgRight = isSelf ? Color{ 44, 34, 68, 218 } : Color{ 22, 26, 48, 204 };
-            const Color brdTop  = isFirst
-                ? Color{ 250, 216, 157, 195 }
-                : (isSelf ? Color{ 138, 228, 246, 175 } : Color{ 176, 184, 218, 95 });
-            const Color brdBot  = isSelf ? Color{ 246, 178, 206, 125 } : Color{ 120, 130, 168, 55 };
+        const NormRect arenaDock{ 0.635f, 0.086f, 0.350f, 0.070f };
+        sakura::ui::VisualStyle::DrawGlassCard(
+            renderer, arenaDock,
+            { 20, 26, 52, 224 }, { 12, 16, 34, 236 },
+            { 250, 216, 157, 178 }, { 138, 228, 246, 88 },
+            0.010f, 0.38f);
+
+        // 左侧本机实时名次摘要栏
+        const int selfRank = selfIdx + 1;
+        const Color selfRankCol = (selfRank == 1) ? gold : Color{ 138, 228, 246, 255 };
+        renderer.DrawText(m_fontSmall, "ARENA", 0.662f, 0.091f, 0.0098f, dim, TextAlign::Center);
+        renderer.DrawText(m_fontHUD,
+            (selfRank == 1) ? "♛#1" : ("#" + std::to_string(selfRank)),
+            0.662f, 0.107f, 0.0172f, selfRankCol, TextAlign::Center);
+        renderer.DrawText(m_fontSmall,
+            std::to_string(standings.size()) + "P",
+            0.662f, 0.134f, 0.0102f, pink, TextAlign::Center);
+        renderer.DrawLine(0.689f, 0.092f, 0.689f, 0.150f, { 250, 216, 157, 86 }, 0.0010f);
+
+        const int visCount  = static_cast<int>(visIndices.size());
+        const bool fiveRows = (visCount >= 5);
+        const float baseY   = fiveRows ? 0.0885f : 0.0892f;
+        const float rowStep = fiveRows ? 0.0128f : 0.0158f;
+        const float rowH    = fiveRows ? 0.0116f : 0.0142f;
+        const float rowFont = fiveRows ? 0.0098f : 0.0110f;
+        const int leaderScore = standings.empty() ? 0 : standings.front().score;
+
+        for (int slot = 0; slot < visCount; ++slot)
+        {
+            const int sIdx      = visIndices[static_cast<std::size_t>(slot)];
+            const auto& p       = standings[static_cast<std::size_t>(sIdx)];
+            const int placement = sIdx + 1;
+            const bool isSelf   = (sIdx == selfIdx);
+            const bool isFirst  = (placement == 1);
+            const std::string key = !p.userId.empty() ? p.userId : ("u:" + p.username);
+
+            float animSlot  = static_cast<float>(slot);
+            int dispScore   = p.score;
+            float rankFlash = 0.0f;
+            auto animIt = std::find_if(m_arenaHudAnim.begin(), m_arenaHudAnim.end(),
+                [&](const ArenaHudTrackEntry& e) { return e.key == key; });
+            if (animIt != m_arenaHudAnim.end())
+            {
+                animSlot  = animIt->visualSlot;
+                dispScore = static_cast<int>(std::lround(animIt->displayScore));
+                rankFlash = animIt->rankFlash;
+            }
+
+            const float rowY = std::clamp(
+                baseY + animSlot * rowStep,
+                arenaDock.y + 0.0020f,
+                arenaDock.y + arenaDock.height - rowH - 0.0020f);
+            const NormRect standRect{ 0.694f, rowY, 0.286f, rowH };
+
+            Color bgLeft  = isSelf ? Color{ 34, 46, 82, 224 } : Color{ 16, 22, 42, 198 };
+            Color bgRight = isSelf ? Color{ 46, 36, 72, 224 } : Color{ 22, 26, 50, 198 };
+            Color brdTop  = isSelf ? Color{ 138, 228, 246, 195 } : Color{ 170, 180, 214, 76 };
+            Color brdBot  = isSelf ? Color{ 246, 178, 206, 132 } : Color{ 116, 126, 164, 42 };
+            if (isFirst)
+            {
+                bgLeft  = { 86, 62, 32, 232 };
+                bgRight = { 48, 34, 24, 236 };
+                brdTop  = { 255, 226, 138, 242 };
+                brdBot  = { 246, 178, 104, 156 };
+            }
 
             renderer.DrawRoundedGradientRect(
-                standRect, 0.009f, bgLeft, bgRight, bgLeft, bgRight, 6, true);
+                standRect, 0.005f, bgLeft, bgRight, bgLeft, bgRight, 6, true);
             renderer.DrawRoundedRectOutlineGradient(
-                standRect, 0.009f, brdTop, brdBot, 0.0011f, 6);
+                standRect, 0.005f, brdTop, brdBot, rankFlash > 0.05f ? 0.0015f : 0.0010f, 6);
 
-            const std::string nameLabel = "#" + std::to_string(placement) + " " +
-                (p.username.empty() ? std::string("Player") : p.username);
-            std::ostringstream scoreStr;
-            scoreStr << std::setw(7) << std::setfill('0') << p.score;
+            const float textY = standRect.y + (rowH - rowFont) * 0.42f;
+            const std::string rankStr = isFirst ? "♛#1" : ("#" + std::to_string(placement));
+            const Color rankCol = isFirst ? gold : (isSelf ? Color{ 168, 236, 250, 255 } : white);
+            renderer.DrawText(m_fontSmall, rankStr, standRect.x + 0.005f, textY, rowFont, rankCol);
 
-            const Color nameCol  = isFirst ? gold : (isSelf ? Color{ 168, 236, 250, 255 } : white);
-            const Color scoreCol = isFirst ? gold : pink;
+            // 在线 / 断线重连状态点
+            const Color connCol = p.connected ? Color{ 142, 238, 194, 255 } : Color{ 255, 124, 144, 255 };
+            renderer.DrawCircleFilled(
+                standRect.x + 0.032f, standRect.y + rowH * 0.5f, 0.0024f, connCol, 12);
 
+            const std::string rawName = p.username.empty() ? std::string("Player") : p.username;
+            const std::string dispName = (!p.connected ? "[离线]" : "") + rawName + (isSelf ? "★" : "");
+            const Color nameCol = !p.connected
+                ? Color{ 255, 138, 156, 255 }
+                : (isFirst ? gold : (isSelf ? Color{ 168, 236, 250, 255 } : white));
             sakura::ui::VisualStyle::DrawTextFit(
-                renderer, m_fontSmall, nameLabel,
-                standRect.x + 0.008f, standRect.y + 0.0035f,
-                0.0125f, 0.122f, nameCol);
+                renderer, m_fontSmall, dispName,
+                standRect.x + 0.037f, textY, rowFont, 0.078f, nameCol);
+
+            // 连击徽章 / 断线标记
+            const NormRect comboPill{
+                standRect.x + 0.118f, standRect.y + 0.0012f, 0.042f, std::max(0.008f, rowH - 0.0024f)
+            };
+            const std::string comboLabel = !p.connected
+                ? std::string("重连")
+                : (std::to_string(std::max(0, p.combo)) + "x");
+            const Color comboBorder = !p.connected
+                ? Color{ 255, 134, 150, 195 }
+                : (p.combo >= 100 ? Color{ 250, 216, 157, 185 } : Color{ 246, 178, 206, 145 });
+            const Color comboTextCol = !p.connected
+                ? Color{ 255, 150, 166, 255 }
+                : (p.combo >= 100 ? gold : pink);
+            sakura::ui::VisualStyle::DrawBadgePill(
+                renderer, comboPill, comboLabel, m_fontSmall, rowFont * 0.88f,
+                { 26, 30, 54, 216 }, comboBorder, comboTextCol);
+
+            // 与榜首/第二名分差 (+/-)
+            int deltaVal = 0;
+            if (isFirst)
+                deltaVal = (standings.size() >= 2) ? (p.score - standings[1].score) : 0;
+            else
+                deltaVal = p.score - leaderScore;
+
+            const std::string deltaStr = (deltaVal >= 0)
+                ? ("+" + std::to_string(deltaVal))
+                : std::to_string(deltaVal);
+            const Color deltaCol = (deltaVal >= 0)
+                ? Color{ 168, 242, 198, 255 }
+                : Color{ 252, 152, 178, 255 };
+            renderer.DrawText(
+                m_fontSmall, deltaStr,
+                standRect.x + 0.222f, textY, rowFont * 0.94f, deltaCol, TextAlign::Right);
+
+            // 实时滚动总分
+            std::ostringstream scoreStr;
+            scoreStr << std::setw(7) << std::setfill('0') << std::max(0, dispScore);
             renderer.DrawText(
                 m_fontSmall, scoreStr.str(),
-                standRect.x + standRect.width - 0.008f, standRect.y + 0.0035f,
-                0.0125f, scoreCol, TextAlign::Right);
+                standRect.x + standRect.width - 0.005f, textY,
+                rowFont, isFirst ? gold : white, TextAlign::Right);
         }
     }
 

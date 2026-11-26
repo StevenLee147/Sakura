@@ -1805,3 +1805,596 @@ test("Sakura Online Server v2.1.0 Dual-Token Sessions, Rotation, Guest Upgrade &
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("v2.2.0 ETag 304, Arena Revision Delta, 60s Reconnect, Host Handoff, Quick Chat & Market Linkage", async () => {
+  const tmpDir = path.join(process.cwd(), `.sakura-v220-test-${crypto.randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v220-unit-test-secret", serverVersion: "v2.2.0" });
+
+  type AuthResp = {
+    token: string;
+    user: { id: string; username: string };
+  };
+
+  type ArenaRoomPayload = {
+    ok: boolean;
+    unchanged?: boolean;
+    code: string;
+    host_id: string;
+    host_name: string;
+    status: string;
+    revision: number;
+    chart_id: string;
+    chart_hash: string;
+    market_chart_id: string;
+    package_size: number;
+    players: Array<{
+      user_id: string;
+      username: string;
+      is_host: boolean;
+      ready: boolean;
+      finished: boolean;
+      connected: boolean;
+      last_seen_at: number;
+      score: number;
+      accuracy: number;
+      combo: number;
+      max_combo: number;
+      grade: string;
+      placement: number;
+    }>;
+    messages: Array<{
+      id: number;
+      user_id: string;
+      username: string;
+      phrase_id: number;
+      text: string;
+      sent_at: number;
+    }>;
+    room: ArenaRoomPayload;
+  };
+
+  try {
+    // Register 3 players + 1 outsider
+    const mkUser = async (username: string): Promise<AuthResp> => {
+      const res = await app.request("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password: "sakura_v220_pw" }),
+      });
+      assert.equal(res.status, 201);
+      return (await res.json()) as AuthResp;
+    };
+
+    const p1 = await mkUser("HostYuki");
+    const p2 = await mkUser("RivalSora");
+    const p3 = await mkUser("GuestHana");
+    const outsider = await mkUser("LateVisitor");
+
+    // Publish a market chart for ETag & Arena auto-linkage verification
+    const pkgZip = createStoreZipArchive({
+      "info.json": JSON.stringify({
+        id: "sakura_echoes",
+        title: "Sakura Echoes",
+        artist: "Petal Ensemble",
+        charter: "HostYuki",
+        bpm: 185,
+        audio: "track.wav",
+        tags: ["arena", "v220"],
+        difficulties: [{ name: "Hard", level: 8.5, chart_file: "hard.json" }],
+      }),
+      "hard.json": JSON.stringify({
+        offset: 0,
+        bpm: 185,
+        keyboard_notes: [
+          { lane: 0, time: 400, duration: 0 },
+          { lane: 3, time: 800, duration: 0 },
+        ],
+        mouse_notes: [],
+      }),
+      "track.wav": "RIFF____WAVEfmt ",
+    });
+
+    const pubRes = await app.request("/api/v1/charts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${p1.token}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: new Uint8Array(pkgZip),
+    });
+    assert.equal(pubRes.status, 201);
+    const pubChart = ((await pubRes.json()) as { chart: { id: string; content_hash: string; package_sha256: string; package_size: number } }).chart;
+    assert.equal(pubChart.id, "sakura_echoes");
+    assert.equal(pubChart.package_size, pkgZip.length);
+
+    // Seed ranked & daily scores
+    const submitRanked = await app.request("/api/v1/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "sakura_echoes",
+        chart_title: "Sakura Echoes",
+        chart_hash: pubChart.content_hash,
+        difficulty: "Hard",
+        difficulty_level: 8.5,
+        score: 982000,
+        accuracy: 98.8,
+        max_combo: 200,
+        grade: "S",
+        perfect_count: 196,
+        great_count: 4,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        assisted: false,
+      }),
+    });
+    assert.equal(submitRanked.status, 201);
+
+    const dailyDate = "2026-11-27";
+    const dailySpec = computeDailyChallenge(dailyDate);
+    const submitDaily = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: dailyDate,
+        chart_id: dailySpec.chartId,
+        chart_title: dailySpec.chartTitle,
+        chart_hash: "daily_hash_v220",
+        difficulty: dailySpec.difficulty,
+        difficulty_level: dailySpec.difficultyLevel,
+        score: 975000,
+        accuracy: 98.2,
+        max_combo: 180,
+        grade: "S",
+        perfect_count: 175,
+        great_count: 5,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 180,
+        assisted: false,
+      }),
+    });
+    assert.equal(submitDaily.status, 201);
+
+    // 1. Verify ETag & 304 Not Modified on all 4 endpoints (exact, weak W/, comma-separated list, mismatch, mutation)
+    const etagPaths = [
+      "/api/v1/leaderboards/sakura_echoes?difficulty=Hard",
+      `/api/v1/daily?date=${dailyDate}`,
+      `/api/v1/daily/leaderboard?date=${dailyDate}`,
+      "/api/v1/charts?q=Sakura",
+    ];
+    const initialEtags = new Map<string, string>();
+    for (const urlPath of etagPaths) {
+      const r200 = await app.request(urlPath);
+      assert.equal(r200.status, 200);
+      const etag = r200.headers.get("ETag");
+      assert.ok(etag && /^"[0-9a-f]+"$/.test(etag), `Expected quoted hex ETag on ${urlPath}, got ${etag}`);
+      initialEtags.set(urlPath, etag);
+      const bodyJson = (await r200.json()) as { ok: boolean };
+      assert.equal(bodyJson.ok, true);
+
+      // Exact match -> 304 empty body
+      const r304Exact = await app.request(urlPath, { headers: { "If-None-Match": etag } });
+      assert.equal(r304Exact.status, 304);
+      assert.equal(r304Exact.headers.get("ETag"), etag);
+      assert.equal(await r304Exact.text(), "");
+
+      // Weak W/ match -> 304 empty body
+      const r304Weak = await app.request(urlPath, { headers: { "If-None-Match": `W/${etag}` } });
+      assert.equal(r304Weak.status, 304);
+      assert.equal(r304Weak.headers.get("ETag"), etag);
+      assert.equal(await r304Weak.text(), "");
+
+      // Comma-separated list -> 304 empty body
+      const r304List = await app.request(urlPath, {
+        headers: { "If-None-Match": `"stale_tag_1", W/${etag}, "other_tag_2"` },
+      });
+      assert.equal(r304List.status, 304);
+      assert.equal(await r304List.text(), "");
+
+      // Non-matching tag -> 200 with payload
+      const rMismatch = await app.request(urlPath, { headers: { "If-None-Match": '"deadbeef0000"' } });
+      assert.equal(rMismatch.status, 200);
+    }
+
+    // Mutate leaderboard, daily, and market chart -> ETag must rotate and return 200
+    await app.request("/api/v1/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "sakura_echoes",
+        chart_title: "Sakura Echoes",
+        chart_hash: pubChart.content_hash,
+        difficulty: "Hard",
+        difficulty_level: 8.5,
+        score: 996000,
+        accuracy: 99.6,
+        max_combo: 200,
+        grade: "S",
+        perfect_count: 199,
+        great_count: 1,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 200,
+        assisted: false,
+      }),
+    });
+    await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: dailyDate,
+        chart_id: dailySpec.chartId,
+        chart_title: dailySpec.chartTitle,
+        chart_hash: "daily_hash_v220",
+        difficulty: dailySpec.difficulty,
+        difficulty_level: dailySpec.difficultyLevel,
+        score: 991000,
+        accuracy: 99.4,
+        max_combo: 180,
+        grade: "S",
+        perfect_count: 179,
+        great_count: 1,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 180,
+        assisted: false,
+      }),
+    });
+    await app.request("/api/v1/charts/sakura_echoes/rate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: 5, comment: "Arena ready!" }),
+    });
+
+    for (const urlPath of etagPaths) {
+      const prevEtag = initialEtags.get(urlPath)!;
+      const rChanged = await app.request(urlPath, { headers: { "If-None-Match": prevEtag } });
+      assert.equal(rChanged.status, 200);
+      assert.notEqual(rChanged.headers.get("ETag"), prevEtag);
+    }
+
+    // 2. Market chart auto-linkage on room create & select + initial revision=1
+    const createRes = await app.request("/api/v1/rooms?now=2000", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Sakura v2.2 Arena",
+        chart_id: "custom_local_folder_id",
+        chart_title: "Sakura Echoes",
+        difficulty: "Hard",
+        difficulty_level: 8.5,
+        chart_hash: pubChart.content_hash,
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const created = (await createRes.json()) as ArenaRoomPayload;
+    const code = created.code;
+    assert.equal(created.revision, 1);
+    assert.equal(created.market_chart_id, "sakura_echoes");
+    assert.equal(created.package_size, pkgZip.length);
+    assert.deepEqual(created.messages, []);
+    assert.equal(created.players[0].connected, true);
+    assert.equal(created.players[0].last_seen_at, 2000);
+
+    // Auto-link by chart_id slug when chart_hash is omitted
+    const selSlugRes = await app.request(`/api/v1/rooms/${code}/select?now=2001`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "sakura_echoes",
+        chart_title: "Sakura Echoes",
+        difficulty: "Hard",
+        difficulty_level: 8.5,
+      }),
+    });
+    assert.equal(selSlugRes.status, 200);
+    const selSlug = (await selSlugRes.json()) as ArenaRoomPayload;
+    assert.equal(selSlug.revision, 2);
+    assert.equal(selSlug.market_chart_id, "sakura_echoes");
+    assert.equal(selSlug.package_size, pkgZip.length);
+
+    // Unlisted custom chart clears market_chart_id & package_size
+    const selUnlistedRes = await app.request(`/api/v1/rooms/${code}/select?now=2002`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "private_wip_chart",
+        chart_title: "Private WIP",
+        difficulty: "Hard",
+        difficulty_level: 9.0,
+        chart_hash: "nonexistent_hash_999",
+      }),
+    });
+    assert.equal(selUnlistedRes.status, 200);
+    const selUnlisted = (await selUnlistedRes.json()) as ArenaRoomPayload;
+    assert.equal(selUnlisted.revision, 3);
+    assert.equal(selUnlisted.market_chart_id, "");
+    assert.equal(selUnlisted.package_size, 0);
+
+    // Explicit market_chart_id linkage
+    const selExplicitRes = await app.request(`/api/v1/rooms/${code}/select?now=2003`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "sakura_echoes",
+        chart_title: "Sakura Echoes",
+        difficulty: "Hard",
+        difficulty_level: 8.5,
+        market_chart_id: "sakura_echoes",
+      }),
+    });
+    assert.equal(selExplicitRes.status, 200);
+    const selExplicit = (await selExplicitRes.json()) as ArenaRoomPayload;
+    assert.equal(selExplicit.revision, 4);
+    assert.equal(selExplicit.market_chart_id, "sakura_echoes");
+    assert.equal(selExplicit.package_size, pkgZip.length);
+
+    // 3. Incremental state polling on both GET /api/v1/rooms/:code and GET /api/v1/rooms/:code/state
+    const pollDirectUnchanged = await app.request(`/api/v1/rooms/${code}?since_revision=4&now=2004`, {
+      headers: { Authorization: `Bearer ${p1.token}` },
+    });
+    assert.equal(pollDirectUnchanged.status, 200);
+    assert.deepEqual(await pollDirectUnchanged.json(), { ok: true, unchanged: true, revision: 4 });
+
+    const pollAliasUnchanged = await app.request(`/api/v1/rooms/${code}/state?since_revision=4&now=2005`, {
+      headers: { Authorization: `Bearer ${p1.token}` },
+    });
+    assert.equal(pollAliasUnchanged.status, 200);
+    assert.deepEqual(await pollAliasUnchanged.json(), { ok: true, unchanged: true, revision: 4 });
+
+    const pollStale = await app.request(`/api/v1/rooms/${code}?since_revision=3&now=2005`);
+    assert.equal(pollStale.status, 200);
+    const pollStaleJson = (await pollStale.json()) as ArenaRoomPayload;
+    assert.equal(pollStaleJson.unchanged, undefined);
+    assert.equal(pollStaleJson.revision, 4);
+    assert.equal(pollStaleJson.players[0].last_seen_at, 2005);
+
+    // 4. Join players & test Quick Chat phrases, auth, 1500ms cooldown, and 16-message ring buffer
+    const j2 = await app.request(`/api/v1/rooms/${code}/join?now=2006`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}` },
+    });
+    assert.equal(j2.status, 200);
+    assert.equal(((await j2.json()) as ArenaRoomPayload).revision, 5);
+
+    const j3 = await app.request(`/api/v1/rooms/${code}/join?now=2007`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    assert.equal(j3.status, 200);
+    assert.equal(((await j3.json()) as ArenaRoomPayload).revision, 6);
+
+    // Auth & validation checks on /chat
+    const chatNoAuth = await app.request(`/api/v1/rooms/${code}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_id: 0 }),
+    });
+    assert.equal(chatNoAuth.status, 401);
+
+    const chatNonMember = await app.request(`/api/v1/rooms/${code}/chat?now_ms=2008000`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${outsider.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_id: 0 }),
+    });
+    assert.equal(chatNonMember.status, 403);
+
+    for (const badId of [-1, 6, 1.5, "bad"]) {
+      const badPhrase = await app.request(`/api/v1/rooms/${code}/chat?now_ms=2008000`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ phrase_id: badId }),
+      });
+      assert.equal(badPhrase.status, 422);
+    }
+
+    const expectedPhrases = [
+      "请多指教！",
+      "准备好了，随时开局！",
+      "稍等，正在同步房间谱面~",
+      "这首定数好高，手下留情！",
+      "精彩演奏！",
+      "再来一局！",
+    ];
+
+    const chat1 = await app.request(`/api/v1/rooms/${code}/chat?now_ms=2008000`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_id: 0 }),
+    });
+    assert.equal(chat1.status, 200);
+    const chat1Json = (await chat1.json()) as ArenaRoomPayload;
+    assert.equal(chat1Json.room.revision, 7);
+    assert.equal(chat1Json.room.messages.length, 1);
+    assert.deepEqual(chat1Json.room.messages[0], {
+      id: 1,
+      user_id: p1.user.id,
+      username: "HostYuki",
+      phrase_id: 0,
+      text: expectedPhrases[0],
+      sent_at: 2008,
+    });
+
+    // Same user within < 1500ms -> 429 cooldown
+    const chatFast = await app.request(`/api/v1/rooms/${code}/chat?now_ms=2009200`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_id: 1 }),
+    });
+    assert.equal(chatFast.status, 429);
+
+    // Different user at the same timestamp -> allowed (per-user cooldown)
+    const chatP2 = await app.request(`/api/v1/rooms/${code}/chat?now_ms=2009200`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_id: 2 }),
+    });
+    assert.equal(chatP2.status, 200);
+    assert.equal(((await chatP2.json()) as ArenaRoomPayload).room.revision, 8);
+
+    // Fill past 16 messages to verify ring buffer cap (total 18 messages sent)
+    let lastChatRoom!: ArenaRoomPayload;
+    for (let i = 0; i < 16; i++) {
+      const phraseIdx = i % 6;
+      const tsMs = 2011000 + i * 2000;
+      const cRes = await app.request(`/api/v1/rooms/${code}/chat?now_ms=${tsMs}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ phrase_id: phraseIdx }),
+      });
+      assert.equal(cRes.status, 200);
+      lastChatRoom = ((await cRes.json()) as ArenaRoomPayload).room;
+      assert.equal(lastChatRoom.messages[lastChatRoom.messages.length - 1].text, expectedPhrases[phraseIdx]);
+    }
+    assert.equal(lastChatRoom.messages.length, 16);
+    assert.equal(lastChatRoom.messages[0].id, 3);
+    assert.equal(lastChatRoom.messages[15].id, 18);
+    assert.equal(lastChatRoom.revision, 24);
+
+    // 5. Heartbeat, >12s disconnect flip, 60s reconnect during 'playing', >60s eviction & host handoff
+    await app.request(`/api/v1/rooms/${code}/ready?now=2050`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true }),
+    });
+    await app.request(`/api/v1/rooms/${code}/ready?now=2051`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true }),
+    });
+    const startMatchRes = await app.request(`/api/v1/rooms/${code}/ready?now=2052`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true, start_match: true }),
+    });
+    assert.equal(startMatchRes.status, 200);
+    const startedRoom = (await startMatchRes.json()) as ArenaRoomPayload;
+    assert.equal(startedRoom.status, "playing");
+    assert.equal(startedRoom.revision, 27);
+
+    // p2 reports live progress at t=2055
+    const prog1 = await app.request(`/api/v1/rooms/${code}/progress?now=2055`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        score: 610000,
+        accuracy: 98.4,
+        combo: 210,
+        max_combo: 210,
+        grade: "A",
+        finished: false,
+      }),
+    });
+    assert.equal(prog1.status, 200);
+    assert.equal(((await prog1.json()) as ArenaRoomPayload).revision, 28);
+
+    // Refresh p1 & p3 heartbeats at t=2062 (within 12s), then at t=2070 p2 (silent since 2055 -> 15s > 12s) flips connected=false
+    await app.request(`/api/v1/rooms/${code}?since_revision=28&now=2062`, {
+      headers: { Authorization: `Bearer ${p1.token}` },
+    });
+    await app.request(`/api/v1/rooms/${code}?since_revision=28&now=2062`, {
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    const stateAt2070Res = await app.request(`/api/v1/rooms/${code}?since_revision=28&now=2070`, {
+      headers: { Authorization: `Bearer ${p1.token}` },
+    });
+    assert.equal(stateAt2070Res.status, 200);
+    const stateAt2070 = (await stateAt2070Res.json()) as ArenaRoomPayload;
+    assert.equal(stateAt2070.revision, 29);
+    const p2Disc = stateAt2070.players.find((x) => x.user_id === p2.user.id)!;
+    assert.equal(p2Disc.connected, false);
+    assert.equal(p2Disc.ready, true);
+    assert.equal(p2Disc.score, 610000);
+    assert.equal(p2Disc.combo, 210);
+
+    const p3DeltaUnchanged = await app.request(`/api/v1/rooms/${code}?since_revision=29&now=2070`, {
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    assert.deepEqual(await p3DeltaUnchanged.json(), { ok: true, unchanged: true, revision: 29 });
+
+    // Outsider cannot join a 'playing' room (409)
+    const outsiderJoin = await app.request(`/api/v1/rooms/${code}/join?now=2072`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${outsider.token}` },
+    });
+    assert.equal(outsiderJoin.status, 409);
+
+    // p2 rejoins at t=2078 (23s <= 60s) during 'playing' -> succeeds, restores connected=true & keeps score/combo!
+    const rejoinRes = await app.request(`/api/v1/rooms/${code}/join?now=2078`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}` },
+    });
+    assert.equal(rejoinRes.status, 200);
+    const rejoined = (await rejoinRes.json()) as ArenaRoomPayload;
+    assert.equal(rejoined.status, "playing");
+    assert.equal(rejoined.revision, 30);
+    const p2Back = rejoined.players.find((x) => x.user_id === p2.user.id)!;
+    assert.equal(p2Back.connected, true);
+    assert.equal(p2Back.last_seen_at, 2078);
+    assert.equal(p2Back.score, 610000);
+    assert.equal(p2Back.combo, 210);
+
+    // Verify deterministic storage.sweepArenaHeartbeats(nowSec) & reconnect via progress report
+    const sweptAt2095 = storage.sweepArenaHeartbeats(2095);
+    assert.equal(sweptAt2095, 1);
+    const progReconnectRes = await app.request(`/api/v1/rooms/${code}/progress?now=2100`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        score: 880000,
+        accuracy: 99.1,
+        combo: 305,
+        max_combo: 305,
+        grade: "S",
+        finished: false,
+      }),
+    });
+    assert.equal(progReconnectRes.status, 200);
+    const afterProgReconnect = (await progReconnectRes.json()) as ArenaRoomPayload;
+    assert.equal(afterProgReconnect.players.find((x) => x.user_id === p2.user.id)!.connected, true);
+
+    // Keep p3 connected at t=2130 while p1 (last seen 2070) exceeds 60s at t=2135 and p2 (last seen 2100) is >12s disconnected
+    await app.request(`/api/v1/rooms/${code}?now=2130`, {
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    const sweptAt2135 = storage.sweepArenaHeartbeats(2135);
+    assert.equal(sweptAt2135, 1);
+
+    const afterHostTimeoutRes = await app.request(`/api/v1/rooms/${code}?now=2135`, {
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    assert.equal(afterHostTimeoutRes.status, 200);
+    const afterHostTimeout = (await afterHostTimeoutRes.json()) as ArenaRoomPayload;
+    assert.equal(afterHostTimeout.players.length, 2);
+    assert.equal(afterHostTimeout.players.some((x) => x.user_id === p1.user.id), false);
+    // Earliest remaining CONNECTED player (p3, since p2 is disconnected at t=2135) is promoted to host!
+    assert.equal(afterHostTimeout.host_id, p3.user.id);
+    assert.equal(afterHostTimeout.host_name, "GuestHana");
+    assert.equal(afterHostTimeout.players.find((x) => x.user_id === p3.user.id)!.is_host, true);
+    assert.equal(afterHostTimeout.players.find((x) => x.user_id === p2.user.id)!.connected, false);
+    assert.equal(afterHostTimeout.players.find((x) => x.user_id === p2.user.id)!.is_host, false);
+
+    // When p3 leaves via POST /leave, remaining player p2 is promoted to host even while disconnected
+    const p3LeaveRes = await app.request(`/api/v1/rooms/${code}/leave?now=2136`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3.token}` },
+    });
+    assert.equal(p3LeaveRes.status, 200);
+    const afterP3Leave = (await p3LeaveRes.json()) as ArenaRoomPayload;
+    assert.equal(afterP3Leave.host_id, p2.user.id);
+    assert.equal(afterP3Leave.host_name, "RivalSora");
+    assert.equal(afterP3Leave.players.length, 1);
+    assert.equal(afterP3Leave.players[0].is_host, true);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

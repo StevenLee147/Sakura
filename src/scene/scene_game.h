@@ -71,6 +71,17 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     float m_arenaSyncTimer = 0.0f;
     std::vector<sakura::net::ArenaPlayerState> m_arenaPlayers;
+    struct ArenaHudTrackEntry
+    {
+        std::string key;
+        float       visualSlot   = 0.0f;
+        float       targetSlot   = 0.0f;
+        float       displayScore = 0.0f;
+        int         lastRank     = 0;
+        float       rankFlash    = 0.0f;
+    };
+    std::vector<ArenaHudTrackEntry> m_arenaHudAnim;
+    std::vector<sakura::net::ArenaPlayerState> BuildLiveArenaStandings() const;
     std::optional<sakura::game::Replay> m_replay;
     size_t m_replayCursor = 0;
     int m_inputLagMs = 0;

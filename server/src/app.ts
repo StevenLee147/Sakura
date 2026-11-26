@@ -1,4 +1,5 @@
-import { Hono } from "hono";
+import crypto from "node:crypto";
+import { Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   generateRefreshToken,
@@ -77,6 +78,51 @@ function serializeMarketChart(c: MarketChartItem) {
   };
 }
 
+function computeJsonETag(jsonBody: string): string {
+  const digest = crypto.createHash("sha256").update(jsonBody, "utf8").digest("hex").slice(0, 32);
+  return `"${digest}"`;
+}
+
+function stripETagDecoration(raw: string): string {
+  let token = raw.trim();
+  if (token.startsWith("W/") || token.startsWith("w/")) {
+    token = token.slice(2).trim();
+  }
+  if (token.length >= 2 && token.startsWith('"') && token.endsWith('"')) {
+    return token.slice(1, -1);
+  }
+  return token;
+}
+
+function ifNoneMatchMatches(ifNoneMatchHeader: string | undefined, etag: string): boolean {
+  if (!ifNoneMatchHeader) return false;
+  const trimmed = ifNoneMatchHeader.trim();
+  if (!trimmed) return false;
+  if (trimmed === "*") return true;
+  const targetCore = stripETagDecoration(etag);
+  for (const part of trimmed.split(",")) {
+    const candidate = part.trim();
+    if (!candidate) continue;
+    if (candidate === "*") return true;
+    if (stripETagDecoration(candidate) === targetCore) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function respondJsonWithETag(c: Context, payload: unknown): Response {
+  const jsonBody = JSON.stringify(payload);
+  const etag = computeJsonETag(jsonBody);
+  c.header("ETag", etag);
+  if (ifNoneMatchMatches(c.req.header("If-None-Match"), etag)) {
+    return c.body(null, 304);
+  }
+  return c.body(jsonBody, 200, {
+    "Content-Type": "application/json; charset=UTF-8",
+  });
+}
+
 function serializeArenaRoom(r: ArenaRoomRecord) {
   return {
     code: r.code,
@@ -84,11 +130,14 @@ function serializeArenaRoom(r: ArenaRoomRecord) {
     host_id: r.hostId,
     host_name: r.hostName,
     status: r.status,
+    revision: r.revision,
     chart_id: r.chartId,
     chart_title: r.chartTitle,
     difficulty: r.difficulty,
     difficulty_level: r.difficultyLevel,
     chart_hash: r.chartHash,
+    market_chart_id: r.marketChartId,
+    package_size: r.packageSize,
     started_at: r.startedAt,
     updated_at: r.updatedAt,
     players: r.players.map((p) => ({
@@ -98,6 +147,8 @@ function serializeArenaRoom(r: ArenaRoomRecord) {
       is_host: p.isHost,
       ready: p.ready,
       finished: p.finished,
+      connected: p.connected,
+      last_seen_at: p.lastSeenAt,
       score: p.score,
       accuracy: p.accuracy,
       combo: p.combo,
@@ -105,14 +156,23 @@ function serializeArenaRoom(r: ArenaRoomRecord) {
       grade: p.grade,
       placement: p.placement,
     })),
+    messages: r.messages.map((m) => ({
+      id: m.id,
+      user_id: m.userId,
+      username: m.username,
+      phrase_id: m.phraseId,
+      text: m.text,
+      sent_at: m.sentAt,
+    })),
   };
 }
 
-function arenaErrorStatus(msg: string): 403 | 404 | 409 | 422 {
+function arenaErrorStatus(msg: string): 403 | 404 | 409 | 422 | 429 {
   const lower = msg.toLowerCase();
   if (lower.includes("not found")) return 404;
   if (lower.includes("only the room host") || lower.includes("not joined")) return 403;
-  if (lower.includes("room is full")) return 409;
+  if (lower.includes("room is full") || lower.includes("already playing")) return 409;
+  if (lower.includes("cooldown") || lower.includes("rate limit")) return 429;
   return 422;
 }
 
@@ -120,6 +180,7 @@ export interface AppOptions {
   storage: IStorageAdapter;
   jwtSecret: string;
   serverVersion?: string;
+  nowProvider?: () => number;
 }
 
 function extractBearer(authHeader?: string): string | null {
@@ -180,7 +241,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.1.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.2.0";
 
   app.use("*", cors());
 
@@ -540,7 +601,7 @@ export function createApp(opts: AppOptions): Hono {
     const limit = Number(c.req.query("limit") || "50");
     const auth = resolveAuth(c.req.header("Authorization"));
     const lb = storage.getLeaderboard(chartId, difficulty, Number.isFinite(limit) ? limit : 50, auth?.sub);
-    return c.json({
+    return respondJsonWithETag(c, {
       ok: true,
       chart_id: chartId,
       difficulty,
@@ -556,7 +617,7 @@ export function createApp(opts: AppOptions): Hono {
       const limit = Number(c.req.query("limit") || "20");
       const auth = resolveAuth(c.req.header("Authorization"));
       const lb = storage.getDailyLeaderboard(spec.date, Number.isFinite(limit) ? limit : 20, auth?.sub);
-      return c.json({
+      return respondJsonWithETag(c, {
         ok: true,
         daily: {
           date: spec.date,
@@ -611,7 +672,7 @@ export function createApp(opts: AppOptions): Hono {
       const limit = Number(c.req.query("limit") || "50");
       const auth = resolveAuth(c.req.header("Authorization"));
       const lb = storage.getDailyLeaderboard(spec.date, Number.isFinite(limit) ? limit : 50, auth?.sub);
-      return c.json({
+      return respondJsonWithETag(c, {
         ok: true,
         date: spec.date,
         my_rank: lb.myRank,
@@ -685,7 +746,7 @@ export function createApp(opts: AppOptions): Hono {
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
       currentUserId: auth?.sub,
     });
-    return c.json({
+    return respondJsonWithETag(c, {
       ok: true,
       total: res.total,
       page: res.page,
@@ -902,6 +963,28 @@ export function createApp(opts: AppOptions): Hono {
     });
   });
 
+  const resolveArenaNow = (c: Context): { nowSec?: number; nowMs?: number } => {
+    const rawMs = c.req.query("now_ms") ?? c.req.header("X-Sakura-Now-Ms");
+    const rawSec = c.req.query("now") ?? c.req.query("now_sec") ?? c.req.header("X-Sakura-Now");
+    if (rawMs !== undefined && rawMs.trim() !== "") {
+      const ms = Number(rawMs);
+      if (Number.isFinite(ms) && ms > 0) {
+        return { nowMs: Math.trunc(ms), nowSec: Math.floor(ms / 1000) };
+      }
+    }
+    if (rawSec !== undefined && rawSec.trim() !== "") {
+      const sec = Number(rawSec);
+      if (Number.isFinite(sec) && sec > 0) {
+        return { nowSec: Math.floor(sec), nowMs: Math.floor(sec * 1000) };
+      }
+    }
+    if (opts.nowProvider) {
+      const ms = opts.nowProvider();
+      return { nowMs: Math.trunc(ms), nowSec: Math.floor(ms / 1000) };
+    }
+    return {};
+  };
+
   app.post("/api/v1/rooms", async (c) => {
     const auth = resolveAuth(c.req.header("Authorization"));
     if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
@@ -912,21 +995,28 @@ export function createApp(opts: AppOptions): Hono {
       return c.json({ ok: false, error: "Invalid JSON body." }, 400);
     }
     try {
+      const { nowSec } = resolveArenaNow(c);
       const nameRaw = body.name ?? body.room_name ?? body.roomName;
       const chartIdRaw = body.chart_id ?? body.chartId;
       const chartTitleRaw = body.chart_title ?? body.chartTitle;
       const difficultyRaw = body.difficulty ?? body.difficulty_name ?? body.difficultyName;
       const diffLevelRaw = body.difficulty_level ?? body.difficultyLevel;
       const chartHashRaw = body.chart_hash ?? body.chartHash;
+      const marketChartIdRaw = body.market_chart_id ?? body.marketChartId;
 
-      const room = storage.createArenaRoom(auth.sub, {
-        name: typeof nameRaw === "string" ? nameRaw : "",
-        chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
-        chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
-        difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "Normal",
-        difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
-        chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
-      });
+      const room = storage.createArenaRoom(
+        auth.sub,
+        {
+          name: typeof nameRaw === "string" ? nameRaw : "",
+          chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
+          chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
+          difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "Normal",
+          difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
+          chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
+          marketChartId: typeof marketChartIdRaw === "string" ? marketChartIdRaw : "",
+        },
+        nowSec
+      );
       const serialized = serializeArenaRoom(room);
       return c.json({ ok: true, room: serialized, ...serialized }, 201);
     } catch (err) {
@@ -936,8 +1026,9 @@ export function createApp(opts: AppOptions): Hono {
   });
 
   app.get("/api/v1/rooms", (c) => {
+    const { nowSec } = resolveArenaNow(c);
     const limit = Number(c.req.query("limit") || "50");
-    const rooms = storage.listArenaRooms(Number.isFinite(limit) ? limit : 50);
+    const rooms = storage.listArenaRooms(Number.isFinite(limit) ? limit : 50, nowSec);
     return c.json({
       ok: true,
       total: rooms.length,
@@ -949,7 +1040,8 @@ export function createApp(opts: AppOptions): Hono {
     const auth = resolveAuth(c.req.header("Authorization"));
     if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
     try {
-      const room = storage.joinArenaRoom(c.req.param("code"), auth.sub);
+      const { nowSec } = resolveArenaNow(c);
+      const room = storage.joinArenaRoom(c.req.param("code"), auth.sub, nowSec);
       const serialized = serializeArenaRoom(room);
       return c.json({ ok: true, room: serialized, ...serialized });
     } catch (err) {
@@ -962,7 +1054,8 @@ export function createApp(opts: AppOptions): Hono {
     const auth = resolveAuth(c.req.header("Authorization"));
     if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
     try {
-      const room = storage.leaveArenaRoom(c.req.param("code"), auth.sub);
+      const { nowSec } = resolveArenaNow(c);
+      const room = storage.leaveArenaRoom(c.req.param("code"), auth.sub, nowSec);
       if (!room) {
         return c.json({ ok: true, deleted: true, room: null });
       }
@@ -984,19 +1077,27 @@ export function createApp(opts: AppOptions): Hono {
       return c.json({ ok: false, error: "Invalid JSON body." }, 400);
     }
     try {
+      const { nowSec } = resolveArenaNow(c);
       const chartIdRaw = body.chart_id ?? body.chartId;
       const chartTitleRaw = body.chart_title ?? body.chartTitle;
       const difficultyRaw = body.difficulty ?? body.difficulty_name ?? body.difficultyName;
       const diffLevelRaw = body.difficulty_level ?? body.difficultyLevel;
       const chartHashRaw = body.chart_hash ?? body.chartHash;
+      const marketChartIdRaw = body.market_chart_id ?? body.marketChartId;
 
-      const room = storage.selectArenaChart(c.req.param("code"), auth.sub, {
-        chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
-        chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
-        difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "",
-        difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
-        chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
-      });
+      const room = storage.selectArenaChart(
+        c.req.param("code"),
+        auth.sub,
+        {
+          chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
+          chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
+          difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "",
+          difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
+          chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
+          marketChartId: typeof marketChartIdRaw === "string" ? marketChartIdRaw : "",
+        },
+        nowSec
+      );
       const serialized = serializeArenaRoom(room);
       return c.json({ ok: true, room: serialized, ...serialized });
     } catch (err) {
@@ -1015,6 +1116,7 @@ export function createApp(opts: AppOptions): Hono {
       return c.json({ ok: false, error: "Invalid JSON body." }, 400);
     }
     try {
+      const { nowSec } = resolveArenaNow(c);
       const startRaw = body.start_match ?? body.startMatch ?? body.start;
       const startMatch = startRaw === true || startRaw === 1;
       const readyRaw = body.ready;
@@ -1024,7 +1126,7 @@ export function createApp(opts: AppOptions): Hono {
           : typeof readyRaw === "number"
             ? readyRaw !== 0
             : startMatch;
-      const room = storage.setArenaReady(c.req.param("code"), auth.sub, ready, startMatch);
+      const room = storage.setArenaReady(c.req.param("code"), auth.sub, ready, startMatch, nowSec);
       const serialized = serializeArenaRoom(room);
       return c.json({ ok: true, room: serialized, ...serialized });
     } catch (err) {
@@ -1043,6 +1145,7 @@ export function createApp(opts: AppOptions): Hono {
       return c.json({ ok: false, error: "Invalid JSON body." }, 400);
     }
     try {
+      const { nowSec } = resolveArenaNow(c);
       const scoreRaw = body.score;
       const accRaw = body.accuracy;
       const comboRaw = body.combo;
@@ -1058,14 +1161,19 @@ export function createApp(opts: AppOptions): Hono {
       const finished =
         typeof finRaw === "boolean" ? finRaw : typeof finRaw === "number" ? finRaw !== 0 : false;
 
-      const room = storage.reportArenaProgress(c.req.param("code"), auth.sub, {
-        score,
-        accuracy,
-        combo,
-        maxCombo,
-        grade,
-        finished,
-      });
+      const room = storage.reportArenaProgress(
+        c.req.param("code"),
+        auth.sub,
+        {
+          score,
+          accuracy,
+          combo,
+          maxCombo,
+          grade,
+          finished,
+        },
+        nowSec
+      );
       const serialized = serializeArenaRoom(room);
       return c.json({ ok: true, room: serialized, ...serialized });
     } catch (err) {
@@ -1074,14 +1182,53 @@ export function createApp(opts: AppOptions): Hono {
     }
   });
 
-  app.get("/api/v1/rooms/:code/state", (c) => {
-    const room = storage.getArenaRoomState(c.req.param("code"));
+  app.post("/api/v1/rooms/:code/chat", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const { nowSec, nowMs } = resolveArenaNow(c);
+      const rawPhrase = body.phrase_id ?? body.phraseId;
+      const phraseId =
+        typeof rawPhrase === "number"
+          ? rawPhrase
+          : typeof rawPhrase === "string" && rawPhrase.trim() !== ""
+            ? Number(rawPhrase)
+            : NaN;
+      const room = storage.sendArenaChat(c.req.param("code"), auth.sub, phraseId, nowSec, nowMs);
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send arena quick chat.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  const handleGetArenaRoomState = (c: Context) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    const { nowSec } = resolveArenaNow(c);
+    const room = storage.getArenaRoomState(c.req.param("code") || "", auth?.sub, nowSec);
     if (!room) {
       return c.json({ ok: false, error: "Room not found." }, 404);
     }
+    const sinceRaw = c.req.query("since_revision");
+    if (sinceRaw !== undefined && sinceRaw.trim() !== "") {
+      const sinceRev = Number(sinceRaw);
+      if (Number.isFinite(sinceRev) && sinceRev === room.revision) {
+        return c.json({ ok: true, unchanged: true, revision: room.revision });
+      }
+    }
     const serialized = serializeArenaRoom(room);
     return c.json({ ok: true, room: serialized, ...serialized });
-  });
+  };
+
+  app.get("/api/v1/rooms/:code", handleGetArenaRoomState);
+  app.get("/api/v1/rooms/:code/state", handleGetArenaRoomState);
 
   return app;
 }

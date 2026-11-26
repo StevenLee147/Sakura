@@ -61,10 +61,13 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     bool m_showGlobalLeaderboard = false;
     bool m_leaderboardLoading = false;
+    bool m_leaderboardPendingFetch = false;
+    float m_leaderboardDebounce = 0.0f;
     bool m_ghostDownloading = false;
     std::string m_leaderboardStatus;
     std::optional<int> m_globalMyRank;
     std::vector<sakura::net::LeaderboardRow> m_globalEntries;
+    bool ApplyCachedLeaderboard(const std::string& chartId, const std::string& diffName);
     void FetchGlobalLeaderboard();
     void WatchOnlineReplay(const sakura::net::LeaderboardRow& row);
     void CreatePresetCollection();

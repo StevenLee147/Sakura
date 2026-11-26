@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { validateSakuraPackage } from "../zip_validator.js";
 import {
+  ArenaChatMessage,
   ArenaChartSelection,
   ArenaCreateRoomInput,
   ArenaPlayerRecord,
@@ -204,12 +205,22 @@ export function validateScoreSubmission(sub: ScoreSubmission): void {
   }
 }
 
+export const ARENA_QUICK_CHAT_PHRASES: ReadonlyArray<string> = [
+  "请多指教！",
+  "准备好了，随时开局！",
+  "稍等，正在同步房间谱面~",
+  "这首定数好高，手下留情！",
+  "精彩演奏！",
+  "再来一局！",
+];
+
 export class SqliteStorageAdapter implements IStorageAdapter {
   public readonly mode: "sqlite" | "postgres" = "sqlite";
   public readonly db: DatabaseSync;
   public readonly dataDir: string;
   private readonly replaysDir: string;
   private readonly chartsDir: string;
+  private readonly chatCooldownMs = new Map<string, number>();
 
   constructor(dataDir: string) {
     this.dataDir = path.resolve(dataDir);
@@ -377,11 +388,16 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         host_id TEXT NOT NULL,
         host_name TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'waiting',
+        revision INTEGER NOT NULL DEFAULT 1,
         chart_id TEXT NOT NULL,
         chart_title TEXT NOT NULL,
         difficulty TEXT NOT NULL,
         difficulty_level REAL NOT NULL DEFAULT 1.0,
         chart_hash TEXT NOT NULL DEFAULT '',
+        market_chart_id TEXT NOT NULL DEFAULT '',
+        package_size INTEGER NOT NULL DEFAULT 0,
+        messages_json TEXT NOT NULL DEFAULT '[]',
+        next_msg_id INTEGER NOT NULL DEFAULT 1,
         started_at INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       );
@@ -394,6 +410,9 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         is_host INTEGER NOT NULL DEFAULT 0,
         ready INTEGER NOT NULL DEFAULT 0,
         finished INTEGER NOT NULL DEFAULT 0,
+        connected INTEGER NOT NULL DEFAULT 1,
+        last_seen_at INTEGER NOT NULL DEFAULT 0,
+        joined_at INTEGER NOT NULL DEFAULT 0,
         score INTEGER NOT NULL DEFAULT 0,
         accuracy REAL NOT NULL DEFAULT 0,
         combo INTEGER NOT NULL DEFAULT 0,
@@ -406,6 +425,34 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     const userCols = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name?: string }>;
     if (!userCols.some((c) => c.name === "dan_badge")) {
       this.db.exec("ALTER TABLE users ADD COLUMN dan_badge TEXT NOT NULL DEFAULT ''");
+    }
+    const roomCols = this.db.prepare("PRAGMA table_info(arena_rooms)").all() as Array<{ name?: string }>;
+    if (!roomCols.some((c) => c.name === "revision")) {
+      this.db.exec("ALTER TABLE arena_rooms ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+    }
+    if (!roomCols.some((c) => c.name === "market_chart_id")) {
+      this.db.exec("ALTER TABLE arena_rooms ADD COLUMN market_chart_id TEXT NOT NULL DEFAULT ''");
+    }
+    if (!roomCols.some((c) => c.name === "package_size")) {
+      this.db.exec("ALTER TABLE arena_rooms ADD COLUMN package_size INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!roomCols.some((c) => c.name === "messages_json")) {
+      this.db.exec("ALTER TABLE arena_rooms ADD COLUMN messages_json TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!roomCols.some((c) => c.name === "next_msg_id")) {
+      this.db.exec("ALTER TABLE arena_rooms ADD COLUMN next_msg_id INTEGER NOT NULL DEFAULT 1");
+    }
+    const playerCols = this.db.prepare("PRAGMA table_info(arena_players)").all() as Array<{ name?: string }>;
+    if (!playerCols.some((c) => c.name === "connected")) {
+      this.db.exec("ALTER TABLE arena_players ADD COLUMN connected INTEGER NOT NULL DEFAULT 1");
+    }
+    if (!playerCols.some((c) => c.name === "last_seen_at")) {
+      this.db.exec("ALTER TABLE arena_players ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0");
+      this.db.exec("UPDATE arena_players SET last_seen_at = updated_at WHERE last_seen_at = 0");
+    }
+    if (!playerCols.some((c) => c.name === "joined_at")) {
+      this.db.exec("ALTER TABLE arena_players ADD COLUMN joined_at INTEGER NOT NULL DEFAULT 0");
+      this.db.exec("UPDATE arena_players SET joined_at = updated_at WHERE joined_at = 0");
     }
     const cloudTbl = this.db.prepare(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cloud_best_scores'"
@@ -1449,30 +1496,253 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     throw new Error("Failed to allocate unique arena room code.");
   }
 
+  private resolveNowSec(nowSec?: number): number {
+    return nowSec !== undefined && Number.isFinite(nowSec) ? Math.floor(nowSec) : Math.floor(Date.now() / 1000);
+  }
+
+  private resolveMarketChartLink(
+    marketChartIdInput?: string,
+    chartHash?: string,
+    chartId?: string
+  ): { marketChartId: string; packageSize: number } {
+    const explicitId = (marketChartIdInput || "").trim();
+    if (explicitId) {
+      const row = this.db.prepare(`
+        SELECT id, package_size
+        FROM market_charts
+        WHERE id = ? OR chart_slug = ?
+        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+      `).get(explicitId, explicitId, explicitId) as { id: string; package_size: number } | undefined;
+      if (row) {
+        return { marketChartId: String(row.id), packageSize: Math.max(0, Number(row.package_size || 0)) };
+      }
+    }
+
+    const cleanHash = (chartHash || "").trim();
+    if (cleanHash) {
+      const row = this.db.prepare(`
+        SELECT id, package_size
+        FROM market_charts
+        WHERE content_hash = ? OR package_sha256 = ?
+        ORDER BY CASE WHEN content_hash = ? THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+      `).get(cleanHash, cleanHash, cleanHash) as { id: string; package_size: number } | undefined;
+      if (row) {
+        return { marketChartId: String(row.id), packageSize: Math.max(0, Number(row.package_size || 0)) };
+      }
+    }
+
+    const cleanChartId = (chartId || "").trim();
+    if (cleanChartId) {
+      const row = this.db.prepare(`
+        SELECT id, package_size
+        FROM market_charts
+        WHERE id = ? OR chart_slug = ?
+        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+      `).get(cleanChartId, cleanChartId, cleanChartId) as { id: string; package_size: number } | undefined;
+      if (row) {
+        return { marketChartId: String(row.id), packageSize: Math.max(0, Number(row.package_size || 0)) };
+      }
+    }
+
+    return { marketChartId: explicitId, packageSize: 0 };
+  }
+
+  private sweepArenaRoomInternal(
+    normCode: string,
+    nowSec: number,
+    callerUserId?: string,
+    bumpRevisionIfChanged = true
+  ): { exists: boolean; changed: boolean } {
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) return { exists: false, changed: false };
+
+    const pRows = this.db.prepare(`
+      SELECT user_id, username, is_host, ready, finished, connected, last_seen_at, joined_at, updated_at, rowid AS row_id
+      FROM arena_players
+      WHERE room_code = ?
+      ORDER BY joined_at ASC, rowid ASC
+    `).all(normCode) as Array<Record<string, unknown>>;
+
+    if (pRows.length === 0) {
+      return { exists: true, changed: false };
+    }
+
+    let changed = false;
+    const expiredIds: string[] = [];
+    for (const p of pRows) {
+      const lastSeen = Number(p.last_seen_at || 0) > 0 ? Number(p.last_seen_at) : Number(p.updated_at || 0);
+      if (nowSec - lastSeen > 60) {
+        expiredIds.push(String(p.user_id));
+      }
+    }
+
+    if (expiredIds.length > 0) {
+      const delStmt = this.db.prepare("DELETE FROM arena_players WHERE room_code = ? AND user_id = ?");
+      for (const uid of expiredIds) {
+        delStmt.run(normCode, uid);
+        this.chatCooldownMs.delete(`${normCode}:${uid}`);
+      }
+      changed = true;
+    }
+
+    const remaining = pRows.filter((p) => !expiredIds.includes(String(p.user_id)));
+    if (remaining.length === 0 && expiredIds.length > 0) {
+      this.db.prepare("DELETE FROM arena_rooms WHERE code = ?").run(normCode);
+      return { exists: false, changed: true };
+    }
+
+    interface RemainingMeta {
+      userId: string;
+      username: string;
+      isHost: boolean;
+      finished: boolean;
+      connected: boolean;
+      joinedAt: number;
+      rowId: number;
+    }
+    const updatedRemaining: RemainingMeta[] = [];
+
+    for (const p of remaining) {
+      const uid = String(p.user_id);
+      const prevConnected = Number(p.connected ?? 1) !== 0;
+      const lastSeen = Number(p.last_seen_at || 0) > 0 ? Number(p.last_seen_at) : Number(p.updated_at || 0);
+      const joinedAt = Number(p.joined_at || 0) > 0 ? Number(p.joined_at) : Number(p.updated_at || 0);
+      let nextConnected = prevConnected;
+
+      if (callerUserId && uid === callerUserId) {
+        nextConnected = true;
+        this.db.prepare(
+          "UPDATE arena_players SET connected = 1, last_seen_at = ? WHERE room_code = ? AND user_id = ?"
+        ).run(nowSec, normCode, uid);
+        if (!prevConnected) {
+          changed = true;
+        }
+      } else if (nowSec - lastSeen > 12) {
+        nextConnected = false;
+        if (prevConnected) {
+          this.db.prepare(
+            "UPDATE arena_players SET connected = 0 WHERE room_code = ? AND user_id = ?"
+          ).run(normCode, uid);
+          changed = true;
+        }
+      }
+
+      updatedRemaining.push({
+        userId: uid,
+        username: String(p.username),
+        isHost: Number(p.is_host) !== 0,
+        finished: Number(p.finished) !== 0,
+        connected: nextConnected,
+        joinedAt,
+        rowId: Number(p.row_id || 0),
+      });
+    }
+
+    const hasValidHost = updatedRemaining.some((p) => p.isHost && p.userId === String(room.host_id));
+    if (!hasValidHost && updatedRemaining.length > 0) {
+      const candidates = [...updatedRemaining].sort((a, b) => {
+        if (a.connected !== b.connected) return a.connected ? -1 : 1;
+        if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+        return a.rowId - b.rowId;
+      });
+      const nextHost = candidates[0];
+      this.db.prepare(
+        "UPDATE arena_players SET is_host = CASE WHEN user_id = ? THEN 1 ELSE 0 END, ready = CASE WHEN user_id = ? THEN 1 ELSE ready END WHERE room_code = ?"
+      ).run(nextHost.userId, nextHost.userId, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET host_id = ?, host_name = ? WHERE code = ?"
+      ).run(nextHost.userId, nextHost.username, normCode);
+      changed = true;
+    }
+
+    if (expiredIds.length > 0 && String(room.status) === "playing" && updatedRemaining.every((p) => p.finished)) {
+      this.db.prepare("UPDATE arena_rooms SET status = 'finished' WHERE code = ?").run(normCode);
+      changed = true;
+    }
+
+    if (changed && bumpRevisionIfChanged) {
+      this.db.prepare(
+        "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+      ).run(nowSec, normCode);
+    }
+
+    return { exists: true, changed };
+  }
+
+  sweepArenaHeartbeats(nowSec?: number): number {
+    const now = this.resolveNowSec(nowSec);
+    const rows = this.db.prepare("SELECT code FROM arena_rooms").all() as Array<{ code: string }>;
+    let affected = 0;
+    for (const r of rows) {
+      const res = this.sweepArenaRoomInternal(String(r.code), now, undefined, true);
+      if (res.changed) affected++;
+    }
+    return affected;
+  }
+
+  private readArenaRoomDirect(normCode: string): ArenaRoomRecord | null {
+    const row = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return this.rowToArenaRoom(row);
+  }
+
   private rowToArenaRoom(row: Record<string, unknown>): ArenaRoomRecord {
     const code = String(row.code);
     const pRows = this.db.prepare(`
       SELECT user_id, username, dan_badge, is_host, ready, finished,
+             connected, last_seen_at,
              score, accuracy, combo, max_combo, grade, updated_at
       FROM arena_players
       WHERE room_code = ?
       ORDER BY score DESC, accuracy DESC, updated_at ASC, rowid ASC
     `).all(code) as Array<Record<string, unknown>>;
 
-    const players: ArenaPlayerRecord[] = pRows.map((p, idx) => ({
-      userId: String(p.user_id),
-      username: String(p.username),
-      danBadge: String(p.dan_badge || ""),
-      isHost: Number(p.is_host) !== 0,
-      ready: Number(p.ready) !== 0,
-      finished: Number(p.finished) !== 0,
-      score: Number(p.score || 0),
-      accuracy: Number(p.accuracy || 0),
-      combo: Number(p.combo || 0),
-      maxCombo: Number(p.max_combo || 0),
-      grade: String(p.grade || "D"),
-      placement: idx + 1,
-    }));
+    const players: ArenaPlayerRecord[] = pRows.map((p, idx) => {
+      const rawLastSeen = Number(p.last_seen_at || 0);
+      return {
+        userId: String(p.user_id),
+        username: String(p.username),
+        danBadge: String(p.dan_badge || ""),
+        isHost: Number(p.is_host) !== 0,
+        ready: Number(p.ready) !== 0,
+        finished: Number(p.finished) !== 0,
+        connected: Number(p.connected ?? 1) !== 0,
+        lastSeenAt: rawLastSeen > 0 ? rawLastSeen : Number(p.updated_at || 0),
+        score: Number(p.score || 0),
+        accuracy: Number(p.accuracy || 0),
+        combo: Number(p.combo || 0),
+        maxCombo: Number(p.max_combo || 0),
+        grade: String(p.grade || "D"),
+        placement: idx + 1,
+      };
+    });
+
+    let messages: ArenaChatMessage[] = [];
+    try {
+      const parsed = JSON.parse(String(row.messages_json || "[]"));
+      if (Array.isArray(parsed)) {
+        messages = parsed.map((m) => {
+          const obj = (m || {}) as Record<string, unknown>;
+          return {
+            id: Number(obj.id || 0),
+            userId: String(obj.userId ?? obj.user_id ?? ""),
+            username: String(obj.username ?? ""),
+            phraseId: Number(obj.phraseId ?? obj.phrase_id ?? 0),
+            text: String(obj.text ?? ""),
+            sentAt: Number(obj.sentAt ?? obj.sent_at ?? 0),
+          };
+        });
+      }
+    } catch {
+      messages = [];
+    }
 
     const rawStatus = String(row.status || "waiting");
     const status: ArenaRoomStatus =
@@ -1484,18 +1754,22 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       hostId: String(row.host_id),
       hostName: String(row.host_name),
       status,
+      revision: Math.max(1, Number(row.revision || 1)),
       chartId: String(row.chart_id),
       chartTitle: String(row.chart_title),
       difficulty: String(row.difficulty),
       difficultyLevel: Number(row.difficulty_level || 1.0),
       chartHash: String(row.chart_hash || ""),
+      marketChartId: String(row.market_chart_id || ""),
+      packageSize: Math.max(0, Number(row.package_size || 0)),
       startedAt: Number(row.started_at || 0),
       updatedAt: Number(row.updated_at || 0),
       players,
+      messages,
     };
   }
 
-  createArenaRoom(userId: string, input: ArenaCreateRoomInput): ArenaRoomRecord {
+  createArenaRoom(userId: string, input: ArenaCreateRoomInput, nowSec?: number): ArenaRoomRecord {
     const user = this.findUserById(userId);
     if (!user) throw new Error("User not found.");
     const chartId = (input.chartId || "").trim();
@@ -1507,31 +1781,55 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         ? Number(input.difficultyLevel)
         : 1.0;
     const chartHash = (input.chartHash || "").trim();
+    const linked = this.resolveMarketChartLink(input.marketChartId, chartHash, chartId);
     const name = (input.name || "").trim().slice(0, 48) || `${user.username}'s Room`;
     const code = this.generateArenaRoomCode();
-    const now = Math.floor(Date.now() / 1000);
+    const now = this.resolveNowSec(nowSec);
 
     this.db.prepare(`
       INSERT INTO arena_rooms (
-        code, name, host_id, host_name, status,
+        code, name, host_id, host_name, status, revision,
         chart_id, chart_title, difficulty, difficulty_level, chart_hash,
+        market_chart_id, package_size, messages_json, next_msg_id,
         started_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, 0, ?)
-    `).run(code, name, user.id, user.username, chartId, chartTitle, difficulty, difficultyLevel, chartHash, now);
+      ) VALUES (?, ?, ?, ?, 'waiting', 1, ?, ?, ?, ?, ?, ?, ?, '[]', 1, 0, ?)
+    `).run(
+      code,
+      name,
+      user.id,
+      user.username,
+      chartId,
+      chartTitle,
+      difficulty,
+      difficultyLevel,
+      chartHash,
+      linked.marketChartId,
+      linked.packageSize,
+      now
+    );
 
     this.db.prepare(`
       INSERT INTO arena_players (
         room_code, user_id, username, dan_badge, is_host, ready, finished,
+        connected, last_seen_at, joined_at,
         score, accuracy, combo, max_combo, grade, updated_at
-      ) VALUES (?, ?, ?, ?, 1, 1, 0, 0, 0, 0, 0, 'D', ?)
-    `).run(code, user.id, user.username, user.danBadge, now);
+      ) VALUES (?, ?, ?, ?, 1, 1, 0, 1, ?, ?, 0, 0, 0, 0, 'D', ?)
+    `).run(code, user.id, user.username, user.danBadge, now, now, now);
 
-    return this.getArenaRoomState(code)!;
+    return this.readArenaRoomDirect(code)!;
   }
 
-  listArenaRooms(limit = 50): ArenaRoomRecord[] {
+  listArenaRooms(limit = 50, nowSec?: number): ArenaRoomRecord[] {
+    const now = this.resolveNowSec(nowSec);
     const capped = Math.max(1, Math.min(100, Math.trunc(limit || 50)));
-    const cutoff = Math.floor(Date.now() / 1000) - 7200;
+    const cutoff = now - 7200;
+    const candidateCodes = this.db.prepare(`
+      SELECT code FROM arena_rooms
+      WHERE status IN ('waiting', 'playing') AND updated_at >= ?
+    `).all(cutoff) as Array<{ code: string }>;
+    for (const c of candidateCodes) {
+      this.sweepArenaRoomInternal(String(c.code), now, undefined, true);
+    }
     const rows = this.db.prepare(`
       SELECT * FROM arena_rooms
       WHERE status IN ('waiting', 'playing') AND updated_at >= ?
@@ -1541,61 +1839,100 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     return rows.map((r) => this.rowToArenaRoom(r));
   }
 
-  joinArenaRoom(code: string, userId: string): ArenaRoomRecord {
+  joinArenaRoom(code: string, userId: string, nowSec?: number): ArenaRoomRecord {
     const normCode = (code || "").trim().toUpperCase();
     if (!normCode) throw new Error("Room not found.");
-    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!room) throw new Error("Room not found.");
+    if (!initialRoom) throw new Error("Room not found.");
     const user = this.findUserById(userId);
     if (!user) throw new Error("User not found.");
 
-    const existing = this.db.prepare(
-      "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
-    ).get(normCode, user.id) as { user_id: string } | undefined;
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) throw new Error("Room not found.");
 
-    const now = Math.floor(Date.now() / 1000);
+    const persistSweepIfRejected = () => {
+      if (sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+    };
+
+    const existing = this.db.prepare(
+      "SELECT user_id, username, dan_badge, connected FROM arena_players WHERE room_code = ? AND user_id = ?"
+    ).get(normCode, user.id) as
+      | { user_id: string; username: string; dan_badge: string; connected: number }
+      | undefined;
+
     if (existing) {
+      const wasDisconnected = Number(existing.connected ?? 1) === 0;
+      const metaChanged =
+        String(existing.username) !== user.username || String(existing.dan_badge || "") !== user.danBadge;
       this.db.prepare(
-        "UPDATE arena_players SET username = ?, dan_badge = ? WHERE room_code = ? AND user_id = ?"
-      ).run(user.username, user.danBadge, normCode, user.id);
-      return this.getArenaRoomState(normCode)!;
+        "UPDATE arena_players SET username = ?, dan_badge = ?, connected = 1, last_seen_at = ? WHERE room_code = ? AND user_id = ?"
+      ).run(user.username, user.danBadge, now, normCode, user.id);
+      if (wasDisconnected || metaChanged || sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+      return this.readArenaRoomDirect(normCode)!;
+    }
+
+    const roomAfterSweep = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!roomAfterSweep) throw new Error("Room not found.");
+    if (String(roomAfterSweep.status) === "playing") {
+      persistSweepIfRejected();
+      throw new Error("Match is already playing.");
     }
 
     const cnt = this.db.prepare(
       "SELECT COUNT(*) AS c FROM arena_players WHERE room_code = ?"
     ).get(normCode) as { c: number };
     if (Number(cnt.c || 0) >= 8) {
+      persistSweepIfRejected();
       throw new Error("Room is full (maximum 8 players).");
     }
 
     this.db.prepare(`
       INSERT INTO arena_players (
         room_code, user_id, username, dan_badge, is_host, ready, finished,
+        connected, last_seen_at, joined_at,
         score, accuracy, combo, max_combo, grade, updated_at
-      ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 'D', ?)
-    `).run(normCode, user.id, user.username, user.danBadge, now);
-    this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+      ) VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?, 0, 0, 0, 0, 'D', ?)
+    `).run(normCode, user.id, user.username, user.danBadge, now, now, now);
+    this.db.prepare(
+      "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+    ).run(now, normCode);
 
-    return this.getArenaRoomState(normCode)!;
+    return this.readArenaRoomDirect(normCode)!;
   }
 
-  leaveArenaRoom(code: string, userId: string): ArenaRoomRecord | null {
+  leaveArenaRoom(code: string, userId: string, nowSec?: number): ArenaRoomRecord | null {
     const normCode = (code || "").trim().toUpperCase();
     if (!normCode) return null;
-    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!room) return null;
+    if (!initialRoom) return null;
 
-    this.db.prepare("DELETE FROM arena_players WHERE room_code = ? AND user_id = ?").run(normCode, userId);
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) return null;
+
+    const delRes = this.db.prepare("DELETE FROM arena_players WHERE room_code = ? AND user_id = ?").run(normCode, userId);
+    this.chatCooldownMs.delete(`${normCode}:${userId}`);
 
     const remaining = this.db.prepare(`
-      SELECT user_id, username, is_host, finished
+      SELECT user_id, username, is_host, finished, connected, joined_at, rowid AS row_id
       FROM arena_players
       WHERE room_code = ?
-      ORDER BY is_host DESC, updated_at ASC, rowid ASC
+      ORDER BY connected DESC, joined_at ASC, rowid ASC
     `).all(normCode) as Array<Record<string, unknown>>;
 
     if (remaining.length === 0) {
@@ -1603,8 +1940,10 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       return null;
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as Record<string, unknown>;
     const hasHost = remaining.some((p) => Number(p.is_host) !== 0 && String(p.user_id) === String(room.host_id));
+    let changed = Number(delRes.changes || 0) > 0 || sweep.changed;
+
     if (!hasHost) {
       const nextHost = remaining[0];
       const nextHostId = String(nextHost.user_id);
@@ -1613,31 +1952,53 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         "UPDATE arena_players SET is_host = CASE WHEN user_id = ? THEN 1 ELSE 0 END, ready = CASE WHEN user_id = ? THEN 1 ELSE ready END WHERE room_code = ?"
       ).run(nextHostId, nextHostId, normCode);
       this.db.prepare(
-        "UPDATE arena_rooms SET host_id = ?, host_name = ?, updated_at = ? WHERE code = ?"
-      ).run(nextHostId, nextHostName, now, normCode);
-    } else {
-      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+        "UPDATE arena_rooms SET host_id = ?, host_name = ? WHERE code = ?"
+      ).run(nextHostId, nextHostName, normCode);
+      changed = true;
     }
 
     if (String(room.status) === "playing" && remaining.every((p) => Number(p.finished) !== 0)) {
-      this.db.prepare("UPDATE arena_rooms SET status = 'finished', updated_at = ? WHERE code = ?").run(now, normCode);
+      this.db.prepare("UPDATE arena_rooms SET status = 'finished' WHERE code = ?").run(normCode);
+      changed = true;
     }
 
-    return this.getArenaRoomState(normCode);
+    if (changed) {
+      this.db.prepare(
+        "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+      ).run(now, normCode);
+    }
+
+    return this.readArenaRoomDirect(normCode);
   }
 
-  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection): ArenaRoomRecord {
+  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection, nowSec?: number): ArenaRoomRecord {
     const normCode = (code || "").trim().toUpperCase();
-    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!room) throw new Error("Room not found.");
+    if (!initialRoom) throw new Error("Room not found.");
+
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) throw new Error("Room not found.");
+
+    const persistSweepIfRejected = () => {
+      if (sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+    };
+
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as Record<string, unknown>;
     if (String(room.host_id) !== userId) {
+      persistSweepIfRejected();
       throw new Error("Only the room host can select the chart.");
     }
     const chartId = (chart.chartId || "").trim();
     const difficulty = (chart.difficulty || "").trim();
     if (!chartId || !difficulty) {
+      persistSweepIfRejected();
       throw new Error("Missing chart_id or difficulty.");
     }
     const chartTitle = (chart.chartTitle || "").trim() || chartId;
@@ -1646,20 +2007,33 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         ? Number(chart.difficultyLevel)
         : 1.0;
     const chartHash = (chart.chartHash || "").trim();
-    const now = Math.floor(Date.now() / 1000);
+    const linked = this.resolveMarketChartLink(chart.marketChartId, chartHash, chartId);
 
     this.db.prepare(`
       UPDATE arena_rooms SET
         status = 'waiting',
+        revision = revision + 1,
         chart_id = ?,
         chart_title = ?,
         difficulty = ?,
         difficulty_level = ?,
         chart_hash = ?,
+        market_chart_id = ?,
+        package_size = ?,
         started_at = 0,
         updated_at = ?
       WHERE code = ?
-    `).run(chartId, chartTitle, difficulty, difficultyLevel, chartHash, now, normCode);
+    `).run(
+      chartId,
+      chartTitle,
+      difficulty,
+      difficultyLevel,
+      chartHash,
+      linked.marketChartId,
+      linked.packageSize,
+      now,
+      normCode
+    );
 
     this.db.prepare(`
       UPDATE arena_players SET
@@ -1669,29 +2043,48 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         combo = 0,
         max_combo = 0,
         grade = 'D',
+        connected = CASE WHEN user_id = ? THEN 1 ELSE connected END,
+        last_seen_at = CASE WHEN user_id = ? THEN ? ELSE last_seen_at END,
         updated_at = ?
       WHERE room_code = ?
-    `).run(now, normCode);
+    `).run(userId, userId, now, now, normCode);
 
-    return this.getArenaRoomState(normCode)!;
+    return this.readArenaRoomDirect(normCode)!;
   }
 
-  setArenaReady(code: string, userId: string, ready: boolean, startMatch = false): ArenaRoomRecord {
+  setArenaReady(
+    code: string,
+    userId: string,
+    ready: boolean,
+    startMatch = false,
+    nowSec?: number
+  ): ArenaRoomRecord {
     const normCode = (code || "").trim().toUpperCase();
-    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!room) throw new Error("Room not found.");
+    if (!initialRoom) throw new Error("Room not found.");
+
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) throw new Error("Room not found.");
 
     const player = this.db.prepare(
       "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
     ).get(normCode, userId) as { user_id: string } | undefined;
-    if (!player) throw new Error("Player has not joined this room.");
+    if (!player) {
+      if (sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+      throw new Error("Player has not joined this room.");
+    }
 
-    const now = Math.floor(Date.now() / 1000);
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as Record<string, unknown>;
     this.db.prepare(
-      "UPDATE arena_players SET ready = ?, updated_at = ? WHERE room_code = ? AND user_id = ?"
-    ).run(ready ? 1 : 0, now, normCode, userId);
+      "UPDATE arena_players SET ready = ?, connected = 1, last_seen_at = ?, updated_at = ? WHERE room_code = ? AND user_id = ?"
+    ).run(ready ? 1 : 0, now, now, normCode, userId);
 
     if (startMatch === true && String(room.host_id) === userId) {
       this.db.prepare(`
@@ -1706,31 +2099,55 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         WHERE room_code = ?
       `).run(now, normCode);
       this.db.prepare(
-        "UPDATE arena_rooms SET status = 'playing', started_at = ?, updated_at = ? WHERE code = ?"
+        "UPDATE arena_rooms SET status = 'playing', revision = revision + 1, started_at = ?, updated_at = ? WHERE code = ?"
       ).run(now, now, normCode);
     } else {
-      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+      ).run(now, normCode);
     }
 
-    return this.getArenaRoomState(normCode)!;
+    return this.readArenaRoomDirect(normCode)!;
   }
 
-  reportArenaProgress(code: string, userId: string, progress: ArenaProgressInput): ArenaRoomRecord {
+  reportArenaProgress(
+    code: string,
+    userId: string,
+    progress: ArenaProgressInput,
+    nowSec?: number
+  ): ArenaRoomRecord {
     const normCode = (code || "").trim().toUpperCase();
-    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!room) throw new Error("Room not found.");
+    if (!initialRoom) throw new Error("Room not found.");
+
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) throw new Error("Room not found.");
+
+    const persistSweepIfRejected = () => {
+      if (sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+    };
 
     const player = this.db.prepare(
       "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
     ).get(normCode, userId) as { user_id: string } | undefined;
-    if (!player) throw new Error("Player has not joined this room.");
+    if (!player) {
+      persistSweepIfRejected();
+      throw new Error("Player has not joined this room.");
+    }
 
     if (!Number.isFinite(progress.score) || progress.score < 0 || progress.score > 1000000) {
+      persistSweepIfRejected();
       throw new Error("Score must be between 0 and 1,000,000.");
     }
     if (!Number.isFinite(progress.accuracy) || progress.accuracy < 0 || progress.accuracy > 100.01) {
+      persistSweepIfRejected();
       throw new Error("Accuracy is out of valid range [0, 100].");
     }
 
@@ -1740,7 +2157,6 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     const cleanMaxCombo = Math.max(cleanCombo, Math.max(0, Math.trunc(progress.maxCombo || 0)));
     const cleanGrade = (progress.grade || "D").trim() || "D";
     const cleanFinished = progress.finished ? 1 : 0;
-    const now = Math.floor(Date.now() / 1000);
 
     this.db.prepare(`
       UPDATE arena_players SET
@@ -1750,31 +2166,129 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         max_combo = ?,
         grade = ?,
         finished = ?,
+        connected = 1,
+        last_seen_at = ?,
         updated_at = ?
       WHERE room_code = ? AND user_id = ?
-    `).run(cleanScore, cleanAcc, cleanCombo, cleanMaxCombo, cleanGrade, cleanFinished, now, normCode, userId);
+    `).run(cleanScore, cleanAcc, cleanCombo, cleanMaxCombo, cleanGrade, cleanFinished, now, now, normCode, userId);
 
     const agg = this.db.prepare(
       "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN finished != 0 THEN 1 ELSE 0 END), 0) AS done FROM arena_players WHERE room_code = ?"
     ).get(normCode) as { total: number; done: number };
 
     if (Number(agg.total) > 0 && Number(agg.done) === Number(agg.total)) {
-      this.db.prepare("UPDATE arena_rooms SET status = 'finished', updated_at = ? WHERE code = ?").run(now, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET status = 'finished', revision = revision + 1, updated_at = ? WHERE code = ?"
+      ).run(now, normCode);
     } else {
-      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+      ).run(now, normCode);
     }
 
-    return this.getArenaRoomState(normCode)!;
+    return this.readArenaRoomDirect(normCode)!;
   }
 
-  getArenaRoomState(code: string): ArenaRoomRecord | null {
+  sendArenaChat(
+    code: string,
+    userId: string,
+    phraseId: number,
+    nowSec?: number,
+    nowMs?: number
+  ): ArenaRoomRecord {
     const normCode = (code || "").trim().toUpperCase();
-    if (!normCode) return null;
-    const row = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+    const initialRoom = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
       | Record<string, unknown>
       | undefined;
-    if (!row) return null;
-    return this.rowToArenaRoom(row);
+    if (!initialRoom) throw new Error("Room not found.");
+
+    const effectiveNowMs =
+      nowMs !== undefined && Number.isFinite(nowMs)
+        ? Math.trunc(nowMs)
+        : nowSec !== undefined && Number.isFinite(nowSec)
+          ? Math.floor(nowSec) * 1000
+          : Date.now();
+    const now =
+      nowSec !== undefined && Number.isFinite(nowSec)
+        ? Math.floor(nowSec)
+        : Math.floor(effectiveNowMs / 1000);
+
+    const sweep = this.sweepArenaRoomInternal(normCode, now, undefined, false);
+    if (!sweep.exists) throw new Error("Room not found.");
+
+    const persistSweepIfRejected = () => {
+      if (sweep.changed) {
+        this.db.prepare(
+          "UPDATE arena_rooms SET revision = revision + 1, updated_at = ? WHERE code = ?"
+        ).run(now, normCode);
+      }
+    };
+
+    const player = this.db.prepare(
+      "SELECT user_id, username FROM arena_players WHERE room_code = ? AND user_id = ?"
+    ).get(normCode, userId) as { user_id: string; username: string } | undefined;
+    if (!player) {
+      persistSweepIfRejected();
+      throw new Error("Player has not joined this room.");
+    }
+
+    if (!Number.isInteger(phraseId) || phraseId < 0 || phraseId >= ARENA_QUICK_CHAT_PHRASES.length) {
+      persistSweepIfRejected();
+      throw new Error("Invalid phrase_id; expected integer in 0..5.");
+    }
+
+    const cooldownKey = `${normCode}:${userId}`;
+    const prevChatMs = this.chatCooldownMs.get(cooldownKey);
+    if (prevChatMs !== undefined && effectiveNowMs - prevChatMs < 1500) {
+      persistSweepIfRejected();
+      throw new Error("Quick chat cooldown active; please wait 1.5s between messages.");
+    }
+    this.chatCooldownMs.set(cooldownKey, effectiveNowMs);
+
+    const room = this.db.prepare("SELECT messages_json, next_msg_id FROM arena_rooms WHERE code = ?").get(normCode) as {
+      messages_json: string;
+      next_msg_id: number;
+    };
+    let messages: ArenaChatMessage[] = [];
+    try {
+      const parsed = JSON.parse(String(room.messages_json || "[]"));
+      if (Array.isArray(parsed)) messages = parsed as ArenaChatMessage[];
+    } catch {
+      messages = [];
+    }
+
+    const msgId = Math.max(1, Number(room.next_msg_id || 1));
+    const user = this.findUserById(userId);
+    const senderName = user?.username || String(player.username);
+    messages.push({
+      id: msgId,
+      userId,
+      username: senderName,
+      phraseId,
+      text: ARENA_QUICK_CHAT_PHRASES[phraseId],
+      sentAt: now,
+    });
+    if (messages.length > 16) {
+      messages = messages.slice(messages.length - 16);
+    }
+
+    this.db.prepare(
+      "UPDATE arena_players SET connected = 1, last_seen_at = ? WHERE room_code = ? AND user_id = ?"
+    ).run(now, normCode, userId);
+    this.db.prepare(
+      "UPDATE arena_rooms SET messages_json = ?, next_msg_id = ?, revision = revision + 1, updated_at = ? WHERE code = ?"
+    ).run(JSON.stringify(messages), msgId + 1, now, normCode);
+
+    return this.readArenaRoomDirect(normCode)!;
+  }
+
+  getArenaRoomState(code: string, callerUserId?: string, nowSec?: number): ArenaRoomRecord | null {
+    const normCode = (code || "").trim().toUpperCase();
+    if (!normCode) return null;
+    const now = this.resolveNowSec(nowSec);
+    const sweep = this.sweepArenaRoomInternal(normCode, now, callerUserId, true);
+    if (!sweep.exists) return null;
+    return this.readArenaRoomDirect(normCode);
   }
 
   close(): void {
