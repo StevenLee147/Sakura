@@ -47,9 +47,9 @@ sakura::game::GameResult MakeResult(int score,
                                     bool isFullCombo,
                                     bool isAllPerfect,
                                     sakura::game::Grade grade = sakura::game::Grade::A,
-                                    std::string chartId = "tutorial_song",
+                                    std::string chartId = "sakura_awakening",
                                     std::string difficulty = "Easy",
-                                    float difficultyLevel = 1.0f)
+                                    float difficultyLevel = 2.5f)
 {
     sakura::game::GameResult result;
     result.chartId         = std::move(chartId);
@@ -98,7 +98,7 @@ TEST_CASE("AchievementManager 根据成绩和连击解锁一次性成就", "[ach
     REQUIRE(manager.LoadAchievements());
 
     auto result = MakeResult(999500, 99.61f, 120, true, true, sakura::game::Grade::SS,
-        "spring_breeze", "Hard", 5.5f);
+        "starry_sky", "Hard", 6.5f);
     REQUIRE(database.SaveScore(result));
 
     auto unlocked = manager.CheckAndUnlock(result);
@@ -123,7 +123,7 @@ TEST_CASE("AchievementManager 累计游玩阈值可解锁", "[achievement]")
     {
         auto result = MakeResult(800000 + index, 90.0f + static_cast<float>(index) * 0.1f,
             30 + index, false, false, sakura::game::Grade::B,
-            "tutorial_song", "Easy", 1.0f);
+            "sakura_awakening", "Easy", 2.5f);
         REQUIRE(database.SaveScore(result));
         manager.CheckAndUnlock(result);
     }

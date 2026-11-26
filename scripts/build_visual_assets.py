@@ -6,7 +6,7 @@ Generates:
   - resources/images/ui/*.png          (sakura crest, gilded ornaments, rank emblems SS/S/A/B/C/D)
   - resources/images/backgrounds/*.png (moonlit ink-sakura sky, mountain layers, misty canopy)
   - resources/images/covers/default_cover.png
-  - resources/charts/*/cover.png       (1200x1200 bespoke covers for all 7 built-in charts)
+  - resources/charts/*/cover.png       (1200x1200 bespoke covers for existing built-in charts)
 
 IMPORTANT: Does NOT touch chart *.json or music.* files so replay/chart hashes remain 100% intact.
 """
@@ -601,68 +601,9 @@ def build_backgrounds_and_covers() -> None:
     )
     default_cover.convert("RGB").save(COVERS_DIR / "default_cover.png", optimize=True)
 
-    # All 7 built-in song covers (1200x1200 high-DPI)
+    # Bespoke high-DPI song covers (only written for existing built-in chart directories;
+    # deleted procedural WAV placeholder folders are intentionally excluded and never recreated)
     song_specs = [
-        (
-            "tutorial_song", 1001, "clockwork",
-            {
-                "sky_top": (10, 20, 32), "sky_mid": (20, 42, 58), "horizon": (48, 84, 92),
-                "accent": (148, 224, 204), "gold": (246, 222, 168),
-                "moon_x": 0.64, "moon_y": 0.37, "moon_r": 0.21,
-                "ridges": [(24, 42, 54), (17, 31, 42), (11, 21, 30)],
-            },
-            {"series": "SAKURA  ·  PRACTICE PRELUDE", "index": "00", "title": "First Steps", "subtitle": "100 BPM  ·  Sakura Soundworks"},
-        ),
-        (
-            "spring_breeze", 1002, "moon",
-            {
-                "sky_top": (11, 20, 36), "sky_mid": (24, 44, 68), "horizon": (64, 96, 112),
-                "accent": (134, 214, 218), "gold": (250, 220, 168),
-                "moon_x": 0.62, "moon_y": 0.38, "moon_r": 0.22,
-                "ridges": [(26, 40, 58), (19, 30, 45), (12, 20, 32)],
-            },
-            {"series": "SAKURA ORIGINALS  ·  VOL. 01", "index": "01", "title": "Spring Breeze", "subtitle": "130 BPM  ·  Sakura Soundworks"},
-        ),
-        (
-            "cherry_blossom", 1003, "moon",
-            {
-                "sky_top": (14, 13, 30), "sky_mid": (34, 24, 54), "horizon": (88, 48, 82),
-                "accent": (246, 162, 196), "gold": (252, 220, 166),
-                "moon_x": 0.60, "moon_y": 0.36, "moon_r": 0.23,
-                "ridges": [(36, 25, 48), (25, 18, 36), (16, 12, 25)],
-            },
-            {"series": "SAKURA ORIGINALS  ·  VOL. 01", "index": "02", "title": "Cherry Blossom", "subtitle": "155 BPM  ·  Sakura Soundworks"},
-        ),
-        (
-            "digital_dream", 1004, "prism",
-            {
-                "sky_top": (8, 12, 30), "sky_mid": (18, 28, 66), "horizon": (48, 56, 118),
-                "accent": (138, 182, 255), "gold": (216, 232, 255),
-                "moon_x": 0.58, "moon_y": 0.37, "moon_r": 0.21,
-                "ridges": [(22, 28, 58), (15, 20, 44), (10, 14, 30)],
-            },
-            {"series": "SAKURA ORIGINALS  ·  VOL. 01", "index": "03", "title": "Digital Dream", "subtitle": "175 BPM  ·  Sakura Soundworks"},
-        ),
-        (
-            "sakura_storm", 1005, "vortex",
-            {
-                "sky_top": (18, 10, 26), "sky_mid": (46, 20, 48), "horizon": (112, 42, 78),
-                "accent": (255, 128, 176), "gold": (255, 214, 152),
-                "moon_x": 0.61, "moon_y": 0.35, "moon_r": 0.235,
-                "ridges": [(42, 20, 38), (29, 14, 28), (18, 9, 19)],
-            },
-            {"series": "SAKURA ORIGINALS  ·  VOL. 01", "index": "04", "title": "Sakura Storm", "subtitle": "200 BPM  ·  Sakura Soundworks"},
-        ),
-        (
-            "test-song", 1006, "clockwork",
-            {
-                "sky_top": (13, 14, 30), "sky_mid": (29, 28, 58), "horizon": (66, 56, 98),
-                "accent": (192, 172, 242), "gold": (246, 218, 168),
-                "moon_x": 0.63, "moon_y": 0.37, "moon_r": 0.205,
-                "ridges": [(30, 27, 50), (21, 19, 38), (14, 13, 26)],
-            },
-            {"series": "SAKURA  ·  PRACTICE GARDEN", "index": "05", "title": "Timing Garden", "subtitle": "120 BPM  ·  Sakura Soundworks"},
-        ),
         (
             "sakura_breath", 1007, "prism",
             {
@@ -671,13 +612,13 @@ def build_backgrounds_and_covers() -> None:
                 "moon_x": 0.59, "moon_y": 0.35, "moon_r": 0.225,
                 "ridges": [(34, 26, 52), (24, 18, 39), (15, 12, 27)],
             },
-            {"series": "SAKURA ORIGINALS  ·  VOL. 02", "index": "06", "title": "樱落呼吸", "subtitle": "178 BPM  ·  Sakura Soundworks"},
+            {"series": "SAKURA ORIGINALS  ·  VOL. 02", "index": "01", "title": "樱落呼吸", "subtitle": "178 BPM  ·  Sakura Soundworks"},
         ),
     ]
 
     for folder_name, seed, motif, pal, typo in song_specs:
         chart_folder = CHARTS_DIR / folder_name
-        if not chart_folder.exists():
+        if not chart_folder.is_dir():
             continue
         art = render_ink_sakura_artwork(1200, 1200, pal, seed=seed, with_typography=typo, geometric_motif=motif)
         art.convert("RGB").save(chart_folder / "cover.png", optimize=True)

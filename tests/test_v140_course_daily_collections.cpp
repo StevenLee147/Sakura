@@ -404,14 +404,14 @@ TEST_CASE("CollectionManager supports CRUD, config persistence, and duplicate-fr
 
     // ToggleChartInCollection adds then removes on repeat toggle
     CollectionManager::ToggleChartInCollection(cols, colWarmup.id, "sakura_breath", 1795600300LL);
-    CollectionManager::ToggleChartInCollection(cols, colWarmup.id, "spring_breeze", 1795600350LL);
+    CollectionManager::ToggleChartInCollection(cols, colWarmup.id, "sakura_awakening", 1795600350LL);
     REQUIRE(CollectionManager::ContainsChart(cols[0], "sakura_breath"));
-    REQUIRE(CollectionManager::ContainsChart(cols[0], "spring_breeze"));
+    REQUIRE(CollectionManager::ContainsChart(cols[0], "sakura_awakening"));
     REQUIRE(cols[0].chartIds.size() == 2);
 
     CollectionManager::ToggleChartInCollection(cols, colWarmup.id, "sakura_breath", 1795600400LL);
     REQUIRE(!CollectionManager::ContainsChart(cols[0], "sakura_breath"));
-    REQUIRE(CollectionManager::ContainsChart(cols[0], "spring_breeze"));
+    REQUIRE(CollectionManager::ContainsChart(cols[0], "sakura_awakening"));
     REQUIRE(cols[0].chartIds.size() == 1);
 
     CollectionManager::ToggleChartInCollection(cols, colWarmup.id, "sakura_breath", 1795600450LL);
@@ -432,7 +432,7 @@ TEST_CASE("CollectionManager supports CRUD, config persistence, and duplicate-fr
     REQUIRE(loaded.size() == 2);
     REQUIRE(loaded[0].id == colWarmup.id);
     REQUIRE(loaded[0].name == "每日热身");
-    REQUIRE(CollectionManager::ContainsChart(loaded[0], "spring_breeze"));
+    REQUIRE(CollectionManager::ContainsChart(loaded[0], "sakura_awakening"));
     REQUIRE(CollectionManager::ContainsChart(loaded[0], "sakura_breath"));
 
     // DeleteCollection
@@ -443,7 +443,7 @@ TEST_CASE("CollectionManager supports CRUD, config persistence, and duplicate-fr
 
     // MergeCollections unions chartIds across devices without duplicates
     SongCollection localShared{ "col_shared", "主力练习", { "sakura_breath", "starry_sky" }, 1795601000LL };
-    SongCollection localOnly{ "col_local", "左手耐力", { "digital_dream" }, 1795601100LL };
+    SongCollection localOnly{ "col_local", "左手耐力", { "sakura_awakening" }, 1795601100LL };
 
     SongCollection remoteShared{ "col_shared", "主力冲分", { "starry_sky", "unfallen_light", "sakura_breath" }, 1795602000LL };
     SongCollection remoteOnly{ "col_remote", "右手定位", { "instant_bloom" }, 1795601500LL };

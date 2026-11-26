@@ -1619,4 +1619,419 @@ void APIClient::SubmitDailyScoreAsync(const std::string& dateUtc8, const sakura:
     });
 }
 
+namespace
+{
+std::string TrimRoomCode(std::string code)
+{
+    while (!code.empty() && (code.front() == ' ' || code.front() == '\t' || code.front() == '\r' || code.front() == '\n'))
+        code.erase(code.begin());
+    while (!code.empty() && (code.back() == ' ' || code.back() == '\t' || code.back() == '\r' || code.back() == '\n'))
+        code.pop_back();
+    return code;
+}
+
+bool JsonBoolOr(const nlohmann::json& obj, const char* key, bool fallback = false)
+{
+    if (!obj.contains(key) || obj[key].is_null())
+        return fallback;
+    const auto& v = obj[key];
+    if (v.is_boolean())
+        return v.get<bool>();
+    if (v.is_number_integer())
+        return v.get<long long>() != 0;
+    return fallback;
+}
+
+int JsonIntOr(const nlohmann::json& obj, const char* key, int fallback = 0)
+{
+    if (!obj.contains(key) || obj[key].is_null())
+        return fallback;
+    const auto& v = obj[key];
+    if (v.is_number_integer())
+        return static_cast<int>(v.get<long long>());
+    if (v.is_number())
+        return static_cast<int>(v.get<double>());
+    return fallback;
+}
+
+long long JsonInt64Or(const nlohmann::json& obj, const char* key, long long fallback = 0LL)
+{
+    if (!obj.contains(key) || obj[key].is_null())
+        return fallback;
+    const auto& v = obj[key];
+    if (v.is_number_integer())
+        return v.get<long long>();
+    if (v.is_number())
+        return static_cast<long long>(v.get<double>());
+    return fallback;
+}
+
+float JsonFloatOr(const nlohmann::json& obj, const char* key, float fallback = 0.0f)
+{
+    if (!obj.contains(key) || obj[key].is_null())
+        return fallback;
+    const auto& v = obj[key];
+    if (v.is_number())
+        return static_cast<float>(v.get<double>());
+    return fallback;
+}
+
+std::string SafeJsonStringOr(const nlohmann::json& obj, const char* key, const std::string& fallback = {})
+{
+    if (!obj.contains(key) || obj[key].is_null())
+        return fallback;
+    if (obj[key].is_string())
+        return obj[key].get<std::string>();
+    return fallback;
+}
+
+ArenaRoomState ParseArenaRoomJson(const nlohmann::json& r)
+{
+    ArenaRoomState room;
+    if (!r.is_object())
+        return room;
+
+    room.code            = SafeJsonStringOr(r, "code", "");
+    room.name            = SafeJsonStringOr(r, "name", "");
+    room.hostId          = SafeJsonStringOr(r, "host_id", "");
+    room.hostName        = SafeJsonStringOr(r, "host_name", "");
+    room.status          = SafeJsonStringOr(r, "status", "waiting");
+    room.chartId         = SafeJsonStringOr(r, "chart_id", "");
+    room.chartTitle      = SafeJsonStringOr(r, "chart_title", "");
+    room.difficulty      = SafeJsonStringOr(r, "difficulty", "");
+    room.difficultyLevel = JsonFloatOr(r, "difficulty_level", 1.0f);
+    room.chartHash       = SafeJsonStringOr(r, "chart_hash", "");
+    room.startedAt       = JsonInt64Or(r, "started_at", 0LL);
+    room.updatedAt       = JsonInt64Or(r, "updated_at", 0LL);
+
+    if (r.contains("players") && r["players"].is_array())
+    {
+        for (const auto& p : r["players"])
+        {
+            if (!p.is_object())
+                continue;
+            ArenaPlayerState ps;
+            ps.userId    = SafeJsonStringOr(p, "user_id", "");
+            ps.username  = SafeJsonStringOr(p, "username", "");
+            ps.danBadge  = SafeJsonStringOr(p, "dan_badge", "");
+            ps.isHost    = JsonBoolOr(p, "is_host", false);
+            ps.ready     = JsonBoolOr(p, "ready", false);
+            ps.finished  = JsonBoolOr(p, "finished", false);
+            ps.score     = JsonIntOr(p, "score", 0);
+            ps.accuracy  = JsonFloatOr(p, "accuracy", 0.0f);
+            ps.combo     = JsonIntOr(p, "combo", 0);
+            ps.maxCombo  = JsonIntOr(p, "max_combo", 0);
+            ps.grade     = SafeJsonStringOr(p, "grade", "D");
+            ps.placement = JsonIntOr(p, "placement", 0);
+            room.players.push_back(std::move(ps));
+        }
+    }
+    return room;
+}
+
+ArenaRoomResult ParseArenaRoomResponse(const HttpResponse& res,
+                                       std::atomic<OnlineStatus>& status,
+                                       const char* fallbackError)
+{
+    ArenaRoomResult out;
+    if (res.IsNetworkError())
+    {
+        status.store(OnlineStatus::Offline);
+        out.error = res.error.empty() ? "离线：无法连接至对战服务器" : res.error;
+        return out;
+    }
+
+    status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", fallbackError);
+            return out;
+        }
+        const nlohmann::json& roomJson = (j.contains("room") && j["room"].is_object()) ? j["room"] : j;
+        out.ok   = true;
+        out.room = ParseArenaRoomJson(roomJson);
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.ok    = false;
+        out.error = std::string("对战房间响应解析失败: ") + e.what();
+        return out;
+    }
+}
+} // namespace
+
+ArenaRoomResult APIClient::CreateArenaRoom(const std::string& roomName,
+                                           const std::string& chartId,
+                                           const std::string& chartTitle,
+                                           const std::string& difficulty,
+                                           float difficultyLevel,
+                                           const std::string& chartHash)
+{
+    const nlohmann::json body = {
+        { "name", roomName },
+        { "chart_id", chartId },
+        { "chart_title", chartTitle },
+        { "difficulty", difficulty },
+        { "difficulty_level", difficultyLevel },
+        { "chart_hash", chartHash }
+    };
+    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/rooms", body.dump(), true));
+    return ParseArenaRoomResponse(res, m_status, "创建对战房间失败");
+}
+
+ArenaRoomListResult APIClient::ListArenaRooms()
+{
+    ArenaRoomListResult out;
+    const auto res = GetTransport()->Send(MakeRequest("GET", "/api/v1/rooms", {}, true));
+    if (res.IsNetworkError())
+    {
+        m_status.store(OnlineStatus::Offline);
+        out.error = res.error.empty() ? "离线：无法获取对战房间列表" : res.error;
+        return out;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取对战房间列表失败");
+            return out;
+        }
+        out.ok = true;
+        if (j.contains("rooms") && j["rooms"].is_array())
+        {
+            for (const auto& item : j["rooms"])
+            {
+                if (item.is_object())
+                    out.rooms.push_back(ParseArenaRoomJson(item));
+            }
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.ok    = false;
+        out.error = std::string("对战房间列表解析失败: ") + e.what();
+        return out;
+    }
+}
+
+ArenaRoomResult APIClient::JoinArenaRoom(const std::string& code)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/join";
+    const auto res = GetTransport()->Send(MakeRequest("POST", path, "{}", true));
+    return ParseArenaRoomResponse(res, m_status, "加入对战房间失败");
+}
+
+bool APIClient::LeaveArenaRoom(const std::string& code)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+        return false;
+
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/leave";
+    const auto res = GetTransport()->Send(MakeRequest("POST", path, "{}", true));
+    if (res.IsNetworkError())
+    {
+        m_status.store(OnlineStatus::Offline);
+        return false;
+    }
+
+    m_status.store(OnlineStatus::Online);
+    if (!res.IsSuccess())
+        return false;
+    if (res.body.empty())
+        return true;
+
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        return JsonBoolOr(j, "ok", true);
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+ArenaRoomResult APIClient::SelectArenaChart(const std::string& code,
+                                            const std::string& chartId,
+                                            const std::string& chartTitle,
+                                            const std::string& difficulty,
+                                            float difficultyLevel,
+                                            const std::string& chartHash)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const nlohmann::json body = {
+        { "chart_id", chartId },
+        { "chart_title", chartTitle },
+        { "difficulty", difficulty },
+        { "difficulty_level", difficultyLevel },
+        { "chart_hash", chartHash }
+    };
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/select";
+    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(res, m_status, "切换房间曲目失败");
+}
+
+ArenaRoomResult APIClient::SetArenaReady(const std::string& code, bool ready, bool startMatch)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const nlohmann::json body = {
+        { "ready", ready },
+        { "start", startMatch }
+    };
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/ready";
+    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(res, m_status, "更新准备状态失败");
+}
+
+ArenaRoomResult APIClient::ReportArenaProgress(const std::string& code,
+                                               int score,
+                                               float accuracy,
+                                               int combo,
+                                               int maxCombo,
+                                               const std::string& grade,
+                                               bool finished)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const nlohmann::json body = {
+        { "score", score },
+        { "accuracy", accuracy },
+        { "combo", combo },
+        { "max_combo", maxCombo },
+        { "grade", grade.empty() ? std::string("D") : grade },
+        { "finished", finished }
+    };
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/progress";
+    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(res, m_status, "同步对战进度失败");
+}
+
+ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code)
+{
+    const std::string trimmed = TrimRoomCode(code);
+    if (trimmed.empty())
+    {
+        ArenaRoomResult out;
+        out.error = "房间码不能为空";
+        return out;
+    }
+    const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/state";
+    const auto res = GetTransport()->Send(MakeRequest("GET", path, {}, true));
+    return ParseArenaRoomResponse(res, m_status, "获取对战房间状态失败");
+}
+
+void APIClient::CreateArenaRoomAsync(const std::string& roomName, const std::string& chartId,
+                                     const std::string& chartTitle, const std::string& difficulty,
+                                     float difficultyLevel, const std::string& chartHash,
+                                     std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash, cb = std::move(cb)]() mutable
+    {
+        auto res = CreateArenaRoom(roomName, chartId, chartTitle, difficulty, difficultyLevel, chartHash);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::ListArenaRoomsAsync(std::function<void(ArenaRoomListResult)> cb)
+{
+    PostTask([this, cb = std::move(cb)]() mutable
+    {
+        auto res = ListArenaRooms();
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::JoinArenaRoomAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, cb = std::move(cb)]() mutable
+    {
+        auto res = JoinArenaRoom(code);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::LeaveArenaRoomAsync(const std::string& code, std::function<void(bool)> cb)
+{
+    PostTask([this, code, cb = std::move(cb)]() mutable
+    {
+        const bool ok = LeaveArenaRoom(code);
+        if (cb) PostMainCallback([cb = std::move(cb), ok]() mutable { cb(ok); });
+    });
+}
+
+void APIClient::SelectArenaChartAsync(const std::string& code, const std::string& chartId,
+                                      const std::string& chartTitle, const std::string& difficulty,
+                                      float difficultyLevel, const std::string& chartHash,
+                                      std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, chartId, chartTitle, difficulty, difficultyLevel, chartHash, cb = std::move(cb)]() mutable
+    {
+        auto res = SelectArenaChart(code, chartId, chartTitle, difficulty, difficultyLevel, chartHash);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::SetArenaReadyAsync(const std::string& code, bool ready, bool startMatch,
+                                   std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, ready, startMatch, cb = std::move(cb)]() mutable
+    {
+        auto res = SetArenaReady(code, ready, startMatch);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::ReportArenaProgressAsync(const std::string& code, int score, float accuracy,
+                                         int combo, int maxCombo, const std::string& grade,
+                                         bool finished, std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, score, accuracy, combo, maxCombo, grade, finished, cb = std::move(cb)]() mutable
+    {
+        auto res = ReportArenaProgress(code, score, accuracy, combo, maxCombo, grade, finished);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::FetchArenaRoomStateAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb)
+{
+    PostTask([this, code, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchArenaRoomState(code);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
 } // namespace sakura::net

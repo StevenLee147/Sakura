@@ -4,6 +4,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { validateSakuraPackage } from "../zip_validator.js";
 import {
+  ArenaChartSelection,
+  ArenaCreateRoomInput,
+  ArenaPlayerRecord,
+  ArenaProgressInput,
+  ArenaRoomRecord,
+  ArenaRoomStatus,
   CloudAchievementRecord,
   CloudCourseRecord,
   CloudScoreRecord,
@@ -19,14 +25,14 @@ import {
 } from "./types.js";
 
 const DAILY_CHALLENGE_POOL: ReadonlyArray<Omit<DailyChallengeSpec, "date">> = [
-  { chartId: "spring_breeze", chartTitle: "Spring Breeze", difficulty: "Hard", difficultyLevel: 5.5, goalText: "双区入门 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "sakura_awakening", chartTitle: "樱光初醒", difficulty: "Normal", difficultyLevel: 4.5, goalText: "春光初醒 · 达成 950,000 分", targetScore: 950000 },
   { chartId: "sakura_awakening", chartTitle: "樱光初醒", difficulty: "Hard", difficultyLevel: 7.0, goalText: "樱枝觉醒 · 达成 955,000 分", targetScore: 955000 },
   { chartId: "starry_sky", chartTitle: "繁星", difficulty: "Hard", difficultyLevel: 6.5, goalText: "星夜漫游 · 达成 955,000 分", targetScore: 955000 },
-  { chartId: "cherry_blossom", chartTitle: "Cherry Blossom", difficulty: "Hard", difficultyLevel: 7.0, goalText: "落樱缤纷 · 达成 950,000 分", targetScore: 950000 },
+  { chartId: "distant_star", chartTitle: "遥远的星", difficulty: "Normal", difficultyLevel: 4.5, goalText: "遥望星河 · 达成 950,000 分", targetScore: 950000 },
   { chartId: "sakura_breath", chartTitle: "樱落呼吸", difficulty: "Hard", difficultyLevel: 7.5, goalText: "呼吸律动 · 达成 950,000 分", targetScore: 950000 },
   { chartId: "distant_star", chartTitle: "遥远的星", difficulty: "Hard", difficultyLevel: 7.5, goalText: "星轨同押 · 达成 955,000 分", targetScore: 955000 },
   { chartId: "unfallen_light", chartTitle: "樱光未落", difficulty: "Hard", difficultyLevel: 8.0, goalText: "疾风鼓点 · 达成 950,000 分", targetScore: 950000 },
-  { chartId: "digital_dream", chartTitle: "Digital Dream", difficulty: "Hard", difficultyLevel: 8.5, goalText: "流光滑条 · 达成 945,000 分", targetScore: 945000 },
+  { chartId: "flowing_petals", chartTitle: "樱落流光", difficulty: "Normal", difficultyLevel: 5.0, goalText: "流光滑条 · 达成 945,000 分", targetScore: 945000 },
   { chartId: "sidechain_dream", chartTitle: "樱落侧链梦", difficulty: "Hard", difficultyLevel: 8.5, goalText: "律动侧链 · 达成 950,000 分", targetScore: 950000 },
   { chartId: "flowing_petals", chartTitle: "樱落流光", difficulty: "Hard", difficultyLevel: 8.5, goalText: "流光花影 · 达成 950,000 分", targetScore: 950000 },
   { chartId: "instant_bloom", chartTitle: "一瞬花绽", difficulty: "Hard", difficultyLevel: 9.0, goalText: "一瞬满开 · 达成 945,000 分", targetScore: 945000 },
@@ -320,6 +326,37 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         played_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_daily_scores_lb ON daily_scores(date_utc8, score DESC);
+      CREATE TABLE IF NOT EXISTS arena_rooms (
+        code TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        host_id TEXT NOT NULL,
+        host_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        chart_id TEXT NOT NULL,
+        chart_title TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        difficulty_level REAL NOT NULL DEFAULT 1.0,
+        chart_hash TEXT NOT NULL DEFAULT '',
+        started_at INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_arena_rooms_updated ON arena_rooms(status, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS arena_players (
+        room_code TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        dan_badge TEXT NOT NULL DEFAULT '',
+        is_host INTEGER NOT NULL DEFAULT 0,
+        ready INTEGER NOT NULL DEFAULT 0,
+        finished INTEGER NOT NULL DEFAULT 0,
+        score INTEGER NOT NULL DEFAULT 0,
+        accuracy REAL NOT NULL DEFAULT 0,
+        combo INTEGER NOT NULL DEFAULT 0,
+        max_combo INTEGER NOT NULL DEFAULT 0,
+        grade TEXT NOT NULL DEFAULT 'D',
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (room_code, user_id)
+      );
     `);
     const userCols = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name?: string }>;
     if (!userCols.some((c) => c.name === "dan_badge")) {
@@ -1126,6 +1163,348 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       settings,
       settingsUpdatedAt,
     };
+  }
+
+  private generateArenaRoomCode(): string {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const bytes = crypto.randomBytes(6);
+      let code = "";
+      for (let i = 0; i < 6; i++) {
+        code += alphabet[bytes[i] % alphabet.length];
+      }
+      const exists = this.db.prepare("SELECT code FROM arena_rooms WHERE code = ?").get(code);
+      if (!exists) return code;
+    }
+    throw new Error("Failed to allocate unique arena room code.");
+  }
+
+  private rowToArenaRoom(row: Record<string, unknown>): ArenaRoomRecord {
+    const code = String(row.code);
+    const pRows = this.db.prepare(`
+      SELECT user_id, username, dan_badge, is_host, ready, finished,
+             score, accuracy, combo, max_combo, grade, updated_at
+      FROM arena_players
+      WHERE room_code = ?
+      ORDER BY score DESC, accuracy DESC, updated_at ASC, rowid ASC
+    `).all(code) as Array<Record<string, unknown>>;
+
+    const players: ArenaPlayerRecord[] = pRows.map((p, idx) => ({
+      userId: String(p.user_id),
+      username: String(p.username),
+      danBadge: String(p.dan_badge || ""),
+      isHost: Number(p.is_host) !== 0,
+      ready: Number(p.ready) !== 0,
+      finished: Number(p.finished) !== 0,
+      score: Number(p.score || 0),
+      accuracy: Number(p.accuracy || 0),
+      combo: Number(p.combo || 0),
+      maxCombo: Number(p.max_combo || 0),
+      grade: String(p.grade || "D"),
+      placement: idx + 1,
+    }));
+
+    const rawStatus = String(row.status || "waiting");
+    const status: ArenaRoomStatus =
+      rawStatus === "playing" || rawStatus === "finished" ? rawStatus : "waiting";
+
+    return {
+      code,
+      name: String(row.name),
+      hostId: String(row.host_id),
+      hostName: String(row.host_name),
+      status,
+      chartId: String(row.chart_id),
+      chartTitle: String(row.chart_title),
+      difficulty: String(row.difficulty),
+      difficultyLevel: Number(row.difficulty_level || 1.0),
+      chartHash: String(row.chart_hash || ""),
+      startedAt: Number(row.started_at || 0),
+      updatedAt: Number(row.updated_at || 0),
+      players,
+    };
+  }
+
+  createArenaRoom(userId: string, input: ArenaCreateRoomInput): ArenaRoomRecord {
+    const user = this.findUserById(userId);
+    if (!user) throw new Error("User not found.");
+    const chartId = (input.chartId || "").trim();
+    if (!chartId) throw new Error("Missing chart_id.");
+    const chartTitle = (input.chartTitle || "").trim() || chartId;
+    const difficulty = (input.difficulty || "").trim() || "Normal";
+    const difficultyLevel =
+      Number.isFinite(input.difficultyLevel) && input.difficultyLevel > 0
+        ? Number(input.difficultyLevel)
+        : 1.0;
+    const chartHash = (input.chartHash || "").trim();
+    const name = (input.name || "").trim().slice(0, 48) || `${user.username}'s Room`;
+    const code = this.generateArenaRoomCode();
+    const now = Math.floor(Date.now() / 1000);
+
+    this.db.prepare(`
+      INSERT INTO arena_rooms (
+        code, name, host_id, host_name, status,
+        chart_id, chart_title, difficulty, difficulty_level, chart_hash,
+        started_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, 0, ?)
+    `).run(code, name, user.id, user.username, chartId, chartTitle, difficulty, difficultyLevel, chartHash, now);
+
+    this.db.prepare(`
+      INSERT INTO arena_players (
+        room_code, user_id, username, dan_badge, is_host, ready, finished,
+        score, accuracy, combo, max_combo, grade, updated_at
+      ) VALUES (?, ?, ?, ?, 1, 1, 0, 0, 0, 0, 0, 'D', ?)
+    `).run(code, user.id, user.username, user.danBadge, now);
+
+    return this.getArenaRoomState(code)!;
+  }
+
+  listArenaRooms(limit = 50): ArenaRoomRecord[] {
+    const capped = Math.max(1, Math.min(100, Math.trunc(limit || 50)));
+    const cutoff = Math.floor(Date.now() / 1000) - 7200;
+    const rows = this.db.prepare(`
+      SELECT * FROM arena_rooms
+      WHERE status IN ('waiting', 'playing') AND updated_at >= ?
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(cutoff, capped) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToArenaRoom(r));
+  }
+
+  joinArenaRoom(code: string, userId: string): ArenaRoomRecord {
+    const normCode = (code || "").trim().toUpperCase();
+    if (!normCode) throw new Error("Room not found.");
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) throw new Error("Room not found.");
+    const user = this.findUserById(userId);
+    if (!user) throw new Error("User not found.");
+
+    const existing = this.db.prepare(
+      "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
+    ).get(normCode, user.id) as { user_id: string } | undefined;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (existing) {
+      this.db.prepare(
+        "UPDATE arena_players SET username = ?, dan_badge = ? WHERE room_code = ? AND user_id = ?"
+      ).run(user.username, user.danBadge, normCode, user.id);
+      return this.getArenaRoomState(normCode)!;
+    }
+
+    const cnt = this.db.prepare(
+      "SELECT COUNT(*) AS c FROM arena_players WHERE room_code = ?"
+    ).get(normCode) as { c: number };
+    if (Number(cnt.c || 0) >= 8) {
+      throw new Error("Room is full (maximum 8 players).");
+    }
+
+    this.db.prepare(`
+      INSERT INTO arena_players (
+        room_code, user_id, username, dan_badge, is_host, ready, finished,
+        score, accuracy, combo, max_combo, grade, updated_at
+      ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 'D', ?)
+    `).run(normCode, user.id, user.username, user.danBadge, now);
+    this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+
+    return this.getArenaRoomState(normCode)!;
+  }
+
+  leaveArenaRoom(code: string, userId: string): ArenaRoomRecord | null {
+    const normCode = (code || "").trim().toUpperCase();
+    if (!normCode) return null;
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) return null;
+
+    this.db.prepare("DELETE FROM arena_players WHERE room_code = ? AND user_id = ?").run(normCode, userId);
+
+    const remaining = this.db.prepare(`
+      SELECT user_id, username, is_host, finished
+      FROM arena_players
+      WHERE room_code = ?
+      ORDER BY is_host DESC, updated_at ASC, rowid ASC
+    `).all(normCode) as Array<Record<string, unknown>>;
+
+    if (remaining.length === 0) {
+      this.db.prepare("DELETE FROM arena_rooms WHERE code = ?").run(normCode);
+      return null;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const hasHost = remaining.some((p) => Number(p.is_host) !== 0 && String(p.user_id) === String(room.host_id));
+    if (!hasHost) {
+      const nextHost = remaining[0];
+      const nextHostId = String(nextHost.user_id);
+      const nextHostName = String(nextHost.username);
+      this.db.prepare(
+        "UPDATE arena_players SET is_host = CASE WHEN user_id = ? THEN 1 ELSE 0 END, ready = CASE WHEN user_id = ? THEN 1 ELSE ready END WHERE room_code = ?"
+      ).run(nextHostId, nextHostId, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET host_id = ?, host_name = ?, updated_at = ? WHERE code = ?"
+      ).run(nextHostId, nextHostName, now, normCode);
+    } else {
+      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+    }
+
+    if (String(room.status) === "playing" && remaining.every((p) => Number(p.finished) !== 0)) {
+      this.db.prepare("UPDATE arena_rooms SET status = 'finished', updated_at = ? WHERE code = ?").run(now, normCode);
+    }
+
+    return this.getArenaRoomState(normCode);
+  }
+
+  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection): ArenaRoomRecord {
+    const normCode = (code || "").trim().toUpperCase();
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) throw new Error("Room not found.");
+    if (String(room.host_id) !== userId) {
+      throw new Error("Only the room host can select the chart.");
+    }
+    const chartId = (chart.chartId || "").trim();
+    const difficulty = (chart.difficulty || "").trim();
+    if (!chartId || !difficulty) {
+      throw new Error("Missing chart_id or difficulty.");
+    }
+    const chartTitle = (chart.chartTitle || "").trim() || chartId;
+    const difficultyLevel =
+      Number.isFinite(chart.difficultyLevel) && chart.difficultyLevel > 0
+        ? Number(chart.difficultyLevel)
+        : 1.0;
+    const chartHash = (chart.chartHash || "").trim();
+    const now = Math.floor(Date.now() / 1000);
+
+    this.db.prepare(`
+      UPDATE arena_rooms SET
+        status = 'waiting',
+        chart_id = ?,
+        chart_title = ?,
+        difficulty = ?,
+        difficulty_level = ?,
+        chart_hash = ?,
+        started_at = 0,
+        updated_at = ?
+      WHERE code = ?
+    `).run(chartId, chartTitle, difficulty, difficultyLevel, chartHash, now, normCode);
+
+    this.db.prepare(`
+      UPDATE arena_players SET
+        finished = 0,
+        score = 0,
+        accuracy = 0,
+        combo = 0,
+        max_combo = 0,
+        grade = 'D',
+        updated_at = ?
+      WHERE room_code = ?
+    `).run(now, normCode);
+
+    return this.getArenaRoomState(normCode)!;
+  }
+
+  setArenaReady(code: string, userId: string, ready: boolean, startMatch = false): ArenaRoomRecord {
+    const normCode = (code || "").trim().toUpperCase();
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) throw new Error("Room not found.");
+
+    const player = this.db.prepare(
+      "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
+    ).get(normCode, userId) as { user_id: string } | undefined;
+    if (!player) throw new Error("Player has not joined this room.");
+
+    const now = Math.floor(Date.now() / 1000);
+    this.db.prepare(
+      "UPDATE arena_players SET ready = ?, updated_at = ? WHERE room_code = ? AND user_id = ?"
+    ).run(ready ? 1 : 0, now, normCode, userId);
+
+    if (startMatch === true && String(room.host_id) === userId) {
+      this.db.prepare(`
+        UPDATE arena_players SET
+          finished = 0,
+          score = 0,
+          accuracy = 0,
+          combo = 0,
+          max_combo = 0,
+          grade = 'D',
+          updated_at = ?
+        WHERE room_code = ?
+      `).run(now, normCode);
+      this.db.prepare(
+        "UPDATE arena_rooms SET status = 'playing', started_at = ?, updated_at = ? WHERE code = ?"
+      ).run(now, now, normCode);
+    } else {
+      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+    }
+
+    return this.getArenaRoomState(normCode)!;
+  }
+
+  reportArenaProgress(code: string, userId: string, progress: ArenaProgressInput): ArenaRoomRecord {
+    const normCode = (code || "").trim().toUpperCase();
+    const room = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!room) throw new Error("Room not found.");
+
+    const player = this.db.prepare(
+      "SELECT user_id FROM arena_players WHERE room_code = ? AND user_id = ?"
+    ).get(normCode, userId) as { user_id: string } | undefined;
+    if (!player) throw new Error("Player has not joined this room.");
+
+    if (!Number.isFinite(progress.score) || progress.score < 0 || progress.score > 1000000) {
+      throw new Error("Score must be between 0 and 1,000,000.");
+    }
+    if (!Number.isFinite(progress.accuracy) || progress.accuracy < 0 || progress.accuracy > 100.01) {
+      throw new Error("Accuracy is out of valid range [0, 100].");
+    }
+
+    const cleanScore = Math.trunc(progress.score);
+    const cleanAcc = Number(progress.accuracy);
+    const cleanCombo = Math.max(0, Math.trunc(progress.combo || 0));
+    const cleanMaxCombo = Math.max(cleanCombo, Math.max(0, Math.trunc(progress.maxCombo || 0)));
+    const cleanGrade = (progress.grade || "D").trim() || "D";
+    const cleanFinished = progress.finished ? 1 : 0;
+    const now = Math.floor(Date.now() / 1000);
+
+    this.db.prepare(`
+      UPDATE arena_players SET
+        score = ?,
+        accuracy = ?,
+        combo = ?,
+        max_combo = ?,
+        grade = ?,
+        finished = ?,
+        updated_at = ?
+      WHERE room_code = ? AND user_id = ?
+    `).run(cleanScore, cleanAcc, cleanCombo, cleanMaxCombo, cleanGrade, cleanFinished, now, normCode, userId);
+
+    const agg = this.db.prepare(
+      "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN finished != 0 THEN 1 ELSE 0 END), 0) AS done FROM arena_players WHERE room_code = ?"
+    ).get(normCode) as { total: number; done: number };
+
+    if (Number(agg.total) > 0 && Number(agg.done) === Number(agg.total)) {
+      this.db.prepare("UPDATE arena_rooms SET status = 'finished', updated_at = ? WHERE code = ?").run(now, normCode);
+    } else {
+      this.db.prepare("UPDATE arena_rooms SET updated_at = ? WHERE code = ?").run(now, normCode);
+    }
+
+    return this.getArenaRoomState(normCode)!;
+  }
+
+  getArenaRoomState(code: string): ArenaRoomRecord | null {
+    const normCode = (code || "").trim().toUpperCase();
+    if (!normCode) return null;
+    const row = this.db.prepare("SELECT * FROM arena_rooms WHERE code = ?").get(normCode) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return this.rowToArenaRoom(row);
   }
 
   close(): void {

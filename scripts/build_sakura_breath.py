@@ -1278,13 +1278,14 @@ def print_report(results: list[tuple[Difficulty, dict, list[str]]]) -> None:
         print(f"  {cid + ' ' + name:22s} {level:5.1f}  {m['kb_rate']:4.2f}  {m['peak8']:6.2f}  {m['max1s']:5d}"
               f"  {m['chords'] / max(1, m['keyboard']):6.1%}  {m['holds']:5d}  {m['mouse_rate']:7.2f}"
               f"  {m['mouse_peak8']:8.2f}  {load_score(m):4.1f}  {m['min_gap']:5d} ms")
-    x = np.array([load_score(m) for *_, m in library])
-    y = np.array([level for _, _, level, _ in library])
-    slope, intercept = np.polyfit(x, y, 1)
-    print(f"  library fit: level = {intercept:.2f} + {slope:.3f} * load")
-    for _, name, level, m in ours:
-        print(f"  {name:7s} load {load_score(m):4.1f} -> library-equivalent level {intercept + slope * load_score(m):4.1f}"
-              f" (assigned {level})")
+    if len(library) >= 2:
+        x = np.array([load_score(m) for *_, m in library])
+        y = np.array([level for _, _, level, _ in library])
+        slope, intercept = np.polyfit(x, y, 1)
+        print(f"  library fit: level = {intercept:.2f} + {slope:.3f} * load")
+        for _, name, level, m in ours:
+            print(f"  {name:7s} load {load_score(m):4.1f} -> library-equivalent level {intercept + slope * load_score(m):4.1f}"
+                  f" (assigned {level})")
 
 
 # ── Preview (optional, for review only) ──────────────────────────────────────
@@ -1375,6 +1376,70 @@ def render_preview(chart: dict, an: Analysis, diff: Difficulty, path: Path, j0: 
     img.save(path)
 
 
+# ── Cover Artwork ────────────────────────────────────────────────────────────
+
+def render_cover(out_dir: Path, accent: tuple[int, int, int], index_label: str, title: str) -> None:
+    """Self-contained deterministic Pillow cover generator for sakura_breath."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+    size = 512
+    bg = (14, 16, 36)
+    gold = (252, 224, 174)
+    y_grid, x_grid = np.mgrid[0:size, 0:size].astype(np.float32) / size
+    radial = np.sqrt((x_grid - 0.56) ** 2 + (y_grid - 0.38) ** 2)
+    glow = np.clip(1.0 - radial * 1.42, 0.0, 1.0) ** 1.8
+
+    arr = np.zeros((size, size, 3), dtype=np.float32)
+    for c in range(3):
+        arr[:, :, c] = bg[c] * (1.0 - 0.32 * y_grid) + accent[c] * glow * 0.48 + gold[c] * (glow ** 3) * 0.30
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), mode="RGB").convert("RGBA")
+
+    overlay = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    cx, cy = int(size * 0.56), int(size * 0.40)
+    draw.ellipse((cx - 112, cy - 112, cx + 112, cy + 112), fill=(*gold, 42), outline=(*gold, 185), width=2)
+    draw.ellipse((cx - 148, cy - 148, cx + 148, cy + 148), outline=(*accent, 130), width=2)
+
+    rng = np.random.default_rng(1007)
+    for k in range(5):
+        ang = k * (2.0 * math.pi / 5.0) - math.pi / 2.0 + 0.16
+        px = cx + math.cos(ang) * 62
+        py = cy + math.sin(ang) * 62
+        pts = [
+            (cx + math.cos(ang) * 14, cy + math.sin(ang) * 14),
+            (px + math.cos(ang + 0.55) * 26, py + math.sin(ang + 0.55) * 26),
+            (cx + math.cos(ang) * 92, cy + math.sin(ang) * 92),
+            (px + math.cos(ang - 0.55) * 26, py + math.sin(ang - 0.55) * 26),
+        ]
+        draw.polygon(pts, fill=(*accent, 185), outline=(*gold, 225))
+
+    for _ in range(28):
+        bx = int(rng.integers(24, size - 24))
+        by = int(rng.integers(24, size - 24))
+        br = int(rng.integers(3, 13))
+        col = accent if rng.random() < 0.65 else gold
+        draw.ellipse((bx - br, by - br, bx + br, by + br), fill=(*col, int(rng.integers(35, 110))))
+
+    img = Image.alpha_composite(img, overlay.filter(ImageFilter.GaussianBlur(radius=3.5)))
+    img = Image.alpha_composite(img, overlay)
+
+    typo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    td = ImageDraw.Draw(typo)
+    td.rounded_rectangle((18, 18, size - 18, size - 18), radius=20, outline=(*gold, 150), width=2)
+    font_reg_path = ROOT / "resources" / "fonts" / "NotoSansSC-Regular.ttf"
+    font_bold_path = ROOT / "resources" / "fonts" / "NotoSansSC-Bold.ttf"
+    f_tag = ImageFont.truetype(str(font_reg_path), 13) if font_reg_path.is_file() else ImageFont.load_default()
+    f_idx = ImageFont.truetype(str(font_bold_path), 40) if font_bold_path.is_file() else f_tag
+    f_title = ImageFont.truetype(str(font_bold_path), 26) if font_bold_path.is_file() else f_tag
+    td.text((38, 34), "SAKURA ORIGINALS · VOL. 02", fill=(*gold, 225), font=f_tag)
+    td.text((38, size - 142), index_label, fill=(*accent, 215), font=f_idx)
+    td.line((38, size - 88, 236, size - 88), fill=(*gold, 175), width=2)
+    td.text((38, size - 78), title, fill=(248, 243, 248, 250), font=f_title)
+    td.text((38, size - 44), f"{int(BPM)} BPM · {ARTIST}", fill=(196, 190, 214, 215), font=f_tag)
+    img = Image.alpha_composite(img, typo)
+    img.convert("RGB").save(out_dir / "cover.png", format="PNG", optimize=True)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def write_json(path: Path, data: dict) -> None:
@@ -1430,10 +1495,7 @@ def main() -> int:
 
     cover_path = OUT_DIR / "cover.png"
     if not (args.skip_audio and cover_path.is_file()):
-        sys.dont_write_bytecode = True
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from build_starter_album import cover  # reuse the built-in album cover style
-        cover(OUT_DIR, (236, 150, 178), "06", TITLE)
+        render_cover(OUT_DIR, (236, 150, 178), "01", TITLE)
 
     print_report(results)
     if args.preview_dir:

@@ -129,24 +129,24 @@ const std::vector<CourseDefinition>& GetOfficialCourses()
             "dan_1", "初段 · 春芽", "双区启蒙 · 柔和春风试炼", "初段", 1,
             18.0f, 0.25f, 1.0f, 3.0f, 5.0f,
             {
-                { "spring_breeze", "Normal", 3.0f },
+                { "sakura_awakening", "Easy", 2.5f },
                 { "starry_sky", "Normal", 3.5f },
-                { "sakura_awakening", "Normal", 4.5f },
+                { "sakura_breath", "Normal", 4.0f },
             }),
         MakeCourse(
             "dan_2", "二段 · 绽樱", "键鼠初谐 · 落樱跃动试炼", "二段", 2,
             15.0f, 0.22f, 1.2f, 3.6f, 6.0f,
             {
+                { "sakura_awakening", "Normal", 4.5f },
                 { "distant_star", "Normal", 4.5f },
                 { "flowing_petals", "Normal", 5.0f },
-                { "spring_breeze", "Hard", 5.5f },
             }),
         MakeCourse(
             "dan_4", "四段 · 流岚", "五轨进阶 · 疾风旋舞试炼", "四段", 4,
             15.0f, 0.22f, 1.2f, 3.8f, 6.5f,
             {
+                { "sidechain_dream", "Normal", 5.5f },
                 { "starry_sky", "Hard", 6.5f },
-                { "cherry_blossom", "Hard", 7.0f },
                 { "sakura_breath", "Hard", 7.5f },
             }),
         MakeCourse(
@@ -154,7 +154,7 @@ const std::vector<CourseDefinition>& GetOfficialCourses()
             14.0f, 0.20f, 1.35f, 4.2f, 7.0f,
             {
                 { "unfallen_light", "Hard", 8.0f },
-                { "digital_dream", "Hard", 8.5f },
+                { "flowing_petals", "Hard", 8.5f },
                 { "instant_bloom", "Hard", 9.0f },
                 { "starry_sky", "Expert", 9.5f },
             }),
@@ -162,8 +162,8 @@ const std::vector<CourseDefinition>& GetOfficialCourses()
             "dan_8", "八段 · 绯闪", "高速协同 · 绯红雷光试炼", "八段", 8,
             12.0f, 0.18f, 1.5f, 4.8f, 7.5f,
             {
-                { "cherry_blossom", "Expert", 10.0f },
                 { "sakura_breath", "Expert", 10.5f },
+                { "distant_star", "Expert", 10.5f },
                 { "unfallen_light", "Expert", 11.0f },
                 { "sidechain_dream", "Expert", 11.5f },
             }),
@@ -171,10 +171,10 @@ const std::vector<CourseDefinition>& GetOfficialCourses()
             "dan_kaiden", "皆传 · 樱华绝响", "双域极境 · 宗师终极认定", "皆传", 10,
             8.0f, 0.15f, 1.8f, 5.5f, 9.0f,
             {
+                { "petal_storm_overdrive", "Hard", 10.5f },
                 { "flowing_petals", "Expert", 12.0f },
-                { "digital_dream", "Expert", 12.0f },
                 { "instant_bloom", "Expert", 12.5f },
-                { "sakura_storm", "Expert", 14.0f },
+                { "petal_storm_overdrive", "Expert", 14.5f },
             }),
     };
     return kCourses;
@@ -329,18 +329,18 @@ DailyChallengeSpec ComputeOfflineDailyChallenge(std::string_view dateUtc8)
     };
 
     static constexpr std::array<PoolItem, 12> kPool{{
-        { "spring_breeze",    "Spring Breeze",  "Hard",   5.5f, "双区入门 · 达成 950,000 分", 950000 },
-        { "sakura_awakening", "樱光初醒",       "Hard",   7.0f, "樱枝觉醒 · 达成 955,000 分", 955000 },
-        { "starry_sky",       "繁星",           "Hard",   6.5f, "星夜漫游 · 达成 955,000 分", 955000 },
-        { "cherry_blossom",   "Cherry Blossom", "Hard",   7.0f, "落樱缤纷 · 达成 950,000 分", 950000 },
-        { "sakura_breath",    "樱落呼吸",       "Hard",   7.5f, "呼吸律动 · 达成 950,000 分", 950000 },
-        { "distant_star",     "遥远的星",       "Hard",   7.5f, "星轨同押 · 达成 955,000 分", 955000 },
-        { "unfallen_light",   "樱光未落",       "Hard",   8.0f, "疾风鼓点 · 达成 950,000 分", 950000 },
-        { "digital_dream",    "Digital Dream",  "Hard",   8.5f, "流光滑条 · 达成 945,000 分", 945000 },
-        { "sidechain_dream",  "樱落侧链梦",     "Hard",   8.5f, "律动侧链 · 达成 950,000 分", 950000 },
-        { "flowing_petals",   "樱落流光",       "Hard",   8.5f, "流光花影 · 达成 950,000 分", 950000 },
-        { "instant_bloom",    "一瞬花绽",       "Hard",   9.0f, "一瞬满开 · 达成 945,000 分", 945000 },
-        { "starry_sky",       "繁星",           "Expert", 9.5f, "星穹极境 · 达成 940,000 分", 940000 },
+        { "sakura_awakening", "樱光初醒",   "Normal", 4.5f, "春光初醒 · 达成 950,000 分", 950000 },
+        { "sakura_awakening", "樱光初醒",   "Hard",   7.0f, "樱枝觉醒 · 达成 955,000 分", 955000 },
+        { "starry_sky",       "繁星",       "Hard",   6.5f, "星夜漫游 · 达成 955,000 分", 955000 },
+        { "distant_star",     "遥远的星",   "Normal", 4.5f, "遥望星河 · 达成 950,000 分", 950000 },
+        { "sakura_breath",    "樱落呼吸",   "Hard",   7.5f, "呼吸律动 · 达成 950,000 分", 950000 },
+        { "distant_star",     "遥远的星",   "Hard",   7.5f, "星轨同押 · 达成 955,000 分", 955000 },
+        { "unfallen_light",   "樱光未落",   "Hard",   8.0f, "疾风鼓点 · 达成 950,000 分", 950000 },
+        { "flowing_petals",   "樱落流光",   "Normal", 5.0f, "流光滑条 · 达成 945,000 分", 945000 },
+        { "sidechain_dream",  "樱落侧链梦", "Hard",   8.5f, "律动侧链 · 达成 950,000 分", 950000 },
+        { "flowing_petals",   "樱落流光",   "Hard",   8.5f, "流光花影 · 达成 950,000 分", 950000 },
+        { "instant_bloom",    "一瞬花绽",   "Hard",   9.0f, "一瞬满开 · 达成 945,000 分", 945000 },
+        { "starry_sky",       "繁星",       "Expert", 9.5f, "星穹极境 · 达成 940,000 分", 940000 },
     }};
 
     const std::string resolvedDate = dateUtc8.empty() ? GetCurrentDateUtc8() : std::string(dateUtc8);

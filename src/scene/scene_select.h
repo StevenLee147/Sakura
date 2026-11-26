@@ -22,6 +22,7 @@ class SceneSelect final : public Scene {
 public:
     explicit SceneSelect(SceneManager& manager) : m_manager(manager) {}
     sakura::game::PlayMode CurrentMode() const { return m_options.mode; }
+    sakura::game::GhostMode CurrentGhostMode() const { return m_options.ghostMode; }
     // Selects a visible chart by id (offline recording preselection); false when it is not listed.
     bool SelectChart(const std::string& id, int difficulty);
     void OnEnter() override;
@@ -60,6 +61,7 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     bool m_showGlobalLeaderboard = false;
     bool m_leaderboardLoading = false;
+    bool m_ghostDownloading = false;
     std::string m_leaderboardStatus;
     std::optional<int> m_globalMyRank;
     std::vector<sakura::net::LeaderboardRow> m_globalEntries;

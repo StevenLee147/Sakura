@@ -11,6 +11,7 @@ namespace sakura::game
 {
 
 enum class PlayMode { Standard, Practice, AutoPlay, Replay };
+enum class GhostMode { Off = 0, PersonalBest = 1, OnlineRival = 2 };
 
 struct PlayOptions
 {
@@ -23,6 +24,11 @@ struct PlayOptions
     bool isCourseMode = false;
     bool isDailyChallenge = false;
     std::string dailyDate;
+    GhostMode ghostMode = GhostMode::Off;
+    std::string ghostReplayFile;
+    std::string ghostRivalName;
+    bool isArenaMatch = false;
+    std::string arenaRoomCode;
     std::string replayFile;
 };
 

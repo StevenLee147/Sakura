@@ -11,6 +11,8 @@
 #include "game/score.h"
 #include "game/play_session.h"
 #include "game/replay.h"
+#include "game/ghost_runner.h"
+#include "net/api_client.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 #include "effects/screen_shake.h"
@@ -65,6 +67,10 @@ private:
     sakura::game::GameState        m_gameState;
     sakura::game::PlaySession m_session;
     sakura::game::PlayOptions m_options;
+    sakura::game::GhostRunner m_ghostRunner;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    float m_arenaSyncTimer = 0.0f;
+    std::vector<sakura::net::ArenaPlayerState> m_arenaPlayers;
     std::optional<sakura::game::Replay> m_replay;
     size_t m_replayCursor = 0;
     int m_inputLagMs = 0;

@@ -24,34 +24,54 @@ struct ExpectedDifficulty
     int         minSvPoints;
 };
 
-struct ExpectedChart
-{
-    const char* chartId;
-    const char* musicFile;
-};
-
-constexpr std::array<ExpectedChart, 6> kOfficialCharts{{
-    { "tutorial_song",  "music.wav" },
-    { "spring_breeze",  "music.wav" },
-    { "cherry_blossom", "music.wav" },
-    { "digital_dream",  "music.wav" },
-    { "sakura_storm",   "music.wav" },
-    { "sakura_breath",  "music.ogg" },
+constexpr std::array<const char*, 9> kOfficialCharts{{
+    "sakura_breath",
+    "sakura_awakening",
+    "starry_sky",
+    "distant_star",
+    "unfallen_light",
+    "sidechain_dream",
+    "flowing_petals",
+    "instant_bloom",
+    "petal_storm_overdrive",
 }};
 
-constexpr std::array<ExpectedDifficulty, 12> kOfficialDifficulties{{
-    { "tutorial_song",  "easy.json",   "Easy",    1.0, 1, 0 },
-    { "spring_breeze",  "normal.json", "Normal",  3.0, 1, 0 },
-    { "spring_breeze",  "hard.json",   "Hard",    5.5, 1, 0 },
-    { "cherry_blossom", "normal.json", "Normal",  4.0, 1, 0 },
-    { "cherry_blossom", "hard.json",   "Hard",    7.0, 1, 0 },
-    { "cherry_blossom", "expert.json", "Expert", 10.0, 1, 3 },
-    { "digital_dream",  "hard.json",   "Hard",    8.5, 1, 0 },
-    { "digital_dream",  "expert.json", "Expert", 12.0, 1, 3 },
-    { "sakura_storm",   "expert.json", "Expert", 14.0, 1, 3 },
-    { "sakura_breath",  "normal.json", "Normal",  4.0, 1, 0 },
-    { "sakura_breath",  "hard.json",   "Hard",    7.5, 1, 0 },
-    { "sakura_breath",  "expert.json", "Expert", 10.5, 1, 4 },
+constexpr std::array<const char*, 6> kRemovedPlaceholderIds{{
+    "spring_breeze",
+    "cherry_blossom",
+    "digital_dream",
+    "sakura_storm",
+    "tutorial_song",
+    "test-song",
+}};
+
+constexpr std::array<ExpectedDifficulty, 26> kOfficialDifficulties{{
+    { "sakura_breath",         "normal.json", "Normal",  4.0, 1, 0 },
+    { "sakura_breath",         "hard.json",   "Hard",    7.5, 1, 0 },
+    { "sakura_breath",         "expert.json", "Expert", 10.5, 1, 4 },
+    { "sakura_awakening",      "easy.json",   "Easy",    2.5, 1, 0 },
+    { "sakura_awakening",      "normal.json", "Normal",  4.5, 1, 0 },
+    { "sakura_awakening",      "hard.json",   "Hard",    7.0, 1, 0 },
+    { "starry_sky",            "normal.json", "Normal",  3.5, 1, 0 },
+    { "starry_sky",            "hard.json",   "Hard",    6.5, 1, 0 },
+    { "starry_sky",            "expert.json", "Expert",  9.5, 1, 0 },
+    { "distant_star",          "normal.json", "Normal",  4.5, 1, 0 },
+    { "distant_star",          "hard.json",   "Hard",    7.5, 1, 0 },
+    { "distant_star",          "expert.json", "Expert", 10.5, 1, 0 },
+    { "unfallen_light",        "normal.json", "Normal",  5.0, 1, 0 },
+    { "unfallen_light",        "hard.json",   "Hard",    8.0, 1, 0 },
+    { "unfallen_light",        "expert.json", "Expert", 11.0, 1, 0 },
+    { "sidechain_dream",       "normal.json", "Normal",  5.5, 1, 0 },
+    { "sidechain_dream",       "hard.json",   "Hard",    8.5, 1, 0 },
+    { "sidechain_dream",       "expert.json", "Expert", 11.5, 1, 0 },
+    { "flowing_petals",        "normal.json", "Normal",  5.0, 1, 0 },
+    { "flowing_petals",        "hard.json",   "Hard",    8.5, 1, 0 },
+    { "flowing_petals",        "expert.json", "Expert", 12.0, 1, 0 },
+    { "instant_bloom",         "normal.json", "Normal",  5.5, 1, 0 },
+    { "instant_bloom",         "hard.json",   "Hard",    9.0, 1, 0 },
+    { "instant_bloom",         "expert.json", "Expert", 12.5, 1, 0 },
+    { "petal_storm_overdrive", "hard.json",   "Hard",   10.5, 1, 0 },
+    { "petal_storm_overdrive", "expert.json", "Expert", 14.5, 1, 0 },
 }};
 
 const ChartInfo* FindChart(const std::vector<ChartInfo>& charts, const char* chartId)
@@ -75,26 +95,30 @@ const DifficultyInfo* FindDifficulty(const ChartInfo& info, const char* chartFil
 
 } // namespace
 
-TEST_CASE("官方测试谱面可被扫描到", "[charts][scan]")
+TEST_CASE("官方原声谱面可被扫描到且已移除程序化WAV占位曲", "[charts][scan]")
 {
+    const std::string chartsRoot = std::string(SAKURA_SOURCE_DIR) + "/resources/charts";
     ChartLoader loader;
-    auto charts = loader.ScanCharts(std::string(SAKURA_SOURCE_DIR) + "/resources/charts");
+    auto charts = loader.ScanCharts(chartsRoot);
+    REQUIRE(charts.size() >= 9);
 
-    for (const auto& expected : kOfficialCharts)
+    for (const char* chartId : kOfficialCharts)
     {
-        const ChartInfo* chart = FindChart(charts, expected.chartId);
+        const ChartInfo* chart = FindChart(charts, chartId);
         REQUIRE(chart != nullptr);
-        REQUIRE(chart->folderPath == std::string(SAKURA_SOURCE_DIR) + "/resources/charts/" + expected.chartId);
+        REQUIRE(chart->folderPath == chartsRoot + "/" + chartId);
         REQUIRE((chart->version >= 2 && chart->version <= 4));
-        REQUIRE(chart->musicFile == expected.musicFile);
+        REQUIRE(chart->musicFile == "music.ogg");
         REQUIRE(chart->coverFile == "cover.png");
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->musicFile));
         REQUIRE(std::filesystem::exists(std::filesystem::path(chart->folderPath) / chart->coverFile));
     }
 
-    const auto it = std::find_if(charts.begin(), charts.end(),
-        [](const ChartInfo& info) { return info.id == "test-song"; });
-    REQUIRE(it != charts.end());
+    for (const char* removedId : kRemovedPlaceholderIds)
+    {
+        REQUIRE(FindChart(charts, removedId) == nullptr);
+        REQUIRE(!std::filesystem::exists(std::filesystem::path(chartsRoot) / removedId));
+    }
 }
 
 TEST_CASE("樱落呼吸以正式曲名收录并在曲库中提供完整预览", "[charts][scan]")
@@ -140,11 +164,8 @@ TEST_CASE("内置谱面难度与音符元数据保持一致", "[charts][load]")
             [](const MouseNote& note) { return note.type == NoteType::Slider; }));
 
         REQUIRE(holdCount == diff->holdCount);
-        if (chart->id != "tutorial_song")
-        {
-            REQUIRE(holdCount > 0);
-            REQUIRE(sliderCount > 0);
-        }
+        REQUIRE(holdCount > 0);
+        REQUIRE(sliderCount > 0);
         REQUIRE(static_cast<int>(data->keyboardNotes.size() + data->mouseNotes.size())
             == diff->noteCount + diff->mouseNoteCount);
     }
@@ -158,7 +179,7 @@ TEST_CASE("Official Vol.03 Chart v3 song pack loads with thumb bar and synergy n
     }};
     ChartLoader loader;
     auto charts = loader.ScanCharts(std::string(SAKURA_SOURCE_DIR) + "/resources/charts");
-    REQUIRE(charts.size() >= 15);
+    REQUIRE(charts.size() >= 9);
 
     for (const char* id : kV3PackIds)
     {

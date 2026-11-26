@@ -123,6 +123,7 @@ private:
     std::unique_ptr<sakura::ui::Button> m_btnAccountCapsule;
     std::unique_ptr<sakura::ui::Button> m_btnMarket;
     std::unique_ptr<sakura::ui::Button> m_btnDojo;
+    std::unique_ptr<sakura::ui::Button> m_btnArena;
     bool m_showAccountModal = false;
     std::unique_ptr<sakura::ui::TextInput> m_inputServerUrl;
     std::unique_ptr<sakura::ui::TextInput> m_inputUsername;

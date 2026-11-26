@@ -187,7 +187,7 @@ TEST_CASE("Built-in chart library passes metadata parity and mouse spatial playa
             REQUIRE(holdCount == diff.holdCount);
             REQUIRE(msCount == diff.mouseNoteCount);
 
-            if (chart.id == "test-song" || chart.id == "tutorial_song" || data->mouseNotes.size() < 2)
+            if (data->mouseNotes.size() < 2)
                 continue;
 
             double longDistSum  = 0.0;

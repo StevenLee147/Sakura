@@ -27,9 +27,10 @@
 
 ---
 
-## 2. 官方精选原创曲包 Vol.04（6 首 Chart v4 新曲）
+## 2. 官方精选原创曲包 Vol.04（6 首真实音源 Chart v4 新曲）
 
-- 新增 `scripts/build_pack_vol4.py`（确定性多声部立体声合成 + $\Delta t$ 自适应制谱 + Chart v4 演出事件 + 矢量封面），扩充 6 首涵盖 Artcore、J-Core、Future Bass、 Oriental Electro 曲风的三难度新曲，使内置总曲库突破 21 首。
+- 新增 `scripts/build_pack_vol4.py`：直接基于未跟踪曲源目录 `download/songs/` 中剩余的 6 首真实创作 MP3 曲目（`Sakura Memories.mp3`、`樱语疾行.mp3`、`破碎阈值.mp3`、`破碎推进到F.mp3`、`【Intro】.mp3`、`樱落呼吸.mp3`），通过 `ffmpeg` 转码生成可复现 `music.ogg`，并接入 STFT/HPSS 谐波打击乐分离 + $\Delta t$ 自适应间距防重叠 Chart v4 制谱管线（含 A/S/D/F 四轨、Space 樱枝横梁、跨区同押 `linkId`、键鼠协同 `requireLane`、曲线 Slider、SV 变速与 Chart v4 演出事件 + 专属高清封面），同步更新 `resources/charts/album.json`。
+- **严禁任何程序化合成占位曲目（零合成 WAV 占位歌）**：全内置曲库（Vol.02 + Vol.03 + Vol.04 共 15 首）100% 由真实创作的 OGG 曲目构成。
 
 ---
 

@@ -154,6 +154,65 @@ export interface CloudSyncSnapshot {
   settingsUpdatedAt: number;
 }
 
+export type ArenaRoomStatus = "waiting" | "playing" | "finished";
+
+export interface ArenaPlayerRecord {
+  userId: string;
+  username: string;
+  danBadge: string;
+  isHost: boolean;
+  ready: boolean;
+  finished: boolean;
+  score: number;
+  accuracy: number;
+  combo: number;
+  maxCombo: number;
+  grade: string;
+  placement: number;
+}
+
+export interface ArenaRoomRecord {
+  code: string;
+  name: string;
+  hostId: string;
+  hostName: string;
+  status: ArenaRoomStatus;
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  chartHash: string;
+  startedAt: number;
+  updatedAt: number;
+  players: ArenaPlayerRecord[];
+}
+
+export interface ArenaCreateRoomInput {
+  name: string;
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  chartHash?: string;
+}
+
+export interface ArenaChartSelection {
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  chartHash?: string;
+}
+
+export interface ArenaProgressInput {
+  score: number;
+  accuracy: number;
+  combo: number;
+  maxCombo: number;
+  grade: string;
+  finished: boolean;
+}
+
 export interface IStorageAdapter {
   readonly mode: "sqlite" | "postgres";
   createGuestUser(nickname?: string): UserRecord;
@@ -194,5 +253,13 @@ export interface IStorageAdapter {
     }
   ): { scoresMerged: number; achievementsMerged: number; coursesMerged: number; snapshot: CloudSyncSnapshot };
   pullCloudSync(userId: string): CloudSyncSnapshot;
+  createArenaRoom(userId: string, input: ArenaCreateRoomInput): ArenaRoomRecord;
+  listArenaRooms(limit?: number): ArenaRoomRecord[];
+  joinArenaRoom(code: string, userId: string): ArenaRoomRecord;
+  leaveArenaRoom(code: string, userId: string): ArenaRoomRecord | null;
+  selectArenaChart(code: string, userId: string, chart: ArenaChartSelection): ArenaRoomRecord;
+  setArenaReady(code: string, userId: string, ready: boolean, startMatch?: boolean): ArenaRoomRecord;
+  reportArenaProgress(code: string, userId: string, progress: ArenaProgressInput): ArenaRoomRecord;
+  getArenaRoomState(code: string): ArenaRoomRecord | null;
   close(): void;
 }

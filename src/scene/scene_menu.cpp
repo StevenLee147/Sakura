@@ -4,6 +4,7 @@
 #include "scene_select.h"
 #include "scene_market.h"
 #include "scene_course.h"
+#include "scene_arena.h"
 #include "data/database.h"
 #include "scene_stats.h"
 #include "scene_tutorial.h"
@@ -555,6 +556,16 @@ void SceneMenu::SetupAccountModal()
         m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager), TransitionType::SakuraSweep, 0.42f);
     });
 
+    m_btnArena = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.695f, 0.188f, 0.253f, 0.042f },
+        "✦ 多人对战  /  ARENA", m_fontButton, 0.019f, 0.012f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnArena.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnArena->SetTextAlign(sakura::core::TextAlign::Center);
+    m_btnArena->SetOnClick([this]()
+    {
+        m_manager.SwitchScene(std::make_unique<SceneArena>(m_manager), TransitionType::SakuraSweep, 0.42f);
+    });
+
     m_inputServerUrl = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.345f, 0.315f, 0.310f, 0.044f }, m_fontButton, 0.020f, 128);
     m_inputServerUrl->SetText(api.GetServerUrl());
     m_inputServerUrl->SetPlaceholder("服务器地址，默认 https://steven-lee.tech:233");
@@ -658,6 +669,7 @@ void SceneMenu::OnExit()
     m_btnAccountCapsule.reset();
     m_btnMarket.reset();
     m_btnDojo.reset();
+    m_btnArena.reset();
     m_inputServerUrl.reset();
     m_inputUsername.reset();
     m_inputPassword.reset();
@@ -755,6 +767,7 @@ void SceneMenu::OnUpdate(float dt)
         if (m_btnAccountCapsule) m_btnAccountCapsule->Update(dt);
         if (m_btnMarket)         m_btnMarket->Update(dt);
         if (m_btnDojo)           m_btnDojo->Update(dt);
+        if (m_btnArena)          m_btnArena->Update(dt);
     }
 
     if (m_showAccountModal)
@@ -937,6 +950,7 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     if (m_btnAccountCapsule) m_btnAccountCapsule->Render(renderer);
     if (m_btnMarket)         m_btnMarket->Render(renderer);
     if (m_btnDojo)           m_btnDojo->Render(renderer);
+    if (m_btnArena)          m_btnArena->Render(renderer);
 
     // ── 在线账号登录/访客弹层 ─────────────────────────────────────────────────
     if (m_showAccountModal)
@@ -1477,6 +1491,8 @@ void SceneMenu::OnEvent(const SDL_Event& event)
     if (m_btnMarket && m_btnMarket->HandleEvent(event))
         return;
     if (m_btnDojo && m_btnDojo->HandleEvent(event))
+        return;
+    if (m_btnArena && m_btnArena->HandleEvent(event))
         return;
 
     // 分发给按钮（带当前 X 偏移做命中测试）

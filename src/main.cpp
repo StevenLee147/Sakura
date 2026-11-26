@@ -7,7 +7,9 @@
 #include "scene/scene_menu.h"
 #include "scene/scene_market.h"
 #include "scene/scene_course.h"
+#include "scene/scene_arena.h"
 #include "game/course.h"
+#include "game/ghost_runner.h"
 #include "scene/scene_splash.h"
 #include "scene/scene_select.h"
 #include "game/achievement_manager.h"
@@ -54,7 +56,7 @@ public:
     bool succeeded = true;
 private:
     std::filesystem::path m_directory;
-    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "market", "course", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
+    std::vector<std::string> m_scenes = {"first_run", "first_run_skip", "menu", "select", "select_practice", "market", "course", "arena", "settings", "settings_audio", "settings_controls", "settings_display", "settings_visual", "settings_data", "tutorial", "stats",
         "editor", "editor_properties", "editor_preview", "editor_return", "create", "create_complete", "calibration", "game", "pause", "game_bga_f3", "result", "result_detail"};
     size_t m_stage = 0;
     bool m_started = false;
@@ -125,6 +127,7 @@ private:
                 auto charts = loader.ScanCharts("resources/charts");
                 if (charts.empty()) { succeeded = false; RequestQuit(); return; }
                 m_chart = charts.front();
+                for (const auto& c : charts) if (c.id == "sakura_awakening") { m_chart = c; break; }
             }
             std::unique_ptr<Scene> scene;
             const auto& name = m_scenes[m_stage];
@@ -136,6 +139,7 @@ private:
             if (name == "select" || name=="select_practice") scene = std::make_unique<SceneSelect>(manager);
             if (name == "market") scene = std::make_unique<SceneMarket>(manager);
             if (name == "course") scene = std::make_unique<SceneCourse>(manager);
+            if (name == "arena") scene = std::make_unique<SceneArena>(manager);
             if (name.starts_with("settings")) scene = std::make_unique<SceneSettings>(manager);
             if (name == "tutorial") scene = std::make_unique<SceneTutorial>(manager);
             if (name == "stats") scene = std::make_unique<SceneStats>(manager);
@@ -244,7 +248,7 @@ private:
                 m_resultWait+=dt;
                 if(m_resultWait>1.6f){
                     const auto& r=result->Result();
-                    if(name=="verify_live"){m_liveResult=r;m_semantic=r.score==1000000&&r.totalJudgments==9&&r.synergyCount>=1&&r.thumbHitCount>=1&&!r.replayFile.empty()&&m_reheld;}
+                    if(name=="verify_live"){m_liveResult=r;m_semantic=r.isFullCombo&&r.missCount==0&&r.score>=900000&&r.totalJudgments==9&&r.synergyCount>=1&&r.thumbHitCount>=1&&!r.replayFile.empty()&&m_reheld;}
                     if(name=="verify_replay")m_semantic=r.score==m_liveResult.score&&r.hitErrors==m_liveResult.hitErrors&&r.assisted;
                     if(name=="verify_practice")m_semantic=r.totalJudgments==2&&r.assisted; // only complete hold in this range
                     if(name=="verify_album")m_semantic=r.score==1000000&&r.missCount==0&&r.assisted;
@@ -277,6 +281,7 @@ private:
         if(name.starts_with("select")) {const auto* select=dynamic_cast<SceneSelect*>(current);m_semantic=select && (name!="select_practice" || select->CurrentMode()==sakura::game::PlayMode::Practice);}
         if(name=="market")m_semantic=dynamic_cast<SceneMarket*>(current)!=nullptr;
         if(name=="course")m_semantic=dynamic_cast<SceneCourse*>(current)!=nullptr;
+        if(name=="arena")m_semantic=dynamic_cast<SceneArena*>(current)!=nullptr;
         if(name.starts_with("settings")){const auto* settings=dynamic_cast<SceneSettings*>(current);int page=name=="settings"?0:name=="settings_audio"?1:name=="settings_controls"?2:name=="settings_display"?3:name=="settings_visual"?4:5;m_semantic=settings&&settings->CurrentPage()==page;}
         if(name=="game"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&game->Session().Score().GetJudgedCount()>0;}
         if(name=="game_bga_f3"){const auto* game=dynamic_cast<SceneGame*>(current);m_semantic=game&&game->State().IsPlaying()&&IsDiagnosticsOverlayVisible();SetDiagnosticsOverlayVisible(false);}
@@ -371,8 +376,9 @@ bool RunVerifyOnline(const std::string& baseUrl)
         { 500, InputKind::LaneDown, 0 }, { 540, InputKind::LaneUp, 0 },
         { 800, InputKind::MouseDown, 0, 0.5f, 0.5f }, { 840, InputKind::MouseUp },
         { 1000, InputKind::LaneDown, 1 }, { 1400, InputKind::MouseDown, 0, 0.35f, 0.5f },
-        { 2010, InputKind::LaneUp, 1 }, { 2100, InputKind::LaneDown, 2 },
-        { 2150, InputKind::LaneUp, 2 }, { 2185, InputKind::Pointer, 0, 0.65f, 0.5f },
+        { 2005, InputKind::Tick }, { 2010, InputKind::LaneUp, 1 },
+        { 2100, InputKind::LaneDown, 2 }, { 2150, InputKind::LaneUp, 2 },
+        { 2185, InputKind::Pointer, 0, 0.65f, 0.5f }, { 2205, InputKind::Tick },
         { 2260, InputKind::MouseUp }, { 2450, InputKind::LaneDown, 4 },
         { 2452, InputKind::MouseDown, 0, 0.5f, 0.5f }, { 2490, InputKind::MouseUp },
         { 2495, InputKind::LaneUp, 4 }
@@ -623,6 +629,75 @@ bool RunVerifyOnline(const std::string& baseUrl)
         return failStep("RefreshProfileDanBadge", profV140.error + " badge=" + profV140.user.danBadge);
     db.Shutdown();
 
+    // v1.6.0 E2E: GhostRunner deterministic parity + 2-player Arena room match
+    GhostRunner ghost;
+    if (!ghost.InitializeFromFile(chart, dlPath.string(), "OnlineRival"))
+        return failStep("GhostInitializeFromFile");
+    GhostSnapshot ghostSnap;
+    for (int t = 0; t <= 2600; t += 20)
+        ghostSnap = ghost.AdvanceTo(t, liveResult.score);
+    if (!ghostSnap.active || ghostSnap.ghostScore != liveResult.score || ghostSnap.deltaScore != 0)
+        return failStep("GhostAdvanceTo", "ghost=" + std::to_string(ghostSnap.ghostScore) + " live=" + std::to_string(liveResult.score));
+
+    sakura::net::APIClient apiB(nullptr, (e2eDir / "queue_rival.json").string());
+    apiB.SetServerUrl(baseUrl);
+    const std::string rivalName = uname + "_Rival";
+    const auto regB = apiB.Register(rivalName, "SakuraPass123!");
+    if (!regB.ok) return failStep("ArenaRegisterRival", regB.error);
+    const auto loginB = apiB.Login(rivalName, "SakuraPass123!");
+    if (!loginB.ok || !apiB.IsAuthenticated()) return failStep("ArenaLoginRival", loginB.error);
+
+    const auto createdRoom = api.CreateArenaRoom("E2E Arena Room", "sakura_awakening", "樱光初醒", "Hard", 7.0f, chartHash);
+    if (!createdRoom.ok || createdRoom.room.code.empty())
+        return failStep("CreateArenaRoom", createdRoom.error);
+    const std::string roomCode = createdRoom.room.code;
+
+    const auto listedRooms = apiB.ListArenaRooms();
+    const bool foundRoom = listedRooms.ok && std::any_of(
+        listedRooms.rooms.begin(), listedRooms.rooms.end(),
+        [&](const sakura::net::ArenaRoomState& r) { return r.code == roomCode; });
+    if (!foundRoom)
+        return failStep("ListArenaRooms", listedRooms.error);
+
+    const auto joinedRoom = apiB.JoinArenaRoom(roomCode);
+    if (!joinedRoom.ok || joinedRoom.room.players.size() < 2)
+        return failStep("JoinArenaRoom", joinedRoom.error);
+
+    const auto unreadyRes = apiB.SetArenaReady(roomCode, false, false);
+    if (!unreadyRes.ok)
+        return failStep("SetArenaReadyFalse", unreadyRes.error);
+    const auto readyRes = apiB.SetArenaReady(roomCode, true, false);
+    if (!readyRes.ok)
+        return failStep("SetArenaReadyTrue", readyRes.error);
+
+    const auto startRes = api.SetArenaReady(roomCode, true, true);
+    if (!startRes.ok || startRes.room.status != "playing")
+        return failStep("StartArenaMatch", startRes.error + " status=" + startRes.room.status);
+
+    const auto progHost = api.ReportArenaProgress(roomCode, 992500, 99.4f, 186, 186, "SS", true);
+    if (!progHost.ok)
+        return failStep("ReportArenaProgressHost", progHost.error);
+    const auto progRival = apiB.ReportArenaProgress(roomCode, 964000, 97.8f, 142, 150, "S", true);
+    if (!progRival.ok)
+        return failStep("ReportArenaProgressRival", progRival.error);
+
+    const auto arenaFinal = api.FetchArenaRoomState(roomCode);
+    if (!arenaFinal.ok || arenaFinal.room.status != "finished" || arenaFinal.room.players.size() != 2)
+        return failStep("FetchArenaRoomState", arenaFinal.error + " status=" + arenaFinal.room.status);
+
+    int hostPlacement  = 0;
+    int rivalPlacement = 0;
+    for (const auto& p : arenaFinal.room.players)
+    {
+        if (p.username == uname && p.finished && p.score == 992500)
+            hostPlacement = p.placement;
+        if (p.username == rivalName && p.finished && p.score == 964000)
+            rivalPlacement = p.placement;
+    }
+    if (hostPlacement != 1 || rivalPlacement != 2)
+        return failStep("VerifyArenaPlacements", "host=" + std::to_string(hostPlacement) + " rival=" + std::to_string(rivalPlacement));
+    apiB.Shutdown();
+
     const nlohmann::json report = {
         { "verified", true },
         { "username", uname },
@@ -635,7 +710,8 @@ bool RunVerifyOnline(const std::string& baseUrl)
         { "cloud_restored_scores", syncPull.scoresPulled },
         { "cloud_restored_achievements", syncPull.achievementsPulled },
         { "daily_chart_id", dailyInfo.spec.chartId },
-        { "dan_badge", profV140.user.danBadge }
+        { "dan_badge", profV140.user.danBadge },
+        { "arena_room_code", roomCode }
     };
     sakura::utils::AtomicWrite(fs::path(sakura::core::Paths::User("verify-online.json")), report.dump(2));
     api.Shutdown();

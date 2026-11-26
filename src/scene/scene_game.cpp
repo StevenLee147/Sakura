@@ -1,6 +1,7 @@
 // scene_game.cpp — 游戏核心场景实现
 
 #include "scene_game.h"
+#include "scene_arena.h"
 #include "scene_course.h"
 #include "scene_select.h"
 #include "scene_pause.h"
@@ -79,6 +80,19 @@ sakura::core::Color LerpSkinColor(const sakura::core::SkinColor& a,
     return { lerpCh(a.r, b.r), lerpCh(a.g, b.g), lerpCh(a.b, b.b), alpha };
 }
 
+const char* GradeToArenaString(sakura::game::Grade grade)
+{
+    switch (grade)
+    {
+    case sakura::game::Grade::SS: return "SS";
+    case sakura::game::Grade::S:  return "S";
+    case sakura::game::Grade::A:  return "A";
+    case sakura::game::Grade::B:  return "B";
+    case sakura::game::Grade::C:  return "C";
+    default:                      return "D";
+    }
+}
+
 }
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
@@ -98,6 +112,11 @@ void SceneGame::OnEnter()
 {
     LOG_INFO("[SceneGame] 开始游戏: {} [diff={}]",
              m_chartInfo.title, m_difficultyIndex);
+
+    *m_alive = true;
+    m_arenaSyncTimer = 0.0f;
+    m_arenaPlayers.clear();
+    m_ghostRunner.Reset();
 
     auto& rm = sakura::core::ResourceManager::GetInstance();
     m_fontHUD   = rm.GetDefaultFontHandle();
@@ -201,6 +220,11 @@ void SceneGame::OnEnter()
     if(!m_replay)m_session.Submit({-10000,sakura::game::InputKind::PointerScale,0,m_pointerScaleX,m_pointerScaleY});
     m_options = m_gameState.GetOptions();
     if(m_session.Total()==0){sakura::ui::ToastManager::Instance().Show("这个练习区间内没有完整音符",sakura::ui::ToastType::Warning);m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager));return;}
+    if (m_options.ghostMode != sakura::game::GhostMode::Off && !m_options.ghostReplayFile.empty())
+    {
+        m_ghostRunner.InitializeFromFile(
+            m_gameState.GetChartData(), m_options.ghostReplayFile, m_options.ghostRivalName);
+    }
     m_session.SetOnJudge([this](const sakura::game::JudgmentEvent& event)
     {
         if(event.keyboard && event.lane >= 0 && event.lane < KEY_BIND_COUNT) m_lanePulse[event.lane]=1.0f;
@@ -227,6 +251,7 @@ void SceneGame::OnEnter()
 void SceneGame::OnExit()
 {
     LOG_INFO("[SceneGame] 退出游戏场景");
+    *m_alive = false;
     sakura::audio::AudioManager::GetInstance().StopMusic();
     m_judgeFlashes.clear();
     m_particles.Clear();
@@ -408,6 +433,33 @@ void SceneGame::OnUpdate(float dt)
             m_session.Submit({now, sakura::game::InputKind::Tick});
         }
     }
+    if (m_ghostRunner.IsActive() && (m_gameState.IsPlaying() || m_gameState.IsFinished()))
+    {
+        m_ghostRunner.AdvanceTo(now, m_session.Score().GetScore());
+    }
+    if (m_options.isArenaMatch && !m_options.arenaRoomCode.empty() && m_gameState.IsPlaying())
+    {
+        m_arenaSyncTimer += dt;
+        if (m_arenaSyncTimer >= 0.80f)
+        {
+            m_arenaSyncTimer = std::fmod(m_arenaSyncTimer, 0.80f);
+            const auto& sc = m_session.Score();
+            auto alive = m_alive;
+            sakura::net::APIClient::GetInstance().ReportArenaProgressAsync(
+                m_options.arenaRoomCode,
+                sc.GetScore(),
+                sc.GetAccuracy(),
+                sc.GetCombo(),
+                sc.GetMaxCombo(),
+                GradeToArenaString(sc.GetGrade()),
+                false,
+                [this, alive](sakura::net::ArenaRoomResult res)
+                {
+                    if (!*alive || !res.ok) return;
+                    m_arenaPlayers = std::move(res.room.players);
+                });
+        }
+    }
     if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive())
     {
         if (sakura::game::CourseSession::GetInstance().Gauge().IsFailed())
@@ -521,6 +573,35 @@ void SceneGame::OnUpdate(float dt)
                 sakura::ui::ToastType::Achievement, 4.5f);
             m_manager.SwitchScene(
                 std::make_unique<SceneCourse>(m_manager, rec), TransitionType::SakuraSweep, 0.44f);
+            return;
+        }
+        if (m_options.isArenaMatch && !m_options.arenaRoomCode.empty())
+        {
+            if (!result.assisted)
+            {
+                sakura::data::Database::GetInstance().SaveScore(result);
+                for (const auto& achievement : sakura::game::AchievementManager::GetInstance().CheckAndUnlock(result))
+                {
+                    sakura::ui::ToastManager::Instance().Show(
+                        "成就解锁: " + achievement.definition.title,
+                        sakura::ui::ToastType::Achievement,
+                        4.0f);
+                }
+                sakura::net::APIClient::GetInstance().SubmitScoreAsync(result, {});
+            }
+            sakura::net::APIClient::GetInstance().ReportArenaProgressAsync(
+                m_options.arenaRoomCode,
+                result.score,
+                result.accuracy,
+                m_session.Score().GetCombo(),
+                result.maxCombo,
+                GradeToArenaString(result.grade),
+                true,
+                {});
+            m_manager.SwitchScene(
+                std::make_unique<SceneArena>(m_manager, m_options.arenaRoomCode),
+                TransitionType::SakuraSweep,
+                0.44f);
             return;
         }
         m_manager.SwitchScene(std::make_unique<SceneResult>(m_manager, result, m_chartInfo, m_options), TransitionType::SakuraSweep, 0.44f);
@@ -1703,6 +1784,74 @@ void SceneGame::RenderMouseNotes(sakura::core::Renderer& renderer)
             break;
         }
     }
+
+    if (m_ghostRunner.IsActive() && m_gameState.IsPlaying())
+    {
+        const bool reducedMotion = sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false);
+        const auto& trail = m_ghostRunner.GetRecentTrail();
+        if (trail.size() >= 2)
+        {
+            std::vector<sakura::core::NormPoint> ghostPts;
+            ghostPts.reserve(trail.size());
+            for (const auto& pt : trail)
+            {
+                const float tx = std::clamp(MOUSE_X + pt.x * MOUSE_W, MOUSE_X, MOUSE_X + MOUSE_W);
+                const float ty = std::clamp(MOUSE_Y + pt.y * MOUSE_H, MOUSE_Y, MOUSE_Y + MOUSE_H);
+                ghostPts.push_back({ tx, ty });
+            }
+            const uint8_t headCoreA = reducedMotion ? 68 : 108;
+            const uint8_t headAuraA = reducedMotion ? 28 : 48;
+            renderer.DrawCatmullRomRibbon(
+                ghostPts.data(), static_cast<int>(ghostPts.size()),
+                0.0016f, 0.0082f,
+                { 186, 162, 248, 0 },
+                { 126, 228, 246, headCoreA },
+                { 186, 162, 248, 0 },
+                { 182, 158, 246, headAuraA },
+                4, true);
+        }
+
+        const auto& snap = m_ghostRunner.GetSnapshot();
+        const float gx = std::clamp(MOUSE_X + snap.cursorX * MOUSE_W, MOUSE_X, MOUSE_X + MOUSE_W);
+        const float gy = std::clamp(MOUSE_Y + snap.cursorY * MOUSE_H, MOUSE_Y, MOUSE_Y + MOUSE_H);
+
+        const float sw = std::max(1.0f, static_cast<float>(renderer.GetScreenWidth()));
+        const float sh = std::max(1.0f, static_cast<float>(renderer.GetScreenHeight()));
+        const float shortEdge = std::min(sw, sh);
+        const float sxAspect = shortEdge / sw;
+        const float syAspect = shortEdge / sh;
+
+        renderer.DrawRingGradient(
+            gx, gy, 0.0082f, 0.0152f,
+            { 130, 228, 246, 92 },
+            { 186, 162, 248, 0 },
+            32);
+        renderer.DrawCircleOutline(
+            gx, gy, 0.0112f,
+            { 148, 234, 248, 134 },
+            0.0015f, 32);
+
+        const float dR = 0.0046f;
+        renderer.DrawQuad(
+            { gx, gy - dR * syAspect },
+            { gx + dR * sxAspect, gy },
+            { gx, gy + dR * syAspect },
+            { gx - dR * sxAspect, gy },
+            { 222, 250, 255, 164 },
+            { 188, 164, 248, 148 },
+            { 132, 228, 246, 164 },
+            { 188, 164, 248, 148 });
+
+        if (m_fontSmall != sakura::core::INVALID_HANDLE)
+        {
+            const float labelY = (gy < MOUSE_Y + 0.028f) ? (gy + 0.0135f) : (gy - 0.0235f);
+            renderer.DrawText(
+                m_fontSmall, "GHOST",
+                gx, labelY, 0.0105f,
+                { 178, 232, 248, 146 },
+                sakura::core::TextAlign::Center);
+        }
+    }
 }
 
 // ── RenderHUD ─────────────────────────────────────────────────────────────────
@@ -1746,6 +1895,14 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
         modePillRect = { 0.415f, 0.014f, 0.23f, 0.029f };
         modeFill = { 52, 36, 74, 220 };
         modeBorder = { 250, 216, 157, 205 };
+        modeTextCol = gold;
+    }
+    else if (m_options.isArenaMatch)
+    {
+        modeLabel = "ARENA · ROOM " + m_options.arenaRoomCode;
+        modePillRect = { 0.420f, 0.014f, 0.22f, 0.029f };
+        modeFill = { 38, 34, 72, 220 };
+        modeBorder = { 138, 228, 246, 195 };
         modeTextCol = gold;
     }
     else if (m_options.isDailyChallenge)
@@ -1846,6 +2003,140 @@ void SceneGame::RenderHUD(sakura::core::Renderer& renderer)
     renderer.DrawRoundedRectOutlineGradient(pauseRect, 0.008f, { 250, 216, 157, 165 }, { 246, 178, 206, 85 }, 0.0013f, 6);
     renderer.DrawRoundedRect({ 0.965f, 0.029f, 0.0032f, 0.024f }, 0.001f, white, true, 4);
     renderer.DrawRoundedRect({ 0.9745f, 0.029f, 0.0032f, 0.024f }, 0.001f, white, true, 4);
+
+    if (m_ghostRunner.IsActive())
+    {
+        const auto& gs = m_ghostRunner.GetSnapshot();
+        const int delta = gs.deltaScore;
+        const bool ahead = (delta >= 0);
+        const NormRect paceRect{ 0.73f, 0.088f, 0.23f, 0.026f };
+
+        const Color edgeTop = ahead ? Color{ 108, 236, 188, 185 } : Color{ 236, 86, 122, 185 };
+        const Color edgeBot = ahead ? Color{ 250, 216, 157, 120 } : Color{ 246, 162, 196, 120 };
+        const Color textCol = ahead ? Color{ 204, 244, 184, 255 } : Color{ 252, 148, 178, 255 };
+
+        renderer.DrawSoftShadow(paceRect, 0.011f, 0.007f, { 4, 6, 16, 155 }, 0.002f, 8);
+        renderer.DrawRoundedGradientRect(
+            paceRect, 0.011f,
+            { 18, 22, 42, 220 }, { 24, 28, 50, 220 },
+            { 12, 16, 32, 232 }, { 16, 20, 38, 232 },
+            8, true);
+        renderer.DrawRoundedRectOutlineGradient(paceRect, 0.011f, edgeTop, edgeBot, 0.0012f, 8);
+
+        const std::string rivalLabel = !gs.rivalLabel.empty()
+            ? gs.rivalLabel
+            : (!m_ghostRunner.GetRivalLabel().empty() ? m_ghostRunner.GetRivalLabel() : std::string("PB"));
+        std::ostringstream deltaOss;
+        if (ahead)
+            deltaOss << "+" << std::setw(4) << std::setfill('0') << delta;
+        else
+            deltaOss << "-" << std::setw(4) << std::setfill('0') << std::abs(static_cast<long long>(delta));
+
+        const std::string paceText = "vs " + rivalLabel + "  " + deltaOss.str();
+        float paceFont = 0.0125f;
+        const float maxPaceW = paceRect.width - 0.020f;
+        const float measuredPace = renderer.MeasureTextWidth(m_fontSmall, paceText, paceFont);
+        if (measuredPace > maxPaceW && measuredPace > 0.001f)
+            paceFont *= (maxPaceW / measuredPace);
+        renderer.DrawText(
+            m_fontSmall, paceText,
+            paceRect.x + paceRect.width * 0.5f, paceRect.y + 0.0022f,
+            paceFont, textCol, TextAlign::Center);
+
+        const float barX = paceRect.x + 0.012f;
+        const float barY = paceRect.y + 0.0192f;
+        const float barW = paceRect.width - 0.024f;
+        const float barH = 0.0040f;
+        const float midX = barX + barW * 0.5f;
+        renderer.DrawRoundedRect({ barX, barY, barW, barH }, 0.002f, { 28, 34, 58, 215 }, true, 4);
+
+        const float mag = std::clamp(std::abs(static_cast<float>(delta)) / 50000.0f, 0.0f, 1.0f);
+        if (mag > 0.004f)
+        {
+            const float fillW = std::max(0.003f, (barW * 0.5f) * mag);
+            if (ahead)
+            {
+                renderer.DrawRoundedGradientRect(
+                    { midX, barY, fillW, barH }, 0.002f,
+                    { 96, 236, 186, 248 }, { 250, 220, 152, 255 },
+                    { 96, 236, 186, 248 }, { 250, 220, 152, 255 },
+                    4, true);
+            }
+            else
+            {
+                renderer.DrawRoundedGradientRect(
+                    { midX - fillW, barY, fillW, barH }, 0.002f,
+                    { 226, 66, 102, 255 }, { 248, 148, 186, 248 },
+                    { 226, 66, 102, 255 }, { 248, 148, 186, 248 },
+                    4, true);
+            }
+        }
+        renderer.DrawLine(midX, barY - 0.0012f, midX, barY + barH + 0.0012f, { 248, 242, 248, 195 }, 0.0012f);
+    }
+
+    if (m_options.isArenaMatch)
+    {
+        const auto currentUser = sakura::net::APIClient::GetInstance().GetCurrentUser();
+        std::vector<sakura::net::ArenaPlayerState> standings = m_arenaPlayers;
+        if (standings.empty())
+        {
+            sakura::net::ArenaPlayerState selfState;
+            selfState.userId    = currentUser.id;
+            selfState.username  = currentUser.username.empty() ? "Player" : currentUser.username;
+            selfState.score     = m_session.Score().GetScore();
+            selfState.placement = 1;
+            standings.push_back(std::move(selfState));
+        }
+        else
+        {
+            std::stable_sort(standings.begin(), standings.end(),
+                [](const sakura::net::ArenaPlayerState& a, const sakura::net::ArenaPlayerState& b)
+                {
+                    if (a.placement > 0 && b.placement > 0 && a.placement != b.placement)
+                        return a.placement < b.placement;
+                    return a.score > b.score;
+                });
+        }
+
+        const int pillCount = std::min(4, static_cast<int>(standings.size()));
+        for (int idx = 0; idx < pillCount; ++idx)
+        {
+            const auto& p = standings[idx];
+            const int placement = (p.placement > 0) ? p.placement : (idx + 1);
+            const bool isSelf = (!currentUser.id.empty() && p.userId == currentUser.id);
+            const bool isFirst = (placement == 1);
+            const NormRect standRect{ 0.74f, 0.120f + static_cast<float>(idx) * 0.025f, 0.21f, 0.022f };
+
+            const Color bgLeft  = isSelf ? Color{ 34, 42, 74, 218 } : Color{ 18, 22, 42, 204 };
+            const Color bgRight = isSelf ? Color{ 44, 34, 68, 218 } : Color{ 22, 26, 48, 204 };
+            const Color brdTop  = isFirst
+                ? Color{ 250, 216, 157, 195 }
+                : (isSelf ? Color{ 138, 228, 246, 175 } : Color{ 176, 184, 218, 95 });
+            const Color brdBot  = isSelf ? Color{ 246, 178, 206, 125 } : Color{ 120, 130, 168, 55 };
+
+            renderer.DrawRoundedGradientRect(
+                standRect, 0.009f, bgLeft, bgRight, bgLeft, bgRight, 6, true);
+            renderer.DrawRoundedRectOutlineGradient(
+                standRect, 0.009f, brdTop, brdBot, 0.0011f, 6);
+
+            const std::string nameLabel = "#" + std::to_string(placement) + " " +
+                (p.username.empty() ? std::string("Player") : p.username);
+            std::ostringstream scoreStr;
+            scoreStr << std::setw(7) << std::setfill('0') << p.score;
+
+            const Color nameCol  = isFirst ? gold : (isSelf ? Color{ 168, 236, 250, 255 } : white);
+            const Color scoreCol = isFirst ? gold : pink;
+
+            sakura::ui::VisualStyle::DrawTextFit(
+                renderer, m_fontSmall, nameLabel,
+                standRect.x + 0.008f, standRect.y + 0.0035f,
+                0.0125f, 0.122f, nameCol);
+            renderer.DrawText(
+                m_fontSmall, scoreStr.str(),
+                standRect.x + standRect.width - 0.008f, standRect.y + 0.0035f,
+                0.0125f, scoreCol, TextAlign::Right);
+        }
+    }
 
     // 连击弹性跳动展示
     const int combo = m_session.Score().GetCombo();

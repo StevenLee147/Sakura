@@ -192,6 +192,54 @@ struct DailyScoreSubmitResult
     bool        newBest = false;
 };
 
+// v1.6.0 Online Multiplayer Arena Rooms
+struct ArenaPlayerState
+{
+    std::string userId;
+    std::string username;
+    std::string danBadge;
+    bool        isHost    = false;
+    bool        ready     = false;
+    bool        finished  = false;
+    int         score     = 0;
+    float       accuracy  = 0.0f;
+    int         combo     = 0;
+    int         maxCombo  = 0;
+    std::string grade     = "D";
+    int         placement = 0;
+};
+
+struct ArenaRoomState
+{
+    std::string                   code;
+    std::string                   name;
+    std::string                   hostId;
+    std::string                   hostName;
+    std::string                   status = "waiting"; // waiting | playing | finished
+    std::string                   chartId;
+    std::string                   chartTitle;
+    std::string                   difficulty;
+    float                         difficultyLevel = 1.0f;
+    std::string                   chartHash;
+    long long                     startedAt       = 0;
+    long long                     updatedAt       = 0;
+    std::vector<ArenaPlayerState> players;
+};
+
+struct ArenaRoomResult
+{
+    bool           ok = false;
+    std::string    error;
+    ArenaRoomState room;
+};
+
+struct ArenaRoomListResult
+{
+    bool                        ok = false;
+    std::string                 error;
+    std::vector<ArenaRoomState> rooms;
+};
+
 class APIClient
 {
 public:
@@ -249,6 +297,32 @@ public:
     DailyInfoResult FetchDailyChallenge(const std::string& dateUtc8 = {}, int limit = 20);
     DailyScoreSubmitResult SubmitDailyScore(const std::string& dateUtc8, const sakura::game::GameResult& result);
 
+    // v1.6.0 Multiplayer Arena Rooms
+    ArenaRoomResult CreateArenaRoom(const std::string& roomName,
+                                    const std::string& chartId,
+                                    const std::string& chartTitle,
+                                    const std::string& difficulty,
+                                    float difficultyLevel,
+                                    const std::string& chartHash = {});
+    ArenaRoomListResult ListArenaRooms();
+    ArenaRoomResult JoinArenaRoom(const std::string& code);
+    bool LeaveArenaRoom(const std::string& code);
+    ArenaRoomResult SelectArenaChart(const std::string& code,
+                                     const std::string& chartId,
+                                     const std::string& chartTitle,
+                                     const std::string& difficulty,
+                                     float difficultyLevel,
+                                     const std::string& chartHash = {});
+    ArenaRoomResult SetArenaReady(const std::string& code, bool ready, bool startMatch = false);
+    ArenaRoomResult ReportArenaProgress(const std::string& code,
+                                        int score,
+                                        float accuracy,
+                                        int combo,
+                                        int maxCombo,
+                                        const std::string& grade,
+                                        bool finished);
+    ArenaRoomResult FetchArenaRoomState(const std::string& code);
+
     // Asynchronous calls (marshal completion callbacks onto main thread via PumpCallbacks)
     void PostTask(std::function<void()> workerTask);
     void PostMainCallback(std::function<void()> mainCallback);
@@ -275,6 +349,21 @@ public:
     void FetchDailyChallengeAsync(const std::string& dateUtc8, int limit, std::function<void(DailyInfoResult)> cb);
     void SubmitDailyScoreAsync(const std::string& dateUtc8, const sakura::game::GameResult& result,
                                std::function<void(DailyScoreSubmitResult)> cb);
+    void CreateArenaRoomAsync(const std::string& roomName, const std::string& chartId, const std::string& chartTitle,
+                              const std::string& difficulty, float difficultyLevel, const std::string& chartHash,
+                              std::function<void(ArenaRoomResult)> cb);
+    void ListArenaRoomsAsync(std::function<void(ArenaRoomListResult)> cb);
+    void JoinArenaRoomAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb);
+    void LeaveArenaRoomAsync(const std::string& code, std::function<void(bool)> cb = {});
+    void SelectArenaChartAsync(const std::string& code, const std::string& chartId, const std::string& chartTitle,
+                               const std::string& difficulty, float difficultyLevel, const std::string& chartHash,
+                               std::function<void(ArenaRoomResult)> cb);
+    void SetArenaReadyAsync(const std::string& code, bool ready, bool startMatch,
+                            std::function<void(ArenaRoomResult)> cb);
+    void ReportArenaProgressAsync(const std::string& code, int score, float accuracy, int combo, int maxCombo,
+                                  const std::string& grade, bool finished,
+                                  std::function<void(ArenaRoomResult)> cb = {});
+    void FetchArenaRoomStateAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb);
 
 private:
     void EnsureWorker();

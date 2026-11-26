@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { hashPassword, JwtPayload, signJwt, verifyJwt, verifyPassword } from "./auth.js";
 import { computeDailyChallenge } from "./storage/sqlite_adapter.js";
 import {
+  ArenaRoomRecord,
   CloudAchievementRecord,
   CloudCourseRecord,
   CloudScoreRecord,
@@ -63,6 +64,45 @@ function serializeMarketChart(c: MarketChartItem) {
     created_at: c.createdAt,
     updated_at: c.updatedAt,
   };
+}
+
+function serializeArenaRoom(r: ArenaRoomRecord) {
+  return {
+    code: r.code,
+    name: r.name,
+    host_id: r.hostId,
+    host_name: r.hostName,
+    status: r.status,
+    chart_id: r.chartId,
+    chart_title: r.chartTitle,
+    difficulty: r.difficulty,
+    difficulty_level: r.difficultyLevel,
+    chart_hash: r.chartHash,
+    started_at: r.startedAt,
+    updated_at: r.updatedAt,
+    players: r.players.map((p) => ({
+      user_id: p.userId,
+      username: p.username,
+      dan_badge: p.danBadge,
+      is_host: p.isHost,
+      ready: p.ready,
+      finished: p.finished,
+      score: p.score,
+      accuracy: p.accuracy,
+      combo: p.combo,
+      max_combo: p.maxCombo,
+      grade: p.grade,
+      placement: p.placement,
+    })),
+  };
+}
+
+function arenaErrorStatus(msg: string): 403 | 404 | 409 | 422 {
+  const lower = msg.toLowerCase();
+  if (lower.includes("not found")) return 404;
+  if (lower.includes("only the room host") || lower.includes("not joined")) return 403;
+  if (lower.includes("room is full")) return 409;
+  return 422;
 }
 
 export interface AppOptions {
@@ -129,7 +169,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.5.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v1.6.0";
 
   app.use("*", cors());
 
@@ -667,6 +707,187 @@ export function createApp(opts: AppOptions): Hono {
       settings: snap.settings,
       settings_updated_at: snap.settingsUpdatedAt,
     });
+  });
+
+  app.post("/api/v1/rooms", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const nameRaw = body.name ?? body.room_name ?? body.roomName;
+      const chartIdRaw = body.chart_id ?? body.chartId;
+      const chartTitleRaw = body.chart_title ?? body.chartTitle;
+      const difficultyRaw = body.difficulty ?? body.difficulty_name ?? body.difficultyName;
+      const diffLevelRaw = body.difficulty_level ?? body.difficultyLevel;
+      const chartHashRaw = body.chart_hash ?? body.chartHash;
+
+      const room = storage.createArenaRoom(auth.sub, {
+        name: typeof nameRaw === "string" ? nameRaw : "",
+        chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
+        chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
+        difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "Normal",
+        difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
+        chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
+      });
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized }, 201);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create arena room.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.get("/api/v1/rooms", (c) => {
+    const limit = Number(c.req.query("limit") || "50");
+    const rooms = storage.listArenaRooms(Number.isFinite(limit) ? limit : 50);
+    return c.json({
+      ok: true,
+      total: rooms.length,
+      rooms: rooms.map(serializeArenaRoom),
+    });
+  });
+
+  app.post("/api/v1/rooms/:code/join", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    try {
+      const room = storage.joinArenaRoom(c.req.param("code"), auth.sub);
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to join arena room.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.post("/api/v1/rooms/:code/leave", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    try {
+      const room = storage.leaveArenaRoom(c.req.param("code"), auth.sub);
+      if (!room) {
+        return c.json({ ok: true, deleted: true, room: null });
+      }
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, deleted: false, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to leave arena room.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.post("/api/v1/rooms/:code/select", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const chartIdRaw = body.chart_id ?? body.chartId;
+      const chartTitleRaw = body.chart_title ?? body.chartTitle;
+      const difficultyRaw = body.difficulty ?? body.difficulty_name ?? body.difficultyName;
+      const diffLevelRaw = body.difficulty_level ?? body.difficultyLevel;
+      const chartHashRaw = body.chart_hash ?? body.chartHash;
+
+      const room = storage.selectArenaChart(c.req.param("code"), auth.sub, {
+        chartId: typeof chartIdRaw === "string" ? chartIdRaw : "",
+        chartTitle: typeof chartTitleRaw === "string" ? chartTitleRaw : "",
+        difficulty: typeof difficultyRaw === "string" ? difficultyRaw : "",
+        difficultyLevel: diffLevelRaw !== undefined ? Number(diffLevelRaw) : 1.0,
+        chartHash: typeof chartHashRaw === "string" ? chartHashRaw : "",
+      });
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to select arena chart.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.post("/api/v1/rooms/:code/ready", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const startRaw = body.start_match ?? body.startMatch ?? body.start;
+      const startMatch = startRaw === true || startRaw === 1;
+      const readyRaw = body.ready;
+      const ready =
+        typeof readyRaw === "boolean"
+          ? readyRaw
+          : typeof readyRaw === "number"
+            ? readyRaw !== 0
+            : startMatch;
+      const room = storage.setArenaReady(c.req.param("code"), auth.sub, ready, startMatch);
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to update ready state.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.post("/api/v1/rooms/:code/progress", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const scoreRaw = body.score;
+      const accRaw = body.accuracy;
+      const comboRaw = body.combo;
+      const maxComboRaw = body.max_combo ?? body.maxCombo;
+      const gradeRaw = body.grade;
+      const finRaw = body.finished ?? body.is_finished ?? body.isFinished;
+
+      const score = typeof scoreRaw === "number" ? scoreRaw : Number(scoreRaw ?? -1);
+      const accuracy = typeof accRaw === "number" ? accRaw : Number(accRaw ?? 0);
+      const combo = typeof comboRaw === "number" ? comboRaw : Number(comboRaw ?? 0);
+      const maxCombo = typeof maxComboRaw === "number" ? maxComboRaw : Number(maxComboRaw ?? combo);
+      const grade = typeof gradeRaw === "string" ? gradeRaw : "D";
+      const finished =
+        typeof finRaw === "boolean" ? finRaw : typeof finRaw === "number" ? finRaw !== 0 : false;
+
+      const room = storage.reportArenaProgress(c.req.param("code"), auth.sub, {
+        score,
+        accuracy,
+        combo,
+        maxCombo,
+        grade,
+        finished,
+      });
+      const serialized = serializeArenaRoom(room);
+      return c.json({ ok: true, room: serialized, ...serialized });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to report arena progress.";
+      return c.json({ ok: false, error: msg }, arenaErrorStatus(msg));
+    }
+  });
+
+  app.get("/api/v1/rooms/:code/state", (c) => {
+    const room = storage.getArenaRoomState(c.req.param("code"));
+    if (!room) {
+      return c.json({ ok: false, error: "Room not found." }, 404);
+    }
+    const serialized = serializeArenaRoom(room);
+    return c.json({ ok: true, room: serialized, ...serialized });
   });
 
   return app;

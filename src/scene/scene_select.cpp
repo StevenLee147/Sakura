@@ -34,6 +34,23 @@ namespace {
 std::string Number(float v, int precision = 1) { std::ostringstream s; s << std::fixed << std::setprecision(precision) << v; return s.str(); }
 std::string Lower(std::string s) { for(auto& c:s) if(static_cast<unsigned char>(c)<128) c=static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; }
 std::string Duration(int ms) { const int sec=ms/1000; return std::to_string(sec/60)+":"+(sec%60<10?"0":"")+std::to_string(sec%60); }
+bool ReplayFileExists(const std::string& path) {
+    if(path.empty()) return false;
+    std::error_code ec;
+    if(std::filesystem::is_regular_file(path,ec) && !ec) return true;
+    ec.clear();
+    const auto* u8=reinterpret_cast<const char8_t*>(path.data());
+    const std::filesystem::path u8Path{std::u8string(u8,u8+path.size())};
+    return std::filesystem::is_regular_file(u8Path,ec) && !ec;
+}
+const char* GhostModeLabel(GhostMode mode) {
+    switch(mode) {
+        case GhostMode::PersonalBest: return "幽灵竞速：个人最佳 PB";
+        case GhostMode::OnlineRival:  return "幽灵竞速：线上对手";
+        case GhostMode::Off:
+        default:                      return "幽灵竞速：关";
+    }
+}
 constexpr Color pink{246,178,206,255}, gold{250,216,157,255}, dim{168,178,204,255}, white{248,242,248,255};
 }
 std::unique_ptr<Button> SceneSelect::Button(NormRect rect, const std::string& label, std::function<void()> action, bool primary, float fontSize) {
@@ -140,6 +157,7 @@ void SceneSelect::Select(int index,int difficulty) {
         prevDiffName  = m_charts[m_selected].difficulties[m_difficulty].name;
         prevDiffLevel = m_charts[m_selected].difficulties[m_difficulty].level;
     }
+    const int prevDifficulty = m_difficulty;
     m_selected=index; const auto& c=m_charts[index];
     int targetDiff = difficulty;
     if (targetDiff < 0) {
@@ -148,6 +166,7 @@ void SceneSelect::Select(int index,int difficulty) {
         else targetDiff = 0;
     }
     m_difficulty=std::clamp(targetDiff,0,static_cast<int>(c.difficulties.size())-1);
+    const bool diffChanged = (m_difficulty != prevDifficulty);
     if(changed) {
         sakura::audio::AudioManager::GetInstance().FadeOutMusic(150); m_previewTimer=0; m_previewPlaying=false;
         ResourceManager::GetInstance().UnloadTexture(m_cover);
@@ -164,7 +183,15 @@ void SceneSelect::Select(int index,int difficulty) {
     ChartLoader loader; auto chart=loader.LoadChartData(c.folderPath+"/"+c.difficulties[m_difficulty].chartFile);
     m_best=chart?sakura::data::Database::GetInstance().GetBestScore(c.id,c.difficulties[m_difficulty].name,Replay::Hash(*chart,c.offset)):std::nullopt;
     m_noteCount=chart?JudgmentCount(*chart):0; m_chartEnd=chart?ChartEndTime(*chart):0;
-    if(m_showGlobalLeaderboard) FetchGlobalLeaderboard();
+    if(changed || diffChanged) {
+        m_globalEntries.clear();
+        m_globalMyRank.reset();
+        m_leaderboardStatus.clear();
+        m_leaderboardLoading=false;
+    }
+    if(m_showGlobalLeaderboard || (m_options.ghostMode==GhostMode::OnlineRival && m_globalEntries.empty())) {
+        FetchGlobalLeaderboard();
+    }
     m_rebuild=true;
     const auto it=std::find(m_visible.begin(),m_visible.end(),index);
     if(it!=m_visible.end()) {const int row=static_cast<int>(it-m_visible.begin());if(row<m_scroll)m_scroll=row;if(row>=m_scroll+6)m_scroll=row-5;}
@@ -382,10 +409,20 @@ void SceneSelect::BuildDetail() {
         for(int i=0;i<3;++i) m_detailButtons.push_back(Button({0.515f+i*0.145f,0.595f,0.135f,0.042f},modes[i],
             [this,i]{m_options.mode=static_cast<PlayMode>(i);if(i==0)m_options.rate=1;m_rebuild=true;},static_cast<int>(m_options.mode)==i));
         if(m_options.mode==PlayMode::Standard && IsSelectedMatchingDaily()) {
-            m_detailButtons.push_back(Button({0.848f,0.696f,0.090f,0.034f},m_playAsDaily?"挑战：开":"挑战：关",[this]{
+            m_detailButtons.push_back(Button({0.848f,0.657f,0.090f,0.034f},m_playAsDaily?"挑战：开":"挑战：关",[this]{
                 m_playAsDaily=!m_playAsDaily;
                 m_rebuild=true;
             },m_playAsDaily,0.016f));
+        }
+        if(m_options.mode==PlayMode::Standard) {
+            m_detailButtons.push_back(Button({0.515f,0.712f,0.235f,0.036f},GhostModeLabel(m_options.ghostMode),[this]{
+                const int next=(static_cast<int>(m_options.ghostMode)+1)%3;
+                m_options.ghostMode=static_cast<GhostMode>(next);
+                if(m_options.ghostMode==GhostMode::OnlineRival && m_globalEntries.empty() && !m_leaderboardLoading) {
+                    FetchGlobalLeaderboard();
+                }
+                m_rebuild=true;
+            },m_options.ghostMode!=GhostMode::Off,0.0165f));
         }
         if(m_options.mode!=PlayMode::Standard) {
             m_detailButtons.push_back(Button({0.815f,0.677f,0.057f,0.037f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
@@ -407,7 +444,10 @@ void SceneSelect::Favorite() {
     m_rebuild=true;Filter();
 }
 void SceneSelect::Start(PlayMode mode) {
-    if(m_selected<0) return; auto options=m_options;options.mode=mode;
+    if(m_selected<0 || m_ghostDownloading) return;
+    auto options=m_options; options.mode=mode;
+    options.ghostReplayFile.clear();
+    options.ghostRivalName.clear();
     if(mode==PlayMode::Standard && m_playAsDaily && m_dailyActiveSpec.has_value() && IsSelectedMatchingDaily()) {
         options.isDailyChallenge=true;
         options.dailyDate=m_dailyActiveSpec->dateUtc8;
@@ -428,7 +468,77 @@ void SceneSelect::Start(PlayMode mode) {
             options.startMs=static_cast<int>(a*1000);options.endMs=static_cast<int>(b*1000);
         } catch(...) {ToastManager::Instance().Show("请输入有效练习区间：起点 < 终点，终点 0 表示曲终",ToastType::Warning);return;}
     } else {options.startMs=options.endMs=0;options.loop=false;}
-    if(mode==PlayMode::Standard)options.rate=1;
+    if(mode==PlayMode::Standard) {
+        options.rate=1.0f;
+        const auto& c=m_charts[m_selected];
+        const std::string pbKey="library.replay_"+c.id+"_"+std::to_string(m_difficulty);
+        const std::string pbPath=Config::GetInstance().Get<std::string>(pbKey,"");
+        const bool hasPB=ReplayFileExists(pbPath);
+        if(options.ghostMode==GhostMode::PersonalBest) {
+            if(hasPB) {
+                options.ghostReplayFile=pbPath;
+                options.ghostRivalName="PB 个人最佳";
+            } else {
+                options.ghostMode=GhostMode::Off;
+                ToastManager::Instance().Show("暂无个人最佳回放，本次将以无幽灵模式开局",ToastType::Info,2.5f);
+            }
+        } else if(options.ghostMode==GhostMode::OnlineRival) {
+            if(!m_globalEntries.empty() && m_globalEntries[0].hasReplay && !m_globalEntries[0].scoreId.empty()) {
+                const auto& top=m_globalEntries[0];
+                const std::string onlinePath=Paths::User("replays/online_"+top.scoreId+".skr");
+                const std::string rivalName="#1 "+top.username;
+                if(ReplayFileExists(onlinePath)) {
+                    options.ghostReplayFile=onlinePath;
+                    options.ghostRivalName=rivalName;
+                } else {
+                    std::error_code dirEc;
+                    std::filesystem::create_directories(std::filesystem::path(onlinePath).parent_path(),dirEc);
+                    m_ghostDownloading=true;
+                    ToastManager::Instance().Show("正在同步 "+rivalName+" 的幽灵回放...",ToastType::Info,2.0f);
+                    auto alive=m_alive;
+                    const ChartInfo chartCopy=c;
+                    const int diffIdx=m_difficulty;
+                    PlayOptions launchOpts=options;
+                    const std::string fallbackPb=hasPB?pbPath:std::string{};
+                    sakura::net::APIClient::GetInstance().DownloadReplayAsync(
+                        top.scoreId,onlinePath,
+                        [this,alive,chartCopy,diffIdx,launchOpts,rivalName,fallbackPb](bool ok,std::string localPath) mutable {
+                            if(!*alive) return;
+                            m_ghostDownloading=false;
+                            if(ok && ReplayFileExists(localPath)) {
+                                launchOpts.ghostMode=GhostMode::OnlineRival;
+                                launchOpts.ghostReplayFile=localPath;
+                                launchOpts.ghostRivalName=rivalName;
+                            } else if(!fallbackPb.empty()) {
+                                launchOpts.ghostMode=GhostMode::PersonalBest;
+                                launchOpts.ghostReplayFile=fallbackPb;
+                                launchOpts.ghostRivalName="PB 个人最佳";
+                                ToastManager::Instance().Show("线上幽灵下载失败，已回退至个人最佳 PB",ToastType::Info,2.5f);
+                            } else {
+                                launchOpts.ghostMode=GhostMode::Off;
+                                launchOpts.ghostReplayFile.clear();
+                                launchOpts.ghostRivalName.clear();
+                                ToastManager::Instance().Show("线上幽灵暂不可用，本次将以无幽灵模式开局",ToastType::Info,2.5f);
+                            }
+                            m_manager.SwitchScene(
+                                std::make_unique<SceneGame>(m_manager,chartCopy,diffIdx,launchOpts),
+                                TransitionType::SakuraSweep,0.42f);
+                        });
+                    return;
+                }
+            } else if(hasPB) {
+                options.ghostMode=GhostMode::PersonalBest;
+                options.ghostReplayFile=pbPath;
+                options.ghostRivalName="PB 个人最佳";
+                ToastManager::Instance().Show("暂无线上对手回放，已回退至个人最佳 PB",ToastType::Info,2.5f);
+            } else {
+                options.ghostMode=GhostMode::Off;
+                ToastManager::Instance().Show("暂无可用幽灵回放，本次将以无幽灵模式开局",ToastType::Info,2.5f);
+            }
+        }
+    } else {
+        options.ghostMode=GhostMode::Off;
+    }
     m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,m_charts[m_selected],m_difficulty,options),TransitionType::SakuraSweep,0.42f);
 }
 void SceneSelect::ImportFolder() {
@@ -630,13 +740,36 @@ void SceneSelect::OnRender(Renderer& r) {
                 r.DrawText(m_font,"个人最佳  —  等待第一次演奏",0.530f,0.538f,0.020f,pink);
             }
 
-            r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
             if(m_options.mode==PlayMode::Standard && m_dailyActiveSpec.has_value() && IsSelectedMatchingDaily()) {
-                r.DrawRoundedGradientRect({0.515f,0.691f,0.425f,0.044f},0.008f,{68,44,78,205},{36,30,62,205},{52,36,68,215},{28,24,50,215},8,true);
-                r.DrawRoundedRectOutlineGradient({0.515f,0.691f,0.425f,0.044f},0.008f,{250,216,157,175},{246,178,206,95},0.0013f,8);
+                r.DrawRoundedGradientRect({0.515f,0.652f,0.425f,0.044f},0.008f,{68,44,78,205},{36,30,62,205},{52,36,68,215},{28,24,50,215},8,true);
+                r.DrawRoundedRectOutlineGradient({0.515f,0.652f,0.425f,0.044f},0.008f,{250,216,157,175},{246,178,206,95},0.0013f,8);
                 const std::string goalStr=!m_dailyActiveSpec->goalText.empty()?m_dailyActiveSpec->goalText:("目标 "+std::to_string(m_dailyActiveSpec->targetScore));
                 const std::string rankTag=m_dailyMyRank.has_value()?(" · #"+std::to_string(*m_dailyMyRank)):"";
-                VisualStyle::DrawTextFit(r,m_font,"今日挑战 ["+m_dailyActiveSpec->dateUtc8+"] · "+goalStr+rankTag,0.528f,0.702f,0.016f,0.312f,m_playAsDaily?gold:dim);
+                VisualStyle::DrawTextFit(r,m_font,"今日挑战 ["+m_dailyActiveSpec->dateUtc8+"] · "+goalStr+rankTag,0.528f,0.663f,0.016f,0.312f,m_playAsDaily?gold:dim);
+            } else {
+                r.DrawText(m_font,m_options.mode==PlayMode::Standard?"正式成绩将保存到记录与统计":"辅助模式 · 不计入正式成绩与成就",0.515f,0.656f,0.019f,dim);
+            }
+            if(m_options.mode==PlayMode::Standard && m_options.ghostMode!=GhostMode::Off) {
+                std::string ghostHint;
+                Color ghostColor=pink;
+                if(m_options.ghostMode==GhostMode::PersonalBest) {
+                    ghostHint=m_best?("目标  "+std::to_string(m_best->score)):"暂无本地 PB 回放";
+                    ghostColor=m_best?gold:dim;
+                } else if(m_options.ghostMode==GhostMode::OnlineRival) {
+                    if(!m_globalEntries.empty() && m_globalEntries[0].hasReplay && !m_globalEntries[0].scoreId.empty()) {
+                        ghostHint="对手 #1 "+m_globalEntries[0].username;
+                        ghostColor=gold;
+                    } else if(m_leaderboardLoading) {
+                        ghostHint="正在同步榜首...";
+                        ghostColor=dim;
+                    } else {
+                        ghostHint="无线上回放 · 自动回退";
+                        ghostColor=dim;
+                    }
+                }
+                if(!ghostHint.empty()) {
+                    VisualStyle::DrawTextFit(r,m_font,ghostHint,0.760f,0.720f,0.0155f,0.178f,ghostColor);
+                }
             }
             if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
             if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}

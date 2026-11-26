@@ -47,10 +47,10 @@ TEST_CASE("录制脚本解析完整示例并按时间排序动作", "[record][sc
             { "name": "menu", "scene": "menu", "seconds": 10,
               "actions": [ {"at": 6.0, "text": "abc"}, {"at": 3.0, "key": "Down"},
                            {"at": 4.0, "move": [0.2, 0.3]}, {"at": 5.0, "click": [0.5, 0.5]} ] },
-            { "name": "select", "scene": "select", "chart": "spring_breeze", "difficulty": 1, "seconds": 8 },
-            { "name": "play", "scene": "game", "chart": "spring_breeze", "difficulty": 1, "mode": "auto",
+            { "name": "select", "scene": "select", "chart": "sakura_awakening", "difficulty": 1, "seconds": 8 },
+            { "name": "play", "scene": "game", "chart": "sakura_awakening", "difficulty": 1, "mode": "auto",
               "start_ms": 0, "end_ms": 0, "rate": 1.0, "until": "result", "tail_seconds": 5, "max_seconds": 400 },
-            { "name": "editor", "scene": "editor", "chart": "spring_breeze", "difficulty": 0, "seconds": 8,
+            { "name": "editor", "scene": "editor", "chart": "sakura_awakening", "difficulty": 0, "seconds": 8,
               "actions": [{"at": 1.0, "key": "Space"}] },
             { "name": "settings_visual", "scene": "settings", "page": 4, "seconds": 6 },
             { "name": "tutorial", "scene": "tutorial", "seconds": 8 },
@@ -86,7 +86,7 @@ TEST_CASE("录制脚本解析完整示例并按时间排序动作", "[record][sc
     REQUIRE(play.scene == RecordSceneKind::Game);
     REQUIRE(play.mode == RecordPlayMode::Auto);
     REQUIRE(play.until == RecordUntil::Result);
-    REQUIRE(play.chart == "spring_breeze");
+    REQUIRE(play.chart == "sakura_awakening");
     REQUIRE(play.difficulty == 1);
     REQUIRE_THAT(play.tailSeconds, WithinAbs(5.0, 1e-9));
     REQUIRE_THAT(play.maxSeconds, WithinAbs(400.0, 1e-9));

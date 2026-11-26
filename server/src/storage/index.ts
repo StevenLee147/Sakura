@@ -1,6 +1,10 @@
 import path from "node:path";
 import { SqliteStorageAdapter } from "./sqlite_adapter.js";
 import {
+  ArenaChartSelection,
+  ArenaCreateRoomInput,
+  ArenaProgressInput,
+  ArenaRoomRecord,
   CloudAchievementRecord,
   CloudCourseRecord,
   CloudScoreRecord,
@@ -52,6 +56,47 @@ export class PostgresCompatibleAdapter extends SqliteStorageAdapter {
 
   public override pullCloudSync(userId: string): CloudSyncSnapshot {
     return super.pullCloudSync(userId);
+  }
+
+  public override createArenaRoom(userId: string, input: ArenaCreateRoomInput): ArenaRoomRecord {
+    return super.createArenaRoom(userId, input);
+  }
+
+  public override listArenaRooms(limit?: number): ArenaRoomRecord[] {
+    return super.listArenaRooms(limit);
+  }
+
+  public override joinArenaRoom(code: string, userId: string): ArenaRoomRecord {
+    return super.joinArenaRoom(code, userId);
+  }
+
+  public override leaveArenaRoom(code: string, userId: string): ArenaRoomRecord | null {
+    return super.leaveArenaRoom(code, userId);
+  }
+
+  public override selectArenaChart(code: string, userId: string, chart: ArenaChartSelection): ArenaRoomRecord {
+    return super.selectArenaChart(code, userId, chart);
+  }
+
+  public override setArenaReady(
+    code: string,
+    userId: string,
+    ready: boolean,
+    startMatch?: boolean
+  ): ArenaRoomRecord {
+    return super.setArenaReady(code, userId, ready, startMatch);
+  }
+
+  public override reportArenaProgress(
+    code: string,
+    userId: string,
+    progress: ArenaProgressInput
+  ): ArenaRoomRecord {
+    return super.reportArenaProgress(code, userId, progress);
+  }
+
+  public override getArenaRoomState(code: string): ArenaRoomRecord | null {
+    return super.getArenaRoomState(code);
   }
 }
 

@@ -488,7 +488,7 @@ test("Sakura Online Server v1.4.0 Daily Challenge, Dan Badge Sync & Multi-Collec
         settings: {
           note_speed: 6.5,
           collections: [
-            { id: "col_fav", name: "Favorites", chart_ids: ["spring_breeze", "starry_sky"], updated_at: 1700010000 },
+            { id: "col_fav", name: "Favorites", chart_ids: ["sakura_awakening", "starry_sky"], updated_at: 1700010000 },
             { id: "col_dojo", name: "Dojo Prep", chart_ids: ["instant_bloom"], updated_at: 1700010000 },
           ],
         },
@@ -535,7 +535,7 @@ test("Sakura Online Server v1.4.0 Daily Challenge, Dan Badge Sync & Multi-Collec
         settings: {
           note_speed: 7.0,
           collections: [
-            { id: "col_fav", name: "Favorites", chart_ids: ["starry_sky", "digital_dream"], updated_at: 1700010000 },
+            { id: "col_fav", name: "Favorites", chart_ids: ["starry_sky", "flowing_petals"], updated_at: 1700010000 },
             { id: "col_chill", name: "Chill", chart_ids: ["sakura_breath"], updated_at: 1700010000 },
           ],
         },
@@ -571,7 +571,7 @@ test("Sakura Online Server v1.4.0 Daily Challenge, Dan Badge Sync & Multi-Collec
     assert.equal(pullJson.settings.collections.length, 3);
     const favCol = pullJson.settings.collections.find((c) => c.id === "col_fav");
     assert.ok(favCol);
-    assert.deepEqual(favCol.chart_ids, ["spring_breeze", "starry_sky", "digital_dream"]);
+    assert.deepEqual(favCol.chart_ids, ["sakura_awakening", "starry_sky", "flowing_petals"]);
 
     // 4. Daily Challenge GET, POST score validation, ranking & dan_badge exposure
     const targetDate = "2026-11-26";
@@ -735,6 +735,301 @@ test("Sakura Online Server v1.4.0 Daily Challenge, Dan Badge Sync & Multi-Collec
     const stdLbJson = (await stdLbRes.json()) as { entries: Array<{ username: string; dan_badge: string }> };
     assert.equal(stdLbJson.entries[0].username, "SakuraKaiden");
     assert.equal(stdLbJson.entries[0].dan_badge, "皆传");
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Sakura Online Server v1.6.0 Multiplayer Arena Rooms & Podium Ranking", async () => {
+  const tmpDir = path.join(process.cwd(), `.sakura-v160-test-${crypto.randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v160-test-secret", serverVersion: "v1.6.0" });
+
+  try {
+    // Verify real-song Daily Challenge pool contains no deleted procedural song IDs
+    const deletedProcedural = new Set(["spring_breeze", "cherry_blossom", "digital_dream"]);
+    for (let day = 1; day <= 60; day++) {
+      const d = `2026-${String(Math.ceil(day / 30)).padStart(2, "0")}-${String(((day - 1) % 28) + 1).padStart(2, "0")}`;
+      const spec = computeDailyChallenge(d);
+      assert.equal(deletedProcedural.has(spec.chartId), false);
+    }
+
+    // 1. Register host (with Kaiden badge) + 2 contenders
+    const hostReg = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "ArenaHost", password: "sakura123456" }),
+    });
+    assert.equal(hostReg.status, 201);
+    const hostAuth = (await hostReg.json()) as { token: string; user: { id: string; username: string } };
+
+    await app.request("/api/v1/sync/push", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scores: [],
+        achievements: [],
+        course_records: [{
+          course_id: "dan_kaiden",
+          badge_text: "皆传",
+          dan_rank: 11,
+          total_score: 2980000,
+          avg_accuracy: 99.4,
+          remaining_life: 60,
+          cleared: true,
+          cleared_at: 1700050000,
+        }],
+      }),
+    });
+
+    const p2Reg = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "RivalRin", password: "sakura123456" }),
+    });
+    assert.equal(p2Reg.status, 201);
+    const p2Auth = (await p2Reg.json()) as { token: string; user: { id: string; username: string } };
+
+    const p3Guest = await app.request("/api/v1/auth/guest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: "PetalMiku" }),
+    });
+    assert.equal(p3Guest.status, 201);
+    const p3Auth = (await p3Guest.json()) as { token: string; user: { id: string; username: string } };
+
+    // 2. Create Arena room (201, 6-char uppercase alphanumeric code, host ready=true)
+    type RoomJson = {
+      code: string;
+      name: string;
+      host_id: string;
+      host_name: string;
+      status: string;
+      chart_id: string;
+      chart_title: string;
+      difficulty: string;
+      difficulty_level: number;
+      chart_hash: string;
+      started_at: number;
+      updated_at: number;
+      players: Array<{
+        user_id: string;
+        username: string;
+        dan_badge: string;
+        is_host: boolean;
+        ready: boolean;
+        finished: boolean;
+        score: number;
+        accuracy: number;
+        combo: number;
+        max_combo: number;
+        grade: string;
+        placement: number;
+      }>;
+    };
+
+    const createRes = await app.request("/api/v1/rooms", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Sakura Grand Finals",
+        chart_id: "sakura_awakening",
+        chart_title: "樱光初醒",
+        difficulty: "Hard",
+        difficulty_level: 7.0,
+        chart_hash: "hash_sa_h",
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const createdBody = (await createRes.json()) as { ok: boolean; room: RoomJson } & RoomJson;
+    assert.equal(createdBody.ok, true);
+    const code = createdBody.code;
+    assert.match(code, /^[A-Z0-9]{6}$/);
+    assert.equal(createdBody.status, "waiting");
+    assert.equal(createdBody.host_id, hostAuth.user.id);
+    assert.equal(createdBody.players.length, 1);
+    assert.equal(createdBody.players[0].is_host, true);
+    assert.equal(createdBody.players[0].ready, true);
+    assert.equal(createdBody.players[0].dan_badge, "皆传");
+    assert.equal(createdBody.players[0].placement, 1);
+
+    // Seed an expired room (>7200s old) and verify GET /api/v1/rooms filters it out
+    storage.db.prepare(`
+      INSERT INTO arena_rooms (code, name, host_id, host_name, status, chart_id, chart_title, difficulty, difficulty_level, chart_hash, started_at, updated_at)
+      VALUES ('OLD999', 'Expired Lobby', ?, 'ArenaHost', 'waiting', 'starry_sky', '繁星', 'Hard', 6.5, '', 0, ?)
+    `).run(hostAuth.user.id, Math.floor(Date.now() / 1000) - 8000);
+
+    const listRes1 = await app.request("/api/v1/rooms");
+    assert.equal(listRes1.status, 200);
+    const listBody1 = (await listRes1.json()) as { ok: boolean; rooms: RoomJson[] };
+    assert.equal(listBody1.rooms.length, 1);
+    assert.equal(listBody1.rooms[0].code, code);
+
+    // 3. Join room (case-insensitive code + idempotent re-join)
+    const joinP2 = await app.request(`/api/v1/rooms/${code.toLowerCase()}/join`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}` },
+    });
+    assert.equal(joinP2.status, 200);
+
+    const joinP2Again = await app.request(`/api/v1/rooms/${code}/join`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}` },
+    });
+    assert.equal(joinP2Again.status, 200);
+    const afterIdempotentJoin = (await joinP2Again.json()) as RoomJson;
+    assert.equal(afterIdempotentJoin.players.length, 2);
+
+    const joinP3 = await app.request(`/api/v1/rooms/${code}/join`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3Auth.token}` },
+    });
+    assert.equal(joinP3.status, 200);
+    const afterP3Join = (await joinP3.json()) as RoomJson;
+    assert.equal(afterP3Join.players.length, 3);
+
+    // 4. Host-only chart selection
+    const nonHostSelect = await app.request(`/api/v1/rooms/${code}/select`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "instant_bloom",
+        chart_title: "一瞬花绽",
+        difficulty: "Hard",
+        difficulty_level: 9.0,
+      }),
+    });
+    assert.equal(nonHostSelect.status, 403);
+
+    const hostSelect = await app.request(`/api/v1/rooms/${code}/select`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart_id: "instant_bloom",
+        chart_title: "一瞬花绽",
+        difficulty: "Hard",
+        difficulty_level: 9.0,
+        chart_hash: "hash_ib_hard",
+      }),
+    });
+    assert.equal(hostSelect.status, 200);
+    const selectedRoom = (await hostSelect.json()) as RoomJson;
+    assert.equal(selectedRoom.chart_id, "instant_bloom");
+    assert.equal(selectedRoom.chart_title, "一瞬花绽");
+    assert.equal(selectedRoom.difficulty_level, 9.0);
+    assert.equal(selectedRoom.status, "waiting");
+
+    // 5. Ready up & host starts match
+    const rdyP2 = await app.request(`/api/v1/rooms/${code}/ready`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true }),
+    });
+    assert.equal(rdyP2.status, 200);
+
+    const rdyP3 = await app.request(`/api/v1/rooms/${code}/ready`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3Auth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true }),
+    });
+    assert.equal(rdyP3.status, 200);
+
+    const startRes = await app.request(`/api/v1/rooms/${code}/ready`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ready: true, start_match: true }),
+    });
+    assert.equal(startRes.status, 200);
+    const startedRoom = (await startRes.json()) as RoomJson;
+    assert.equal(startedRoom.status, "playing");
+    assert.ok(startedRoom.started_at > 0);
+
+    // 6. Live progress validation & podium ranking (score DESC, accuracy DESC, updated_at ASC)
+    const invalidProg = await app.request(`/api/v1/rooms/${code}/progress`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ score: 1000001, accuracy: 100.0, combo: 10, max_combo: 10, grade: "SS", finished: false }),
+    });
+    assert.equal(invalidProg.status, 422);
+
+    // RivalRin finishes with 992,000 (99.50%)
+    const progP2 = await app.request(`/api/v1/rooms/${code}/progress`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ score: 992000, accuracy: 99.5, combo: 310, max_combo: 310, grade: "S", finished: true }),
+    });
+    assert.equal(progP2.status, 200);
+    assert.equal(((await progP2.json()) as RoomJson).status, "playing");
+
+    // ArenaHost finishes with 985,000 (98.90%) — tied score with PetalMiku but higher accuracy
+    const progHost = await app.request(`/api/v1/rooms/${code}/progress`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ score: 985000, accuracy: 98.9, combo: 280, max_combo: 295, grade: "S", finished: true }),
+    });
+    assert.equal(progHost.status, 200);
+    assert.equal(((await progHost.json()) as RoomJson).status, "playing");
+
+    // PetalMiku finishes last with 985,000 (97.40%) -> all finished => room transitions to 'finished'
+    const progP3 = await app.request(`/api/v1/rooms/${code}/progress`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3Auth.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ score: 985000, accuracy: 97.4, combo: 240, max_combo: 260, grade: "S", finished: true }),
+    });
+    assert.equal(progP3.status, 200);
+    const finishedRoom = (await progP3.json()) as RoomJson;
+    assert.equal(finishedRoom.status, "finished");
+
+    const stateRes = await app.request(`/api/v1/rooms/${code}/state`);
+    assert.equal(stateRes.status, 200);
+    const podium = (await stateRes.json()) as RoomJson;
+    assert.equal(podium.status, "finished");
+    assert.equal(podium.players.length, 3);
+    assert.deepEqual(
+      podium.players.map((p) => ({ user_id: p.user_id, placement: p.placement, score: p.score })),
+      [
+        { user_id: p2Auth.user.id, placement: 1, score: 992000 },
+        { user_id: hostAuth.user.id, placement: 2, score: 985000 },
+        { user_id: p3Auth.user.id, placement: 3, score: 985000 },
+      ]
+    );
+
+    // Finished rooms should not appear in open lobby listing
+    const listAfterFinish = await app.request("/api/v1/rooms");
+    const listAfterBody = (await listAfterFinish.json()) as { rooms: RoomJson[] };
+    assert.equal(listAfterBody.rooms.length, 0);
+
+    // 7. Host leaves -> next player promoted to host; all leave -> room deleted
+    const hostLeave = await app.request(`/api/v1/rooms/${code}/leave`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${hostAuth.token}` },
+    });
+    assert.equal(hostLeave.status, 200);
+    const afterHostLeave = (await hostLeave.json()) as { deleted: boolean; room: RoomJson };
+    assert.equal(afterHostLeave.deleted, false);
+    assert.equal(afterHostLeave.room.players.length, 2);
+    assert.notEqual(afterHostLeave.room.host_id, hostAuth.user.id);
+    const promoted = afterHostLeave.room.players.find((p) => p.user_id === afterHostLeave.room.host_id);
+    assert.ok(promoted);
+    assert.equal(promoted.is_host, true);
+
+    await app.request(`/api/v1/rooms/${code}/leave`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p2Auth.token}` },
+    });
+    const finalLeave = await app.request(`/api/v1/rooms/${code}/leave`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${p3Auth.token}` },
+    });
+    assert.equal(finalLeave.status, 200);
+    const finalLeaveBody = (await finalLeave.json()) as { deleted: boolean; room: RoomJson | null };
+    assert.equal(finalLeaveBody.deleted, true);
+    assert.equal(finalLeaveBody.room, null);
+
+    const missingState = await app.request(`/api/v1/rooms/${code}/state`);
+    assert.equal(missingState.status, 404);
   } finally {
     storage.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
