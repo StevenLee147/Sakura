@@ -43,12 +43,67 @@ std::unique_ptr<Button> MakeButton(NormRect bounds, const std::string& text, Fon
     button->SetOnClick(std::move(action));
     return button;
 }
+
+nlohmann::json StripLegacyOnlineCredentials(nlohmann::json root)
+{
+    if (root.is_object() && root.contains("online") && root["online"].is_object())
+    {
+        auto& online = root["online"];
+        for (const char* key : {
+            "auth_token", "refresh_token", "access_token",
+            "user_id", "username", "is_guest",
+            "total_pp", "sakura_rating", "dan_badge", "expires_at" })
+        {
+            online.erase(key);
+        }
+    }
+    return root;
+}
+
+void PurgeLegacyOnlineKeysFromLiveConfig()
+{
+    auto& cfg = Config::GetInstance();
+    for (const char* key : {
+        "online.auth_token", "online.refresh_token", "online.access_token",
+        "online.user_id", "online.username", "online.is_guest",
+        "online.total_pp", "online.sakura_rating", "online.dan_badge", "online.expires_at" })
+    {
+        if (cfg.Has(key))
+            cfg.Remove(key);
+    }
+}
+
+void PreserveActiveAuthEndpointInConfig()
+{
+    PurgeLegacyOnlineKeysFromLiveConfig();
+    auto& api = sakura::net::APIClient::GetInstance();
+    if (api.GetAuthState() != sakura::net::AuthState::Unauthenticated || api.IsAuthenticated())
+    {
+        const std::string activeUrl = api.GetServerUrl();
+        if (!activeUrl.empty())
+            Config::GetInstance().Set("online.server_url", activeUrl);
+    }
+}
+
+void RestoreConfigPreservingAuth(const nlohmann::json& snapshot)
+{
+    // 仅恢复常规设置，绝不触碰 AuthStore / auth_session.json 与 APIClient 登录态
+    Config::GetInstance().Restore(StripLegacyOnlineCredentials(snapshot));
+    PreserveActiveAuthEndpointInConfig();
+}
+
+void ResetConfigToDefaultsPreservingAuth()
+{
+    // 重置常规设置默认值，完整保留 APIClient / AuthStore 登录会话与服务端地址
+    Config::GetInstance().ResetToDefaults();
+    PreserveActiveAuthEndpointInConfig();
+}
 }
 
 void SceneSettings::OnEnter()
 {
     m_font = ResourceManager::GetInstance().GetDefaultFontHandle();
-    m_saved = Config::GetInstance().GetRoot();
+    m_saved = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot());
     m_dirty = false;
     m_modal = 0;
     for (int i = 0; i < 6; ++i)
@@ -301,6 +356,11 @@ void SceneSettings::BuildPages()
         AddAction(5, "多端云存档", syncHint, "立即云端同步", []
         {
             auto& api = sakura::net::APIClient::GetInstance();
+            if (api.GetAuthState() == sakura::net::AuthState::SessionExpired)
+            {
+                ToastManager::Instance().Show("登录凭据已过期，请先在主菜单右上角验证密码重登", ToastType::Warning, 3.6f);
+                return;
+            }
             if (!api.IsAuthenticated())
             {
                 ToastManager::Instance().Show("请先在主菜单右上角登录在线账号后再进行云同步", ToastType::Info, 3.5f);
@@ -426,10 +486,11 @@ void SceneSettings::SyncAudio()
 
 bool SceneSettings::Save()
 {
+    PreserveActiveAuthEndpointInConfig();
     Config::GetInstance().Set("online.settings_updated_at", static_cast<long long>(std::time(nullptr)));
     if (!Config::GetInstance().Save())
     { ToastManager::Instance().Show("设置保存失败，请检查目录权限与剩余空间", ToastType::Error); return false; }
-    m_saved = Config::GetInstance().GetRoot();
+    m_saved = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot());
     m_dirty = false;
     if (Config::GetInstance().Get<bool>("online.auto_cloud_sync", true) &&
         sakura::net::APIClient::GetInstance().IsAuthenticated())
@@ -444,7 +505,7 @@ void SceneSettings::OnExit()
 {
     if (m_dirty)
     {
-        Config::GetInstance().Restore(m_saved);
+        RestoreConfigPreservingAuth(m_saved);
         std::string savedSkin = Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura");
         if (savedSkin.empty()) savedSkin = "moonlit_sakura";
         SkinManager::GetInstance().SetActiveSkin(savedSkin);
@@ -471,13 +532,13 @@ void SceneSettings::ShowModal(int kind)
     m_modalButtons.push_back(MakeButton({0.29f,0.59f,0.13f,0.05f}, "取消", m_font, [this] { m_modal = 0; m_closeRequested=false; }));
     if (kind == 1)
         m_modalButtons.push_back(MakeButton({0.44f,0.59f,0.13f,0.05f}, "放弃修改", m_font, [this]
-        { if(m_closeRequested){Config::GetInstance().Restore(m_saved);std::string savedSkin=Config::GetInstance().Get<std::string>("graphics.skin_path","moonlit_sakura");if(savedSkin.empty())savedSkin="moonlit_sakura";SkinManager::GetInstance().SetActiveSkin(savedSkin);m_dirty=false;SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::Fade, 0.25f); }));
+        { if(m_closeRequested){RestoreConfigPreservingAuth(m_saved);std::string savedSkin=Config::GetInstance().Get<std::string>("graphics.skin_path","moonlit_sakura");if(savedSkin.empty())savedSkin="moonlit_sakura";SkinManager::GetInstance().SetActiveSkin(savedSkin);m_dirty=false;SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::Fade, 0.25f); }));
     m_modalButtons.push_back(MakeButton({0.59f,0.59f,0.13f,0.05f}, kind == 1 ? "保存并返回" : "确认", m_font, [this, kind]
     {
         if (kind == 1) { if (Save()) { m_modal = 0; if(m_closeRequested){SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);}else Back(); } }
         if (kind == 2)
         {
-            Config::GetInstance().ResetToDefaults(); m_dirty = true; m_modal = 0;
+            ResetConfigToDefaultsPreservingAuth(); m_dirty = true; m_modal = 0;
             SkinManager::GetInstance().SetActiveSkin(Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura"));
             SyncAudio();
             sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound", "default"));
@@ -494,8 +555,9 @@ bool SceneSettings::CreateBackup()
     {
         const std::filesystem::path folder = Paths::User("backups/" + std::to_string(std::time(nullptr)) + "-" + std::to_string(SDL_GetTicks()));
         std::filesystem::create_directories(folder);
+        const nlohmann::json sanitizedSettings = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot());
         const bool ok = sakura::data::Database::GetInstance().BackupTo((folder / "sakura.db").string()) &&
-            sakura::utils::AtomicWrite(folder / "settings.json", Config::GetInstance().GetRoot().dump(2));
+            sakura::utils::AtomicWrite(folder / "settings.json", sanitizedSettings.dump(2));
         if (std::filesystem::exists(Paths::User("replays")))
             std::filesystem::copy(Paths::User("replays"), folder / "replays", std::filesystem::copy_options::recursive);
         if (std::filesystem::exists(Paths::User("charts")))
@@ -509,7 +571,7 @@ bool SceneSettings::CreateBackup()
 
 void SceneSettings::RestoreBackup()
 {
-    const auto before=Config::GetInstance().GetRoot();
+    const auto before = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot());
     bool changedDatabase=false;
     const std::filesystem::path staging=Paths::User("restore-staging-"+std::to_string(SDL_GetTicksNS()));
     std::vector<std::string> swapped;
@@ -541,16 +603,16 @@ void SceneSettings::RestoreBackup()
             }
         };
         relocate(relocate,settings);
-        Config::GetInstance().Restore(settings);
+        RestoreConfigPreservingAuth(settings);
         if(!Config::GetInstance().SaveForce())throw std::runtime_error("设置无法写入");
-        m_saved=Config::GetInstance().GetRoot();m_dirty=false;
+        m_saved = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot()); m_dirty = false;
         std::string restoredSkin = Config::GetInstance().Get<std::string>("graphics.skin_path", "moonlit_sakura");
         if (restoredSkin.empty()) restoredSkin = "moonlit_sakura";
         SkinManager::GetInstance().SetActiveSkin(restoredSkin);
         SyncAudio(); BuildPages();
         sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(Config::GetInstance().Get<std::string>("audio.hitsound","default"));
         std::error_code cleanup;std::filesystem::remove_all(staging,cleanup);
-        ToastManager::Instance().Show("存档已恢复，原存档已备份", ToastType::Success);
+        ToastManager::Instance().Show("存档已恢复，原存档与在线登录态已保留", ToastType::Success);
     }
     catch (const std::exception& error) {
         bool filesRecovered=true;
@@ -561,7 +623,7 @@ void SceneSettings::RestoreBackup()
             filesRecovered &= !ec;
         }
         const bool recovered=!changedDatabase || sakura::data::Database::GetInstance().RestoreFrom((std::filesystem::path(m_lastBackupDirectory)/"sakura.db").string());
-        Config::GetInstance().Restore(before);Config::GetInstance().SaveForce();SyncAudio();
+        RestoreConfigPreservingAuth(before);Config::GetInstance().SaveForce();SyncAudio();
         if(filesRecovered){std::error_code ec;std::filesystem::remove_all(staging,ec);}
         ToastManager::Instance().Show(recovered && filesRecovered ? std::string("恢复未完成，原记录已保留：")+error.what() : "恢复失败，请从备份目录恢复原存档",ToastType::Error,6);
     }

@@ -713,6 +713,93 @@ bool RunVerifyOnline(const std::string& baseUrl)
         return failStep("VerifyArenaPlacements", "host=" + std::to_string(hostPlacement) + " rival=" + std::to_string(rivalPlacement));
     apiB.Shutdown();
 
+    // v2.1.0 E2E: Isolated AuthStore + Guest -> SubmitScore -> UpgradeGuest -> RefreshSession -> ChangePassword -> ResetToDefaults survival -> Logout
+    {
+        const fs::path queueV210 = e2eDir / "queue_v210.json";
+        const fs::path authV210  = e2eDir / "auth_v210.json";
+        fs::remove(queueV210, ec);
+        fs::remove(authV210, ec);
+
+        sakura::net::APIClient apiV210(nullptr, queueV210.string(), authV210.string());
+        apiV210.SetServerUrl(baseUrl);
+
+        const auto guestV210 = apiV210.LoginGuest("GuestV210");
+        if (!guestV210.ok || !guestV210.user.isGuest || guestV210.user.id.empty() ||
+            apiV210.GetRefreshToken().empty() ||
+            apiV210.GetAuthState() != sakura::net::AuthState::AuthenticatedOnline)
+        {
+            return failStep("V210LoginGuest", guestV210.error);
+        }
+        const std::string guestUserIdV210 = guestV210.user.id;
+
+        const auto scoreSubV210 = apiV210.SubmitScore(liveResult);
+        if (!scoreSubV210.ok || scoreSubV210.pp <= 0.0 || scoreSubV210.scoreId.empty())
+            return failStep("V210SubmitScore", scoreSubV210.error);
+
+        const std::string upgradedNameV210 = "Upg_" + std::to_string(SDL_GetTicksNS() % 100000000ULL);
+        const std::string initialPassV210  = "SakuraV210Pass!";
+        const std::string updatedPassV210  = "SakuraV210NewPass#9";
+
+        const auto upgResV210 = apiV210.UpgradeGuest(upgradedNameV210, initialPassV210);
+        if (!upgResV210.ok || upgResV210.user.id != guestUserIdV210 || upgResV210.user.isGuest ||
+            upgResV210.user.username != upgradedNameV210 || upgResV210.user.sakuraRating <= 0.0)
+        {
+            return failStep("V210UpgradeGuest",
+                upgResV210.error + " id=" + upgResV210.user.id +
+                " guest=" + std::to_string(upgResV210.user.isGuest) +
+                " rating=" + std::to_string(upgResV210.user.sakuraRating));
+        }
+
+        const std::string prevRefreshV210 = apiV210.GetRefreshToken();
+        const auto refResV210 = apiV210.RefreshSession();
+        if (!refResV210.ok || apiV210.GetRefreshToken().empty() ||
+            apiV210.GetRefreshToken() == prevRefreshV210 ||
+            apiV210.GetCurrentUser().id != guestUserIdV210)
+        {
+            return failStep("V210RefreshSession", refResV210.error);
+        }
+
+        const std::string prePwdRefreshV210 = apiV210.GetRefreshToken();
+        const auto pwdResV210 = apiV210.ChangePassword(initialPassV210, updatedPassV210);
+        if (!pwdResV210.ok || apiV210.GetRefreshToken().empty() ||
+            apiV210.GetRefreshToken() == prePwdRefreshV210)
+        {
+            return failStep("V210ChangePassword", pwdResV210.error);
+        }
+        apiV210.Shutdown();
+
+        cfg.ResetToDefaults();
+        cfg.SaveForce();
+
+        sakura::net::APIClient apiV210Reloaded(nullptr, queueV210.string(), authV210.string());
+        apiV210Reloaded.LoadFromConfig();
+        if (!apiV210Reloaded.IsAuthenticated() ||
+            apiV210Reloaded.GetCurrentUser().id != guestUserIdV210 ||
+            apiV210Reloaded.GetCurrentUser().username != upgradedNameV210 ||
+            apiV210Reloaded.GetCurrentUser().isGuest)
+        {
+            return failStep("V210ReloadAfterConfigReset", "session did not survive Config::ResetToDefaults()");
+        }
+
+        apiV210Reloaded.SetServerUrl(baseUrl);
+        const auto reloadedProfV210 = apiV210Reloaded.RefreshProfile();
+        if (!reloadedProfV210.ok || reloadedProfV210.user.id != guestUserIdV210 ||
+            reloadedProfV210.user.username != upgradedNameV210 || reloadedProfV210.user.isGuest ||
+            reloadedProfV210.user.sakuraRating <= 0.0 ||
+            apiV210Reloaded.GetAuthState() != sakura::net::AuthState::AuthenticatedOnline)
+        {
+            return failStep("V210RefreshProfileAfterReload", reloadedProfV210.error);
+        }
+
+        apiV210Reloaded.Logout();
+        if (apiV210Reloaded.IsAuthenticated() ||
+            apiV210Reloaded.GetAuthState() != sakura::net::AuthState::Unauthenticated)
+        {
+            return failStep("V210Logout", "expected AuthState::Unauthenticated");
+        }
+        apiV210Reloaded.Shutdown();
+    }
+
     const nlohmann::json report = {
         { "verified", true },
         { "username", uname },

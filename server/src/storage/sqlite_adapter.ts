@@ -10,6 +10,7 @@ import {
   ArenaProgressInput,
   ArenaRoomRecord,
   ArenaRoomStatus,
+  AuthSessionRecord,
   CloudAchievementRecord,
   CloudCourseRecord,
   CloudScoreRecord,
@@ -231,6 +232,18 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         dan_badge TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        refresh_token_hash TEXT NOT NULL UNIQUE,
+        device_name TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked_at INTEGER DEFAULT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_refresh_hash ON auth_sessions(refresh_token_hash);
       CREATE TABLE IF NOT EXISTS scores (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -479,6 +492,160 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       danBadge: String(row.dan_badge || ""),
       createdAt: Number(row.created_at),
     };
+  }
+
+  createAuthSession(
+    userId: string,
+    refreshTokenHash: string,
+    expiresAt: number,
+    deviceName = ""
+  ): AuthSessionRecord {
+    const id = crypto.randomUUID();
+    const now = Math.floor(Date.now() / 1000);
+    const cleanDevice = (deviceName || "").trim().slice(0, 128);
+    const exp = Math.trunc(expiresAt);
+    this.db.prepare(
+      `INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device_name, created_at, expires_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`
+    ).run(id, userId, refreshTokenHash, cleanDevice, now, exp);
+    return {
+      id,
+      userId,
+      refreshTokenHash,
+      deviceName: cleanDevice,
+      createdAt: now,
+      expiresAt: exp,
+      revokedAt: null,
+    };
+  }
+
+  rotateAuthSession(
+    oldRefreshTokenHash: string,
+    newRefreshTokenHash: string,
+    newExpiresAt: number,
+    deviceName?: string
+  ): UserRecord | null {
+    if (!oldRefreshTokenHash || !newRefreshTokenHash) return null;
+    const now = Math.floor(Date.now() / 1000);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.db.prepare(
+        "SELECT id, user_id, device_name, expires_at, revoked_at FROM auth_sessions WHERE refresh_token_hash = ?"
+      ).get(oldRefreshTokenHash) as
+        | { id: string; user_id: string; device_name: string; expires_at: number; revoked_at: number | null }
+        | undefined;
+
+      if (!row || row.revoked_at != null || Number(row.expires_at) <= now) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+
+      const user = this.findUserById(String(row.user_id));
+      if (!user) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+
+      const upd = this.db.prepare(
+        "UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL"
+      ).run(now, String(row.id));
+      if (Number(upd.changes) !== 1) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+
+      const resolvedDevice =
+        deviceName !== undefined && deviceName.trim().length > 0
+          ? deviceName.trim().slice(0, 128)
+          : String(row.device_name || "");
+
+      this.db.prepare(
+        `INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device_name, created_at, expires_at, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL)`
+      ).run(crypto.randomUUID(), user.id, newRefreshTokenHash, resolvedDevice, now, Math.trunc(newExpiresAt));
+
+      this.db.exec("COMMIT");
+      return user;
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {}
+      throw err;
+    }
+  }
+
+  revokeAuthSession(refreshTokenHash: string): boolean {
+    if (!refreshTokenHash) return false;
+    const now = Math.floor(Date.now() / 1000);
+    const res = this.db.prepare(
+      "UPDATE auth_sessions SET revoked_at = ? WHERE refresh_token_hash = ? AND revoked_at IS NULL"
+    ).run(now, refreshTokenHash);
+    return Number(res.changes) > 0;
+  }
+
+  revokeUserAuthSessions(userId: string, exceptRefreshTokenHash?: string): number {
+    if (!userId) return 0;
+    const now = Math.floor(Date.now() / 1000);
+    if (exceptRefreshTokenHash) {
+      const res = this.db.prepare(
+        "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND refresh_token_hash != ?"
+      ).run(now, userId, exceptRefreshTokenHash);
+      return Number(res.changes);
+    }
+    const res = this.db.prepare(
+      "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL"
+    ).run(now, userId);
+    return Number(res.changes);
+  }
+
+  upgradeGuestUser(userId: string, username: string, passwordHash: string): UserRecord {
+    const cleanUsername = username.trim();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const user = this.findUserById(userId);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      if (!user.isGuest) {
+        throw new Error("Account is already registered.");
+      }
+      const conflict = this.db.prepare(
+        "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?"
+      ).get(cleanUsername, userId) as { id: string } | undefined;
+      if (conflict) {
+        throw new Error("Username already exists.");
+      }
+      this.db.prepare(
+        "UPDATE users SET username = ?, password_hash = ?, is_guest = 0 WHERE id = ?"
+      ).run(cleanUsername, passwordHash, userId);
+      this.db.prepare(
+        "UPDATE market_charts SET uploader_name = ? WHERE uploader_id = ?"
+      ).run(cleanUsername, userId);
+      this.db.prepare(
+        "UPDATE chart_ratings SET username = ? WHERE user_id = ?"
+      ).run(cleanUsername, userId);
+      this.db.prepare(
+        "UPDATE arena_rooms SET host_name = ? WHERE host_id = ?"
+      ).run(cleanUsername, userId);
+      this.db.prepare(
+        "UPDATE arena_players SET username = ? WHERE user_id = ?"
+      ).run(cleanUsername, userId);
+      this.db.exec("COMMIT");
+      return this.findUserById(userId)!;
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {}
+      throw err;
+    }
+  }
+
+  updateUserPassword(userId: string, passwordHash: string): boolean {
+    if (!userId || !passwordHash) return false;
+    const res = this.db.prepare(
+      "UPDATE users SET password_hash = ? WHERE id = ? AND is_guest = 0"
+    ).run(passwordHash, userId);
+    return Number(res.changes) > 0;
   }
 
   getUserTotalPP(userId: string): number {

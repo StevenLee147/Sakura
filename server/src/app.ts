@@ -1,6 +1,15 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { hashPassword, JwtPayload, signJwt, verifyJwt, verifyPassword } from "./auth.js";
+import {
+  generateRefreshToken,
+  hashPassword,
+  hashRefreshToken,
+  JwtPayload,
+  REFRESH_TOKEN_TTL_SEC,
+  signJwtWithExpiry,
+  verifyJwt,
+  verifyPassword,
+} from "./auth.js";
 import { computeChartRating, computeDailyChallenge } from "./storage/sqlite_adapter.js";
 import {
   ArenaRoomRecord,
@@ -11,6 +20,7 @@ import {
   LeaderboardEntry,
   MarketChartItem,
   ScoreSubmission,
+  UserRecord,
 } from "./storage/types.js";
 
 export { computeChartRating, computeDailyChallenge };
@@ -170,7 +180,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.0.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.1.0";
 
   app.use("*", cors());
 
@@ -232,6 +242,36 @@ export function createApp(opts: AppOptions): Hono {
     });
   });
 
+  const serializeAuthUser = (user: UserRecord) => ({
+    id: user.id,
+    username: user.username,
+    is_guest: user.isGuest,
+    total_pp: storage.getUserTotalPP(user.id),
+    sakura_rating: storage.getUserSakuraRating(user.id),
+    dan_badge: user.danBadge,
+  });
+
+  const issueSessionTokens = (user: UserRecord, deviceName = "") => {
+    const { token, expiresAt } = signJwtWithExpiry(
+      { sub: user.id, username: user.username, guest: user.isGuest },
+      jwtSecret
+    );
+    const refreshToken = generateRefreshToken();
+    const refreshExpiresAt = Math.floor(Date.now() / 1000) + REFRESH_TOKEN_TTL_SEC;
+    storage.createAuthSession(user.id, hashRefreshToken(refreshToken), refreshExpiresAt, deviceName);
+    return {
+      token,
+      refresh_token: refreshToken,
+      expires_at: expiresAt,
+      user: serializeAuthUser(user),
+    };
+  };
+
+  const extractDeviceName = (body: Record<string, unknown>): string => {
+    const raw = body.device_name ?? body.deviceName;
+    return typeof raw === "string" ? raw : "";
+  };
+
   app.post("/api/v1/auth/guest", async (c) => {
     let body: Record<string, unknown> = {};
     try {
@@ -241,18 +281,9 @@ export function createApp(opts: AppOptions): Hono {
     }
     const nickname = typeof body.nickname === "string" ? body.nickname : undefined;
     const user = storage.createGuestUser(nickname);
-    const token = signJwt({ sub: user.id, username: user.username, guest: true }, jwtSecret);
     return c.json({
       ok: true,
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        is_guest: true,
-        total_pp: 0,
-        sakura_rating: 0,
-        dan_badge: user.danBadge,
-      },
+      ...issueSessionTokens(user, extractDeviceName(body)),
     }, 201);
   });
 
@@ -275,18 +306,9 @@ export function createApp(opts: AppOptions): Hono {
       return c.json({ ok: false, error: "Username already exists." }, 409);
     }
     const user = storage.registerUser(username, hashPassword(password));
-    const token = signJwt({ sub: user.id, username: user.username, guest: false }, jwtSecret);
     return c.json({
       ok: true,
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        is_guest: false,
-        total_pp: 0,
-        sakura_rating: 0,
-        dan_badge: user.danBadge,
-      },
+      ...issueSessionTokens(user, extractDeviceName(body)),
     }, 201);
   });
 
@@ -303,20 +325,158 @@ export function createApp(opts: AppOptions): Hono {
     if (!user || user.isGuest || !verifyPassword(password, user.passwordHash)) {
       return c.json({ ok: false, error: "Invalid username or password." }, 401);
     }
-    const token = signJwt({ sub: user.id, username: user.username, guest: false }, jwtSecret);
-    const totalPp = storage.getUserTotalPP(user.id);
-    const sakuraRating = storage.getUserSakuraRating(user.id);
+    return c.json({
+      ok: true,
+      ...issueSessionTokens(user, extractDeviceName(body)),
+    });
+  });
+
+  app.post("/api/v1/auth/refresh", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    const rawRefresh = body.refresh_token ?? body.refreshToken;
+    const oldRefreshToken = typeof rawRefresh === "string" ? rawRefresh.trim() : "";
+    if (!oldRefreshToken) {
+      return c.json({ ok: false, code: "session_expired", error: "Missing refresh token." }, 401);
+    }
+    const rawDevice = body.device_name ?? body.deviceName;
+    const deviceName = typeof rawDevice === "string" ? rawDevice : undefined;
+
+    const newRefreshToken = generateRefreshToken();
+    const newRefreshExpiresAt = Math.floor(Date.now() / 1000) + REFRESH_TOKEN_TTL_SEC;
+    const user = storage.rotateAuthSession(
+      hashRefreshToken(oldRefreshToken),
+      hashRefreshToken(newRefreshToken),
+      newRefreshExpiresAt,
+      deviceName
+    );
+    if (!user) {
+      return c.json(
+        { ok: false, code: "session_expired", error: "Refresh token is invalid, expired, or revoked." },
+        401
+      );
+    }
+    const { token, expiresAt } = signJwtWithExpiry(
+      { sub: user.id, username: user.username, guest: user.isGuest },
+      jwtSecret
+    );
     return c.json({
       ok: true,
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        is_guest: false,
-        total_pp: totalPp,
-        sakura_rating: sakuraRating,
-        dan_badge: user.danBadge,
-      },
+      refresh_token: newRefreshToken,
+      expires_at: expiresAt,
+      user: serializeAuthUser(user),
+    });
+  });
+
+  app.post("/api/v1/auth/logout", async (c) => {
+    let body: Record<string, unknown> = {};
+    try {
+      const parsed = await c.req.json();
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        body = parsed as Record<string, unknown>;
+      }
+    } catch {
+      body = {};
+    }
+    const rawRefresh = body.refresh_token ?? body.refreshToken;
+    const refreshToken = typeof rawRefresh === "string" ? rawRefresh.trim() : "";
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (refreshToken) {
+      storage.revokeAuthSession(hashRefreshToken(refreshToken));
+    } else if (auth) {
+      storage.revokeUserAuthSessions(auth.sub);
+    }
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/v1/auth/upgrade-guest", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) {
+      return c.json({ ok: false, error: "Unauthorized." }, 401);
+    }
+    const currentUser = storage.findUserById(auth.sub);
+    if (!currentUser) {
+      return c.json({ ok: false, error: "User not found." }, 401);
+    }
+    if (!currentUser.isGuest) {
+      return c.json({ ok: false, error: "Account is already a registered user." }, 400);
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    const username = typeof body.username === "string" ? body.username.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!/^[A-Za-z0-9_\u4e00-\u9fa5-]{2,24}$/.test(username)) {
+      return c.json({ ok: false, error: "Username must be 2-24 characters (letters, digits, _, -, or CJK)." }, 400);
+    }
+    if (password.length < 6 || password.length > 128) {
+      return c.json({ ok: false, error: "Password must be between 6 and 128 characters." }, 400);
+    }
+    const existing = storage.findUserByUsername(username);
+    if (existing && existing.id !== currentUser.id) {
+      return c.json({ ok: false, error: "Username already exists." }, 409);
+    }
+    try {
+      const updatedUser = storage.upgradeGuestUser(currentUser.id, username, hashPassword(password));
+      const rawOldRefresh = body.refresh_token ?? body.refreshToken;
+      if (typeof rawOldRefresh === "string" && rawOldRefresh.trim().length > 0) {
+        storage.revokeAuthSession(hashRefreshToken(rawOldRefresh.trim()));
+      }
+      return c.json({
+        ok: true,
+        ...issueSessionTokens(updatedUser, extractDeviceName(body)),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to upgrade guest account.";
+      if (msg.toLowerCase().includes("already exists")) {
+        return c.json({ ok: false, error: msg }, 409);
+      }
+      return c.json({ ok: false, error: msg }, 400);
+    }
+  });
+
+  app.post("/api/v1/auth/change-password", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) {
+      return c.json({ ok: false, error: "Unauthorized." }, 401);
+    }
+    const user = storage.findUserById(auth.sub);
+    if (!user) {
+      return c.json({ ok: false, error: "User not found." }, 401);
+    }
+    if (user.isGuest) {
+      return c.json({ ok: false, error: "Guest accounts cannot change password." }, 400);
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    const rawOld = body.old_password ?? body.oldPassword;
+    const rawNew = body.new_password ?? body.newPassword;
+    const oldPassword = typeof rawOld === "string" ? rawOld : "";
+    const newPassword = typeof rawNew === "string" ? rawNew : "";
+    if (!oldPassword || !verifyPassword(oldPassword, user.passwordHash)) {
+      return c.json({ ok: false, error: "Incorrect current password." }, 401);
+    }
+    if (newPassword.length < 6 || newPassword.length > 128) {
+      return c.json({ ok: false, error: "New password must be between 6 and 128 characters." }, 400);
+    }
+    storage.updateUserPassword(user.id, hashPassword(newPassword));
+    storage.revokeUserAuthSessions(user.id);
+    const refreshedUser = storage.findUserById(user.id)!;
+    return c.json({
+      ok: true,
+      ...issueSessionTokens(refreshedUser, extractDeviceName(body)),
     });
   });
 

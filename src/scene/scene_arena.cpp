@@ -433,6 +433,32 @@ void SceneArena::OnEnter()
     m_btnReadyOrStart = MakeBtn({ 0.72f, 0.904f, 0.24f, 0.054f }, "✦ 准备就绪  /  READY", m_font,
         [this]() { ToggleReadyOrStart(); }, ButtonVariant::Primary, 0.0205f);
 
+    // 优先检查持久化身份四态：绝不覆盖离线保活或过期会话为临时 SakuraPlayer
+    auto& api = APIClient::GetInstance();
+    const AuthState enterAuthState = api.GetAuthState();
+    if (enterAuthState == AuthState::AuthenticatedOffline)
+    {
+        auto alive = m_alive;
+        api.RefreshProfileAsync([this, alive](AuthResult r)
+        {
+            if (!*alive) return;
+            if (!r.ok && APIClient::GetInstance().GetAuthState() == AuthState::SessionExpired)
+            {
+                m_statusText = "登录凭据已过期，请返回主菜单重新验证密码";
+                ToastManager::Instance().Show(m_statusText, ToastType::Warning, 3.8f);
+            }
+        });
+    }
+    else if (enterAuthState == AuthState::SessionExpired)
+    {
+        const std::string expUser = api.GetCurrentUser().username;
+        const std::string expMsg  = expUser.empty()
+            ? "登录凭据已过期，请返回主菜单重新验证密码"
+            : ("账号「" + expUser + "」凭据已过期，请返回主菜单重新登录");
+        m_statusText = expMsg;
+        ToastManager::Instance().Show(expMsg, ToastType::Warning, 4.0f);
+    }
+
     // 若携带赛后回归房间码，立即拉取房间/领奖台实时状态；否则刷新大厅列表
     if (!m_initialRoomCode.empty())
     {
@@ -440,7 +466,7 @@ void SceneArena::OnEnter()
         const std::string targetCode = m_initialRoomCode;
         m_statusText = "正在同步房间赛果与席位状态 [" + targetCode + "]...";
         auto alive = m_alive;
-        APIClient::GetInstance().FetchArenaRoomStateAsync(targetCode, [this, alive, targetCode](ArenaRoomResult res)
+        api.FetchArenaRoomStateAsync(targetCode, [this, alive, targetCode](ArenaRoomResult res)
         {
             if (!*alive) return;
             m_busy = false;
@@ -548,7 +574,14 @@ void SceneArena::RefreshLobby()
             }
         }
         m_selectedRoomRow = restoredRow;
-        m_statusText = "大厅已同步 · 当前共有 " + std::to_string(m_rooms.size()) + " 个公开对战房间";
+        if (APIClient::GetInstance().GetAuthState() == AuthState::SessionExpired)
+        {
+            m_statusText = "大厅共有 " + std::to_string(m_rooms.size()) + " 间 · 登录凭据已过期，请返回主菜单重新登录";
+        }
+        else
+        {
+            m_statusText = "大厅已同步 · 当前共有 " + std::to_string(m_rooms.size()) + " 个公开对战房间";
+        }
     });
 }
 
@@ -563,7 +596,19 @@ void SceneArena::CreateRoom()
     }
 
     auto& api = APIClient::GetInstance();
-    if (!api.IsAuthenticated())
+    const AuthState authState = api.GetAuthState();
+    if (authState == AuthState::SessionExpired)
+    {
+        const std::string expUser = api.GetCurrentUser().username;
+        const std::string msg     = expUser.empty()
+            ? "登录凭据已过期，请返回主菜单重新验证密码"
+            : ("账号「" + expUser + "」凭据已过期，请返回主菜单重新验证密码");
+        m_statusText = msg;
+        ToastManager::Instance().Show(msg, ToastType::Warning, 3.6f);
+        return;
+    }
+
+    if (authState == AuthState::Unauthenticated)
     {
         m_busy = true;
         m_statusText = "正在以访客身份自动鉴权...";
@@ -578,11 +623,20 @@ void SceneArena::CreateRoom()
                 ToastManager::Instance().Show("访客鉴权失败：" + auth.error, ToastType::Error, 3.5f);
                 return;
             }
-            CreateRoom();
+            DoCreateRoom();
         });
         return;
     }
 
+    // AuthenticatedOnline 与 AuthenticatedOffline 均直接复用本地持久化账号
+    DoCreateRoom();
+}
+
+void SceneArena::DoCreateRoom()
+{
+    if (m_busy || m_charts.empty()) return;
+
+    auto& api          = APIClient::GetInstance();
     const int chartIdx = std::clamp(m_selectedChartIdx, 0, static_cast<int>(m_charts.size()) - 1);
     const auto& chart  = m_charts[chartIdx];
     const DifficultyInfo* diffPtr = nullptr;
@@ -614,6 +668,12 @@ void SceneArena::CreateRoom()
             m_busy = false;
             if (!res.ok)
             {
+                if (APIClient::GetInstance().GetAuthState() == AuthState::SessionExpired)
+                {
+                    m_statusText = "登录凭据已过期，请返回主菜单重新验证密码";
+                    ToastManager::Instance().Show(m_statusText, ToastType::Warning, 3.6f);
+                    return;
+                }
                 m_statusText = "创建房间失败：" + res.error;
                 ToastManager::Instance().Show("创建房间失败：" + res.error, ToastType::Error, 3.5f);
                 return;
@@ -641,7 +701,19 @@ void SceneArena::JoinRoom(const std::string& code)
     }
 
     auto& api = APIClient::GetInstance();
-    if (!api.IsAuthenticated())
+    const AuthState authState = api.GetAuthState();
+    if (authState == AuthState::SessionExpired)
+    {
+        const std::string expUser = api.GetCurrentUser().username;
+        const std::string msg     = expUser.empty()
+            ? "登录凭据已过期，请返回主菜单重新验证密码"
+            : ("账号「" + expUser + "」凭据已过期，请返回主菜单重新验证密码");
+        m_statusText = msg;
+        ToastManager::Instance().Show(msg, ToastType::Warning, 3.6f);
+        return;
+    }
+
+    if (authState == AuthState::Unauthenticated)
     {
         m_busy = true;
         m_statusText = "正在以访客身份自动鉴权...";
@@ -656,20 +728,34 @@ void SceneArena::JoinRoom(const std::string& code)
                 ToastManager::Instance().Show("访客鉴权失败：" + auth.error, ToastType::Error, 3.5f);
                 return;
             }
-            JoinRoom(cleanCode);
+            DoJoinRoom(cleanCode);
         });
         return;
     }
 
+    // AuthenticatedOnline 与 AuthenticatedOffline 均直接复用本地持久化账号
+    DoJoinRoom(cleanCode);
+}
+
+void SceneArena::DoJoinRoom(const std::string& cleanCode)
+{
+    if (m_busy || cleanCode.empty()) return;
+
     m_busy = true;
     m_statusText = "正在加入房间 [" + cleanCode + "]...";
     auto alive = m_alive;
-    api.JoinArenaRoomAsync(cleanCode, [this, alive, cleanCode](ArenaRoomResult res)
+    APIClient::GetInstance().JoinArenaRoomAsync(cleanCode, [this, alive, cleanCode](ArenaRoomResult res)
     {
         if (!*alive) return;
         m_busy = false;
         if (!res.ok)
         {
+            if (APIClient::GetInstance().GetAuthState() == AuthState::SessionExpired)
+            {
+                m_statusText = "登录凭据已过期，请返回主菜单重新验证密码";
+                ToastManager::Instance().Show(m_statusText, ToastType::Warning, 3.6f);
+                return;
+            }
             m_statusText = "加入房间 [" + cleanCode + "] 失败：" + res.error;
             ToastManager::Instance().Show("加入房间失败：" + res.error, ToastType::Error, 3.5f);
             return;
@@ -1028,13 +1114,26 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
             { 30, 28, 58, 214 }, { 16, 18, 38, 228 },
             { 250, 216, 157, 168 }, { 246, 178, 206, 84 }, 0.013f, 0.42f);
         renderer.DrawText(m_font, "ONLINE PASS / 当前选手身份", 0.716f, 0.050f, 0.012f, kDim);
-        if (api.IsAuthenticated())
+        const AuthState passState = api.GetAuthState();
+        const std::string badgePrefix = me.danBadge.empty() ? "" : ("[" + me.danBadge + "] ");
+        if (passState == AuthState::AuthenticatedOnline)
         {
-            const std::string badgePrefix = me.danBadge.empty() ? "" : ("[" + me.danBadge + "] ");
             const std::string userLabel = "● " + badgePrefix + me.username +
                 (me.isGuest ? " (访客)" : "");
             VisualStyle::DrawTextFit(renderer, m_font, userLabel,
                 0.716f, 0.072f, 0.0175f, 0.228f, kMint);
+        }
+        else if (passState == AuthState::AuthenticatedOffline)
+        {
+            const std::string userLabel = "◈ " + badgePrefix + me.username + " · 离线保活";
+            VisualStyle::DrawTextFit(renderer, m_font, userLabel,
+                0.716f, 0.072f, 0.0165f, 0.228f, kGold);
+        }
+        else if (passState == AuthState::SessionExpired)
+        {
+            const std::string expLabel = "! " + (me.username.empty() ? std::string("在线会话") : me.username) + " · 需重登";
+            VisualStyle::DrawTextFit(renderer, m_font, expLabel,
+                0.716f, 0.072f, 0.0165f, 0.228f, kCoral);
         }
         else
         {
@@ -1235,10 +1334,16 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         if (m_btnPrevDiff) m_btnPrevDiff->Render(renderer);
         if (m_btnNextDiff) m_btnNextDiff->Render(renderer);
 
-        const std::string authHint = api.IsAuthenticated()
-            ? "最多支持 8 名选手同场竞技 · 建房后可随时切换课题曲"
-            : "未登录时点击建房将自动通过 SakuraPlayer 访客身份登录";
-        renderer.DrawText(m_font, authHint, 0.760f, 0.720f, 0.0138f, kDim, TextAlign::Center);
+        const AuthState hintState = api.GetAuthState();
+        std::string authHint = "最多支持 8 名选手同场竞技 · 建房后可随时切换课题曲";
+        if (hintState == AuthState::AuthenticatedOffline)
+            authHint = "当前离线保活已复用本地账号 · 网络恢复后可直接建房对战";
+        else if (hintState == AuthState::SessionExpired)
+            authHint = "登录凭据已过期 · 请先返回主菜单验证密码后再建房或入房";
+        else if (hintState == AuthState::Unauthenticated)
+            authHint = "未登录时点击建房将自动创建并持久化访客通行证";
+        renderer.DrawText(m_font, authHint, 0.760f, 0.720f, 0.0138f,
+            hintState == AuthState::SessionExpired ? kCoral : kDim, TextAlign::Center);
 
         if (m_btnCreateRoom) m_btnCreateRoom->Render(renderer);
         if (m_btnBack)       m_btnBack->Render(renderer);

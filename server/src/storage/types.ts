@@ -7,6 +7,16 @@ export interface UserRecord {
   createdAt: number;
 }
 
+export interface AuthSessionRecord {
+  id: string;
+  userId: string;
+  refreshTokenHash: string;
+  deviceName: string;
+  createdAt: number;
+  expiresAt: number;
+  revokedAt: number | null;
+}
+
 export interface ScoreSubmission {
   chartId: string;
   chartTitle: string;
@@ -220,6 +230,22 @@ export interface IStorageAdapter {
   registerUser(username: string, passwordHash: string): UserRecord;
   findUserByUsername(username: string): UserRecord | null;
   findUserById(id: string): UserRecord | null;
+  createAuthSession(
+    userId: string,
+    refreshTokenHash: string,
+    expiresAt: number,
+    deviceName?: string
+  ): AuthSessionRecord;
+  rotateAuthSession(
+    oldRefreshTokenHash: string,
+    newRefreshTokenHash: string,
+    newExpiresAt: number,
+    deviceName?: string
+  ): UserRecord | null;
+  revokeAuthSession(refreshTokenHash: string): boolean;
+  revokeUserAuthSessions(userId: string, exceptRefreshTokenHash?: string): number;
+  upgradeGuestUser(userId: string, username: string, passwordHash: string): UserRecord;
+  updateUserPassword(userId: string, passwordHash: string): boolean;
   getUserTotalPP(userId: string): number;
   getUserSakuraRating(userId: string): number;
   submitScore(userId: string, sub: ScoreSubmission): { scoreId: string; pp: number; rank: number; newBest: boolean };

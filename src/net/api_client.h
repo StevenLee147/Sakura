@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/auth_store.h"
 #include "game/chart.h"
 #include "game/course.h"
 #include "net/http_client.h"
@@ -25,6 +26,14 @@ enum class OnlineStatus
     Online
 };
 
+enum class AuthState
+{
+    Unauthenticated,
+    AuthenticatedOnline,
+    AuthenticatedOffline,
+    SessionExpired
+};
+
 struct OnlineUser
 {
     std::string id;
@@ -39,8 +48,11 @@ struct AuthResult
 {
     bool        ok = false;
     std::string error;
+    std::string errorCode;
     OnlineUser  user;
     std::string token;
+    std::string refreshToken;
+    long long   expiresAt = 0;
 };
 
 struct ScoreSubmitResult
@@ -248,7 +260,8 @@ public:
     static APIClient& GetInstance();
 
     explicit APIClient(std::shared_ptr<IHttpTransport> transport = nullptr,
-                       std::string queueFilePath = {});
+                       std::string queueFilePath = {},
+                       std::string authStorePath = {});
     ~APIClient();
 
     APIClient(const APIClient&)            = delete;
@@ -265,9 +278,14 @@ public:
     std::string GetServerUrl() const;
 
     bool IsAuthenticated() const;
+    AuthState GetAuthState() const;
     OnlineStatus GetStatus() const { return m_status.load(); }
     OnlineUser GetCurrentUser() const;
     std::string GetAuthToken() const;
+    std::string GetRefreshToken() const;
+    long long GetTokenExpiresAt() const;
+    sakura::core::AuthStore& GetAuthStore();
+    const sakura::core::AuthStore& GetAuthStore() const;
     void Logout();
 
     std::size_t GetPendingScoreCount() const;
@@ -278,6 +296,12 @@ public:
     AuthResult Register(const std::string& username, const std::string& password);
     AuthResult Login(const std::string& username, const std::string& password);
     AuthResult RefreshProfile();
+    AuthResult RefreshSession();
+    AuthResult UpgradeGuest(const std::string& username, const std::string& password);
+    AuthResult ChangePassword(const std::string& oldPassword, const std::string& newPassword);
+    std::vector<sakura::core::SavedAccountEntry> GetSavedAccounts() const;
+    AuthResult SwitchSavedAccount(const std::string& userId);
+    bool RemoveSavedAccount(const std::string& userId);
     ScoreSubmitResult SubmitScore(const sakura::game::GameResult& result);
     int FlushPendingScores();
     LeaderboardResult FetchLeaderboard(const std::string& chartId, const std::string& difficulty, int limit = 50);
@@ -334,6 +358,11 @@ public:
     void RegisterAsync(const std::string& username, const std::string& password, std::function<void(AuthResult)> cb);
     void LoginAsync(const std::string& username, const std::string& password, std::function<void(AuthResult)> cb);
     void RefreshProfileAsync(std::function<void(AuthResult)> cb = {});
+    void UpgradeGuestAsync(const std::string& username, const std::string& password, std::function<void(AuthResult)> cb);
+    void ChangePasswordAsync(const std::string& oldPassword, const std::string& newPassword,
+                             std::function<void(AuthResult)> cb);
+    void SwitchSavedAccountAsync(const std::string& userId, std::function<void(AuthResult)> cb);
+    void LogoutAsync(std::function<void()> cb = {});
     void SubmitScoreAsync(const sakura::game::GameResult& result, std::function<void(ScoreSubmitResult)> cb);
     void FetchLeaderboardAsync(const std::string& chartId, const std::string& difficulty, int limit,
                                std::function<void(LeaderboardResult)> cb);
@@ -368,20 +397,36 @@ public:
     void FetchArenaRoomStateAsync(const std::string& code, std::function<void(ArenaRoomResult)> cb);
 
 private:
+    struct SingletonTag {};
+    explicit APIClient(SingletonTag);
+
+    sakura::core::AuthStore& MutableAuthStore() const;
+    void SyncServerUrlToConfig(const std::string& serverUrl) const;
+    void MarkOfflinePreserveSession();
+    void MarkOnlineFromAuthenticatedSuccess();
     void EnsureWorker();
     std::string ResolveQueuePath() const;
     HttpRequest MakeRequest(const std::string& method, const std::string& path, const std::string& jsonBody = {},
                             bool withAuth = true) const;
-    AuthResult HandleAuthResponse(const HttpResponse& res);
+    HttpResponse SendWithAuthRetry(HttpRequest req);
+    AuthResult RefreshSessionLocked(HttpResponse* outRawHttpResponse = nullptr);
+    AuthResult HandleAuthResponse(const HttpResponse& res, bool preserveMissingTokens = false);
     void EnqueueOfflineScorePayload(const std::string& payloadJson);
 
-    mutable std::mutex              m_stateMutex;
-    std::shared_ptr<IHttpTransport> m_transport;
-    std::string                     m_serverUrl = "https://steven-lee.tech:233";
-    std::string                     m_authToken;
-    OnlineUser                      m_user;
-    std::string                     m_customQueuePath;
-    std::atomic<OnlineStatus>       m_status{ OnlineStatus::Offline };
+    mutable std::mutex                       m_refreshMutex;
+    mutable std::mutex                       m_stateMutex;
+    std::shared_ptr<IHttpTransport>          m_transport;
+    std::shared_ptr<sakura::core::AuthStore> m_ownedAuthStore;
+    std::string                              m_isolatedAuthStorePath;
+    bool                                     m_cleanupIsolatedAuthStore = false;
+    std::string                              m_serverUrl                = "https://steven-lee.tech:233";
+    std::string                              m_authToken;
+    std::string                              m_refreshToken;
+    long long                                m_expiresAt = 0;
+    OnlineUser                               m_user;
+    AuthState                                m_authState = AuthState::Unauthenticated;
+    std::string                              m_customQueuePath;
+    std::atomic<OnlineStatus>                m_status{ OnlineStatus::Offline };
 
     std::mutex                      m_workerMutex;
     std::condition_variable         m_workerCv;

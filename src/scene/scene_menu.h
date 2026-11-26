@@ -119,16 +119,32 @@ private:
     bool  m_draggingEditorScroll  = false;
 
     // ── 在线账号胶囊与登录弹层 ───────────────────────────────────────────────────
+    static constexpr int MAX_SAVED_ACCOUNT_SLOTS = 5;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::unique_ptr<sakura::ui::Button> m_btnAccountCapsule;
     std::unique_ptr<sakura::ui::Button> m_btnMarket;
     std::unique_ptr<sakura::ui::Button> m_btnDojo;
     std::unique_ptr<sakura::ui::Button> m_btnArena;
-    bool m_showAccountModal = false;
+    bool m_showAccountModal   = false;
+    bool m_authBusy           = false;
+    bool m_changePasswordMode = false;
+    sakura::net::AuthState m_lastAuthState = sakura::net::AuthState::Unauthenticated;
+    std::string m_lastAuthUserId;
+    std::string m_lastAuthUsername;
+    bool m_lastAuthIsGuest  = true;
+    double m_lastAuthRating = -1.0;
+    std::string m_lastAuthBadge;
+    std::vector<sakura::core::SavedAccountEntry> m_savedAccounts;
+    int m_hoveredSavedSlot   = -1;
+    int m_hoveredSavedRemove = -1;
     std::unique_ptr<sakura::ui::TextInput> m_inputServerUrl;
     std::unique_ptr<sakura::ui::TextInput> m_inputUsername;
     std::unique_ptr<sakura::ui::TextInput> m_inputPassword;
+    std::unique_ptr<sakura::ui::TextInput> m_inputNewPassword;
     std::unique_ptr<sakura::ui::Button> m_btnAuthGuest;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthUpgradeGuest;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthToggleChangePwd;
+    std::unique_ptr<sakura::ui::Button> m_btnAuthSubmitPassword;
     std::unique_ptr<sakura::ui::Button> m_btnAuthLogin;
     std::unique_ptr<sakura::ui::Button> m_btnAuthRegister;
     std::unique_ptr<sakura::ui::Button> m_btnAuthLogout;
@@ -145,7 +161,11 @@ private:
     void SetupConfirmButtons();
     void SetupEditorMenuButtons();
     void SetupAccountModal();
-    void RefreshAccountCapsuleText();
+    void OpenAccountModal();
+    void CloseAccountModal();
+    void RefreshSavedAccounts();
+    void UpdateAccountModalLayout();
+    void RefreshAccountCapsuleText(bool forceSample = false);
     void ScanCustomCharts();
     void SelectEditorChart(int idx, bool ensureVisible = true);
     void ScrollEditorListBy(int deltaRows);

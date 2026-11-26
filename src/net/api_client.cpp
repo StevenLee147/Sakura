@@ -14,6 +14,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -25,6 +26,83 @@ namespace sakura::net
 namespace
 {
 constexpr const char* kDefaultOnlineServerUrl = "https://steven-lee.tech:233";
+constexpr long long   kProactiveRefreshLeadSeconds = 86400LL;
+
+long long NowUnixSeconds()
+{
+    return static_cast<long long>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+void SetBearerHeader(HttpRequest& req, const std::string& token)
+{
+    std::erase_if(req.headers, [](const std::pair<std::string, std::string>& h) {
+        return h.first == "Authorization" || h.first == "authorization";
+    });
+    if (!token.empty())
+    {
+        req.headers.emplace_back("Authorization", "Bearer " + token);
+    }
+}
+
+std::string AsciiLower(std::string s)
+{
+    for (char& ch : s)
+    {
+        if (static_cast<unsigned char>(ch) < 128)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return s;
+}
+
+bool IsPasswordMismatch401(const HttpResponse& res)
+{
+    if (res.statusCode != 401 || res.body.empty())
+        return false;
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        const std::string code = AsciiLower(j.value("code", ""));
+        if (code == "invalid_password" || code == "wrong_password" || code == "invalid_credentials")
+            return true;
+        const std::string err = AsciiLower(j.value("error", ""));
+        if (err.find("password") != std::string::npos || err.find("密码") != std::string::npos)
+            return true;
+    }
+    catch (...)
+    {
+    }
+    return false;
+}
+
+OnlineUser SessionProfileToOnlineUser(const sakura::core::AuthSessionData& sess)
+{
+    OnlineUser u;
+    u.id = !sess.activeUserId.empty() ? sess.activeUserId : sess.profile.userId;
+    u.username     = sess.profile.username;
+    u.isGuest      = sess.profile.isGuest;
+    u.totalPP      = sess.profile.totalPP;
+    u.sakuraRating = sess.profile.sakuraRating;
+    u.danBadge     = sess.profile.danBadge;
+
+    if (u.username.empty() && !u.id.empty())
+    {
+        for (const auto& entry : sess.savedAccounts)
+        {
+            if (entry.userId == u.id)
+            {
+                u.username     = entry.username;
+                u.isGuest      = entry.isGuest;
+                u.totalPP      = entry.totalPP;
+                u.sakuraRating = entry.sakuraRating;
+                u.danBadge     = entry.danBadge;
+                break;
+            }
+        }
+    }
+    return u;
+}
 
 std::string TrimTrailingSlash(std::string url)
 {
@@ -118,51 +196,214 @@ LeaderboardRow ParseLeaderboardRowJson(const nlohmann::json& item)
 
 APIClient& APIClient::GetInstance()
 {
-    static APIClient instance;
+    static APIClient instance(SingletonTag{});
     return instance;
 }
 
-APIClient::APIClient(std::shared_ptr<IHttpTransport> transport, std::string queueFilePath)
+APIClient::APIClient(SingletonTag)
+    : m_transport(CreateDefaultHttpTransport())
+{
+}
+
+APIClient::APIClient(std::shared_ptr<IHttpTransport> transport,
+                     std::string queueFilePath,
+                     std::string authStorePath)
     : m_transport(transport ? std::move(transport) : CreateDefaultHttpTransport())
     , m_customQueuePath(std::move(queueFilePath))
 {
+    namespace fs = std::filesystem;
+    if (!authStorePath.empty())
+    {
+        m_ownedAuthStore = std::make_shared<sakura::core::AuthStore>(authStorePath);
+    }
+    else if (!m_customQueuePath.empty())
+    {
+        const fs::path qPath(m_customQueuePath);
+        const fs::path derived = qPath.parent_path() / (qPath.stem().string() + "_auth.json");
+        m_ownedAuthStore = std::make_shared<sakura::core::AuthStore>(derived.string());
+    }
+    else
+    {
+        static std::atomic<std::uint64_t> s_isolatedInstanceSeq{ 0 };
+        const std::uint64_t seq = ++s_isolatedInstanceSeq;
+        const auto stamp = static_cast<unsigned long long>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        std::error_code ec;
+        fs::path tmpDir = fs::temp_directory_path(ec);
+        if (ec || tmpDir.empty())
+            tmpDir = fs::path(".");
+        const fs::path isolated = tmpDir / ("sakura_apiclient_isolated_"
+            + std::to_string(stamp) + "_" + std::to_string(seq) + "_auth.json");
+        m_isolatedAuthStorePath    = isolated.string();
+        m_cleanupIsolatedAuthStore = true;
+        m_ownedAuthStore           = std::make_shared<sakura::core::AuthStore>(m_isolatedAuthStorePath);
+    }
 }
 
 APIClient::~APIClient()
 {
     Shutdown();
+    if (m_cleanupIsolatedAuthStore && !m_isolatedAuthStorePath.empty())
+    {
+        std::error_code ec;
+        std::filesystem::remove(m_isolatedAuthStorePath, ec);
+    }
+}
+
+sakura::core::AuthStore& APIClient::MutableAuthStore() const
+{
+    return m_ownedAuthStore ? *m_ownedAuthStore : sakura::core::AuthStore::GetInstance();
+}
+
+sakura::core::AuthStore& APIClient::GetAuthStore()
+{
+    return MutableAuthStore();
+}
+
+const sakura::core::AuthStore& APIClient::GetAuthStore() const
+{
+    return MutableAuthStore();
+}
+
+void APIClient::SyncServerUrlToConfig(const std::string& serverUrl) const
+{
+    auto& cfg = sakura::core::Config::GetInstance();
+    cfg.Set("online.server_url", serverUrl);
+    for (const char* legacyKey : {
+             "online.auth_token",
+             "online.refresh_token",
+             "online.user_id",
+             "online.username",
+             "online.is_guest",
+             "online.total_pp",
+             "online.sakura_rating",
+             "online.dan_badge" })
+    {
+        if (cfg.Has(legacyKey))
+            cfg.Remove(legacyKey);
+    }
+    if (m_ownedAuthStore == nullptr || !cfg.GetFilePath().empty())
+    {
+        cfg.Save();
+    }
+}
+
+void APIClient::MarkOfflinePreserveSession()
+{
+    m_status.store(OnlineStatus::Offline);
+    std::lock_guard lock(m_stateMutex);
+    if (!m_authToken.empty() && !m_user.id.empty() && m_authState != AuthState::SessionExpired)
+    {
+        m_authState = AuthState::AuthenticatedOffline;
+    }
+}
+
+void APIClient::MarkOnlineFromAuthenticatedSuccess()
+{
+    m_status.store(OnlineStatus::Online);
+    std::lock_guard lock(m_stateMutex);
+    if (!m_authToken.empty() && !m_user.id.empty() && m_authState != AuthState::SessionExpired)
+    {
+        m_authState = AuthState::AuthenticatedOnline;
+    }
 }
 
 void APIClient::LoadFromConfig()
 {
-    auto& cfg = sakura::core::Config::GetInstance();
-    std::lock_guard lock(m_stateMutex);
-    std::string rawUrl = cfg.Get<std::string>("online.server_url", kDefaultOnlineServerUrl);
-    if (rawUrl == "http://127.0.0.1:8787")
+    auto& cfg   = sakura::core::Config::GetInstance();
+    auto& store = GetAuthStore();
+    store.Load(&cfg);
+
+    const auto sess = store.GetSession();
+    const std::string cfgUrl   = cfg.Get<std::string>("online.server_url", "");
+    const std::string storeUrl = !sess.serverUrl.empty() ? sess.serverUrl : store.GetServerUrl();
+
+    std::string rawUrl;
+    if (!storeUrl.empty() && (cfgUrl.empty() || cfgUrl == kDefaultOnlineServerUrl))
+        rawUrl = storeUrl;
+    else if (!cfgUrl.empty())
+        rawUrl = cfgUrl;
+    else
         rawUrl = kDefaultOnlineServerUrl;
-    m_serverUrl         = TrimTrailingSlash(rawUrl);
-    m_authToken         = cfg.Get<std::string>("online.auth_token", "");
-    m_user.id           = cfg.Get<std::string>("online.user_id", "");
-    m_user.username     = cfg.Get<std::string>("online.username", "");
-    m_user.isGuest      = cfg.Get<bool>("online.is_guest", true);
-    m_user.totalPP      = cfg.Get<double>("online.total_pp", 0.0);
-    m_user.sakuraRating = cfg.Get<double>("online.sakura_rating", 0.0);
-    m_user.danBadge     = cfg.Get<std::string>("online.dan_badge", "");
+
+    const std::string resolvedUrl = TrimTrailingSlash(rawUrl);
+    store.SetServerUrl(resolvedUrl);
+    SyncServerUrlToConfig(resolvedUrl);
+
+    const OnlineUser loadedUser = SessionProfileToOnlineUser(sess);
+    std::lock_guard lock(m_stateMutex);
+    m_serverUrl    = resolvedUrl;
+    m_authToken    = sess.accessToken;
+    m_refreshToken = sess.refreshToken;
+    m_expiresAt    = sess.expiresAt;
+    m_user         = loadedUser;
+
+    if (!m_authToken.empty() && !m_user.id.empty())
+    {
+        m_authState = AuthState::AuthenticatedOffline;
+    }
+    else if (m_authToken.empty() && !m_user.id.empty())
+    {
+        m_authState = AuthState::SessionExpired;
+    }
+    else
+    {
+        m_authToken.clear();
+        m_refreshToken.clear();
+        m_expiresAt = 0;
+        m_user      = {};
+        m_authState = AuthState::Unauthenticated;
+    }
 }
 
 void APIClient::SaveToConfig() const
 {
-    auto& cfg = sakura::core::Config::GetInstance();
-    std::lock_guard lock(m_stateMutex);
-    cfg.Set("online.server_url", m_serverUrl);
-    cfg.Set("online.auth_token", m_authToken);
-    cfg.Set("online.user_id", m_user.id);
-    cfg.Set("online.username", m_user.username);
-    cfg.Set("online.is_guest", m_user.isGuest);
-    cfg.Set("online.total_pp", m_user.totalPP);
-    cfg.Set("online.sakura_rating", m_user.sakuraRating);
-    cfg.Set("online.dan_badge", m_user.danBadge);
-    cfg.Save();
+    std::string serverUrl;
+    std::string authToken;
+    std::string refreshToken;
+    long long   expiresAt = 0;
+    OnlineUser  user;
+    AuthState   authState = AuthState::Unauthenticated;
+    {
+        std::lock_guard lock(m_stateMutex);
+        serverUrl    = m_serverUrl;
+        authToken    = m_authToken;
+        refreshToken = m_refreshToken;
+        expiresAt    = m_expiresAt;
+        user         = m_user;
+        authState    = m_authState;
+    }
+
+    SyncServerUrlToConfig(serverUrl);
+
+    auto& store = MutableAuthStore();
+    store.SetServerUrl(serverUrl);
+    if (!user.id.empty() && !authToken.empty() && authState != AuthState::SessionExpired)
+    {
+        sakura::core::AuthSessionData sess;
+        sess.serverUrl            = serverUrl;
+        sess.activeUserId         = user.id;
+        sess.accessToken          = authToken;
+        sess.refreshToken         = refreshToken;
+        sess.expiresAt            = expiresAt;
+        sess.profile.userId       = user.id;
+        sess.profile.username     = user.username;
+        sess.profile.isGuest      = user.isGuest;
+        sess.profile.totalPP      = user.totalPP;
+        sess.profile.sakuraRating = user.sakuraRating;
+        sess.profile.danBadge     = user.danBadge;
+        sess.profile.serverUrl    = serverUrl;
+        sess.profile.expiresAt    = expiresAt;
+        store.UpsertActiveSession(sess);
+    }
+    else if (authState == AuthState::SessionExpired && !user.id.empty())
+    {
+        store.ClearActiveTokensKeepIdentity();
+    }
+    else
+    {
+        store.Save();
+    }
 }
 
 void APIClient::Shutdown()
@@ -218,7 +459,13 @@ std::string APIClient::GetServerUrl() const
 bool APIClient::IsAuthenticated() const
 {
     std::lock_guard lock(m_stateMutex);
-    return !m_authToken.empty() && !m_user.id.empty();
+    return !m_authToken.empty() && !m_user.id.empty() && m_authState != AuthState::SessionExpired;
+}
+
+AuthState APIClient::GetAuthState() const
+{
+    std::lock_guard lock(m_stateMutex);
+    return m_authState;
 }
 
 OnlineUser APIClient::GetCurrentUser() const
@@ -233,14 +480,59 @@ std::string APIClient::GetAuthToken() const
     return m_authToken;
 }
 
+std::string APIClient::GetRefreshToken() const
+{
+    std::lock_guard lock(m_stateMutex);
+    return m_refreshToken;
+}
+
+long long APIClient::GetTokenExpiresAt() const
+{
+    std::lock_guard lock(m_stateMutex);
+    return m_expiresAt;
+}
+
 void APIClient::Logout()
 {
+    std::string oldAuthToken;
+    std::string oldRefreshToken;
+    std::string serverUrl;
+    {
+        std::lock_guard lock(m_stateMutex);
+        oldAuthToken    = m_authToken;
+        oldRefreshToken = m_refreshToken;
+        serverUrl       = m_serverUrl;
+    }
+
+    if (!oldRefreshToken.empty() || !oldAuthToken.empty())
+    {
+        nlohmann::json body = nlohmann::json::object();
+        if (!oldRefreshToken.empty())
+            body["refresh_token"] = oldRefreshToken;
+        HttpRequest req = MakeRequest("POST", "/api/v1/auth/logout", body.dump(), !oldAuthToken.empty());
+        req.timeoutMs   = 3000;
+        try
+        {
+            (void)GetTransport()->Send(req);
+        }
+        catch (...)
+        {
+        }
+    }
+
+    auto& store = GetAuthStore();
+    store.ClearActiveSession(false);
+    store.Save();
+
     {
         std::lock_guard lock(m_stateMutex);
         m_authToken.clear();
-        m_user = {};
+        m_refreshToken.clear();
+        m_expiresAt = 0;
+        m_user      = {};
+        m_authState = AuthState::Unauthenticated;
     }
-    SaveToConfig();
+    SyncServerUrlToConfig(serverUrl);
 }
 
 std::string APIClient::ResolveQueuePath() const
@@ -292,6 +584,277 @@ HttpRequest APIClient::MakeRequest(const std::string& method, const std::string&
     return req;
 }
 
+HttpResponse APIClient::SendWithAuthRetry(HttpRequest req)
+{
+    const long long nowSec = NowUnixSeconds();
+    long long initialExpiresAt = 0;
+    std::string initialRefresh;
+    {
+        std::lock_guard stateLock(m_stateMutex);
+        initialExpiresAt = m_expiresAt;
+        initialRefresh   = m_refreshToken;
+    }
+
+    if (initialExpiresAt > 0 && !initialRefresh.empty() && nowSec >= initialExpiresAt - kProactiveRefreshLeadSeconds)
+    {
+        std::lock_guard refreshLock(m_refreshMutex);
+        long long curExpiresAt = 0;
+        std::string curRefresh;
+        {
+            std::lock_guard stateLock(m_stateMutex);
+            curExpiresAt = m_expiresAt;
+            curRefresh   = m_refreshToken;
+        }
+        if (curExpiresAt > 0 && !curRefresh.empty() && nowSec >= curExpiresAt - kProactiveRefreshLeadSeconds)
+        {
+            HttpResponse proactiveRaw;
+            const AuthResult proactiveRes = RefreshSessionLocked(&proactiveRaw);
+            if (!proactiveRes.ok)
+            {
+                if (GetAuthState() == AuthState::SessionExpired ||
+                    proactiveRaw.IsNetworkError() || proactiveRaw.statusCode >= 500)
+                {
+                    return proactiveRaw;
+                }
+            }
+            else if (req.url.ends_with("/api/v1/auth/change-password") && !proactiveRes.refreshToken.empty())
+            {
+                try
+                {
+                    auto bodyJson = nlohmann::json::parse(req.body);
+                    if (bodyJson.is_object() && bodyJson.contains("refresh_token"))
+                    {
+                        bodyJson["refresh_token"] = proactiveRes.refreshToken;
+                        req.body                  = bodyJson.dump();
+                    }
+                }
+                catch (...)
+                {
+                }
+            }
+        }
+    }
+
+    const std::string usedToken = GetAuthToken();
+    SetBearerHeader(req, usedToken);
+    HttpResponse res = GetTransport()->Send(req);
+
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        return res;
+    }
+
+    if (res.statusCode != 401)
+    {
+        if (res.IsSuccess())
+            MarkOnlineFromAuthenticatedSuccess();
+        else
+            m_status.store(OnlineStatus::Online);
+        return res;
+    }
+
+    if (req.url.ends_with("/api/v1/auth/change-password") && IsPasswordMismatch401(res))
+    {
+        m_status.store(OnlineStatus::Online);
+        return res;
+    }
+
+    bool shouldReplay = false;
+    std::string retryToken;
+    std::string retryRefreshToken;
+    {
+        std::lock_guard refreshLock(m_refreshMutex);
+
+        std::string currentToken;
+        std::string currentRefresh;
+        std::string currentUserId;
+        AuthState   currentState = AuthState::Unauthenticated;
+        {
+            std::lock_guard stateLock(m_stateMutex);
+            currentToken   = m_authToken;
+            currentRefresh = m_refreshToken;
+            currentUserId  = m_user.id;
+            currentState   = m_authState;
+        }
+
+        if (!currentToken.empty() && currentToken != usedToken)
+        {
+            shouldReplay      = true;
+            retryToken        = currentToken;
+            retryRefreshToken = currentRefresh;
+        }
+        else if (currentState == AuthState::SessionExpired)
+        {
+            m_status.store(OnlineStatus::Online);
+            return res;
+        }
+        else if (currentRefresh.empty())
+        {
+            if (!currentUserId.empty())
+            {
+                auto& store = GetAuthStore();
+                store.ClearActiveTokensKeepIdentity();
+                store.Save();
+                std::lock_guard stateLock(m_stateMutex);
+                m_authToken.clear();
+                m_refreshToken.clear();
+                m_expiresAt = 0;
+                m_authState = AuthState::SessionExpired;
+            }
+            m_status.store(OnlineStatus::Online);
+            return res;
+        }
+        else
+        {
+            HttpResponse refreshRaw;
+            const AuthResult refRes = RefreshSessionLocked(&refreshRaw);
+            if (refRes.ok && !refRes.token.empty())
+            {
+                shouldReplay      = true;
+                retryToken        = refRes.token;
+                retryRefreshToken = refRes.refreshToken;
+            }
+            else if (refreshRaw.IsNetworkError() || refreshRaw.statusCode >= 500)
+            {
+                return refreshRaw;
+            }
+            else
+            {
+                return res;
+            }
+        }
+    }
+
+    if (shouldReplay && !retryToken.empty())
+    {
+        if (req.url.ends_with("/api/v1/auth/change-password") && !retryRefreshToken.empty())
+        {
+            try
+            {
+                auto bodyJson = nlohmann::json::parse(req.body);
+                if (bodyJson.is_object() && bodyJson.contains("refresh_token"))
+                {
+                    bodyJson["refresh_token"] = retryRefreshToken;
+                    req.body                  = bodyJson.dump();
+                }
+            }
+            catch (...)
+            {
+            }
+        }
+
+        SetBearerHeader(req, retryToken);
+        HttpResponse retryRes = GetTransport()->Send(req);
+        if (retryRes.IsNetworkError() || retryRes.statusCode >= 500)
+        {
+            MarkOfflinePreserveSession();
+        }
+        else if (retryRes.IsSuccess())
+        {
+            MarkOnlineFromAuthenticatedSuccess();
+        }
+        else
+        {
+            m_status.store(OnlineStatus::Online);
+        }
+        return retryRes;
+    }
+
+    return res;
+}
+
+AuthResult APIClient::RefreshSessionLocked(HttpResponse* outRawHttpResponse)
+{
+    std::string refreshToken;
+    std::string userId;
+    {
+        std::lock_guard stateLock(m_stateMutex);
+        refreshToken = m_refreshToken;
+        userId       = m_user.id;
+    }
+
+    if (refreshToken.empty())
+    {
+        AuthResult out;
+        out.errorCode = "missing_refresh_token";
+        out.error     = "缺少刷新令牌，无法续期会话";
+        if (!userId.empty() && GetAuthToken().empty())
+        {
+            std::lock_guard stateLock(m_stateMutex);
+            m_authState = AuthState::SessionExpired;
+            out.user    = m_user;
+        }
+        if (outRawHttpResponse)
+        {
+            outRawHttpResponse->statusCode = 401;
+            outRawHttpResponse->error      = out.error;
+        }
+        return out;
+    }
+
+    const nlohmann::json body = {
+        { "refresh_token", refreshToken },
+        { "device_name", "Windows Desktop" }
+    };
+    const HttpResponse res = GetTransport()->Send(MakeRequest("POST", "/api/v1/auth/refresh", body.dump(), false));
+    if (outRawHttpResponse)
+        *outRawHttpResponse = res;
+
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        AuthResult out;
+        out.errorCode = res.IsNetworkError() ? "network_error" : "server_error";
+        out.error     = res.error.empty() ? "网络不可达，暂时维持离线登录态" : res.error;
+        out.user      = GetCurrentUser();
+        return out;
+    }
+
+    if (res.statusCode == 401 || res.statusCode == 403)
+    {
+        AuthResult out;
+        out.errorCode = "session_expired";
+        out.error     = "登录会话已过期，请重新输入密码验证";
+        try
+        {
+            if (!res.body.empty())
+            {
+                const auto j = nlohmann::json::parse(res.body);
+                if (j.contains("code") && j["code"].is_string())
+                    out.errorCode = j["code"].get<std::string>();
+                if (j.contains("error") && j["error"].is_string())
+                    out.error = j["error"].get<std::string>();
+            }
+        }
+        catch (...)
+        {
+        }
+
+        auto& store = GetAuthStore();
+        store.ClearActiveTokensKeepIdentity();
+        store.Save();
+        {
+            std::lock_guard stateLock(m_stateMutex);
+            m_authToken.clear();
+            m_refreshToken.clear();
+            m_expiresAt = 0;
+            m_authState = m_user.id.empty() ? AuthState::Unauthenticated : AuthState::SessionExpired;
+            out.user    = m_user;
+        }
+        m_status.store(OnlineStatus::Online);
+        return out;
+    }
+
+    return HandleAuthResponse(res, true);
+}
+
+AuthResult APIClient::RefreshSession()
+{
+    std::lock_guard refreshLock(m_refreshMutex);
+    return RefreshSessionLocked(nullptr);
+}
+
 bool APIClient::CheckHealth()
 {
     auto transport = GetTransport();
@@ -301,48 +864,127 @@ bool APIClient::CheckHealth()
         m_status.store(OnlineStatus::Online);
         return true;
     }
-    m_status.store(OnlineStatus::Offline);
+    MarkOfflinePreserveSession();
     return false;
 }
 
-AuthResult APIClient::HandleAuthResponse(const HttpResponse& res)
+AuthResult APIClient::HandleAuthResponse(const HttpResponse& res, bool preserveMissingTokens)
 {
     AuthResult out;
-    if (res.IsNetworkError())
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
-        out.error = res.error.empty() ? "无法连接至在线服务器" : res.error;
+        MarkOfflinePreserveSession();
+        out.errorCode = res.IsNetworkError() ? "network_error" : "server_error";
+        if (!res.body.empty())
+        {
+            try
+            {
+                const auto j = nlohmann::json::parse(res.body);
+                if (j.contains("code") && j["code"].is_string())
+                    out.errorCode = j["code"].get<std::string>();
+                if (j.contains("error") && j["error"].is_string())
+                    out.error = j["error"].get<std::string>();
+            }
+            catch (...)
+            {
+            }
+        }
+        if (out.error.empty())
+        {
+            out.error = res.IsNetworkError()
+                ? (res.error.empty() ? "无法连接至在线服务器" : res.error)
+                : ("服务器暂时不可用 (HTTP " + std::to_string(res.statusCode) + ")");
+        }
         return out;
     }
+
     m_status.store(OnlineStatus::Online);
     try
     {
         const auto j = nlohmann::json::parse(res.body);
         if (!res.IsSuccess() || !j.value("ok", false))
         {
+            if (j.contains("code") && j["code"].is_string())
+                out.errorCode = j["code"].get<std::string>();
+            else if (j.contains("error_code") && j["error_code"].is_string())
+                out.errorCode = j["error_code"].get<std::string>();
             out.error = j.value("error", "认证失败 (HTTP " + std::to_string(res.statusCode) + ")");
+            out.user  = GetCurrentUser();
             return out;
         }
+
+        std::string prevToken;
+        std::string prevRefresh;
+        long long   prevExpiresAt = 0;
+        OnlineUser  prevUser;
+        {
+            std::lock_guard lock(m_stateMutex);
+            prevToken     = m_authToken;
+            prevRefresh   = m_refreshToken;
+            prevExpiresAt = m_expiresAt;
+            prevUser      = m_user;
+        }
+
         out.ok = true;
         if (j.contains("token") && j["token"].is_string())
             out.token = j["token"].get<std::string>();
-        else
-            out.token = GetAuthToken();
+        else if (j.contains("access_token") && j["access_token"].is_string())
+            out.token = j["access_token"].get<std::string>();
+        else if (preserveMissingTokens)
+            out.token = prevToken;
 
-        const auto& u         = j.at("user");
-        out.user.id           = u.value("id", "");
-        out.user.username     = u.value("username", "");
-        out.user.isGuest      = u.value("is_guest", false);
-        out.user.totalPP      = u.value("total_pp", 0.0);
-        out.user.sakuraRating = JsonSakuraRatingOr(u);
-        out.user.danBadge     = (u.contains("dan_badge") && u["dan_badge"].is_null())
-            ? std::string{}
-            : u.value("dan_badge", "");
+        if (j.contains("refresh_token") && j["refresh_token"].is_string())
+            out.refreshToken = j["refresh_token"].get<std::string>();
+        else if (j.contains("refreshToken") && j["refreshToken"].is_string())
+            out.refreshToken = j["refreshToken"].get<std::string>();
+        else if (preserveMissingTokens)
+            out.refreshToken = prevRefresh;
+
+        if (j.contains("expires_at") && j["expires_at"].is_number())
+            out.expiresAt = j["expires_at"].get<long long>();
+        else if (j.contains("expiresAt") && j["expiresAt"].is_number())
+            out.expiresAt = j["expiresAt"].get<long long>();
+        else if (preserveMissingTokens)
+            out.expiresAt = prevExpiresAt;
+
+        if (j.contains("user") && j["user"].is_object())
+        {
+            const auto& u         = j["user"];
+            out.user.id           = JsonStringOr(u, "id", preserveMissingTokens ? prevUser.id : "");
+            out.user.username     = JsonStringOr(u, "username", preserveMissingTokens ? prevUser.username : "");
+            out.user.isGuest      = u.contains("is_guest") && u["is_guest"].is_boolean()
+                ? u["is_guest"].get<bool>()
+                : (preserveMissingTokens ? prevUser.isGuest : false);
+            out.user.totalPP      = (u.contains("total_pp") && u["total_pp"].is_number())
+                ? u["total_pp"].get<double>()
+                : (preserveMissingTokens ? prevUser.totalPP : 0.0);
+            out.user.sakuraRating = (u.contains("sakura_rating") || u.contains("rating"))
+                ? JsonSakuraRatingOr(u)
+                : (preserveMissingTokens ? prevUser.sakuraRating : 0.0);
+            out.user.danBadge     = u.contains("dan_badge")
+                ? (u["dan_badge"].is_null() ? std::string{} : JsonStringOr(u, "dan_badge", ""))
+                : (preserveMissingTokens ? prevUser.danBadge : std::string{});
+        }
+        else if (preserveMissingTokens && !prevUser.id.empty())
+        {
+            out.user = prevUser;
+        }
+        else
+        {
+            out.ok    = false;
+            out.error = "响应缺少用户信息";
+            return out;
+        }
 
         {
             std::lock_guard lock(m_stateMutex);
-            m_authToken = out.token;
-            m_user      = out.user;
+            m_authToken    = out.token;
+            m_refreshToken = out.refreshToken;
+            m_expiresAt    = out.expiresAt;
+            m_user         = out.user;
+            m_authState    = (!m_authToken.empty() && !m_user.id.empty())
+                ? AuthState::AuthenticatedOnline
+                : AuthState::Unauthenticated;
         }
         SaveToConfig();
         return out;
@@ -357,36 +999,252 @@ AuthResult APIClient::HandleAuthResponse(const HttpResponse& res)
 
 AuthResult APIClient::LoginGuest(const std::string& nickname)
 {
-    nlohmann::json body = nlohmann::json::object();
+    nlohmann::json body = { { "device_name", "Windows Desktop" } };
     if (!nickname.empty()) body["nickname"] = nickname;
     const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/auth/guest", body.dump(), false));
-    return HandleAuthResponse(res);
+    return HandleAuthResponse(res, false);
 }
 
 AuthResult APIClient::Register(const std::string& username, const std::string& password)
 {
-    const nlohmann::json body = { { "username", username }, { "password", password } };
+    const nlohmann::json body = {
+        { "username", username },
+        { "password", password },
+        { "device_name", "Windows Desktop" }
+    };
     const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/auth/register", body.dump(), false));
-    return HandleAuthResponse(res);
+    return HandleAuthResponse(res, false);
 }
 
 AuthResult APIClient::Login(const std::string& username, const std::string& password)
 {
-    const nlohmann::json body = { { "username", username }, { "password", password } };
+    const nlohmann::json body = {
+        { "username", username },
+        { "password", password },
+        { "device_name", "Windows Desktop" }
+    };
     const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/auth/login", body.dump(), false));
-    return HandleAuthResponse(res);
+    return HandleAuthResponse(res, false);
 }
 
 AuthResult APIClient::RefreshProfile()
 {
     if (!IsAuthenticated())
     {
+        if (!GetRefreshToken().empty() && !GetCurrentUser().id.empty())
+        {
+            const auto refreshed = RefreshSession();
+            if (!refreshed.ok)
+                return refreshed;
+        }
+        else
+        {
+            AuthResult r;
+            r.errorCode = (GetAuthState() == AuthState::SessionExpired) ? "session_expired" : "unauthenticated";
+            r.error     = (GetAuthState() == AuthState::SessionExpired) ? "登录会话已过期" : "尚未登录";
+            r.user      = GetCurrentUser();
+            return r;
+        }
+    }
+    const auto res = SendWithAuthRetry(MakeRequest("GET", "/api/v1/auth/me", {}, true));
+    return HandleAuthResponse(res, true);
+}
+
+AuthResult APIClient::UpgradeGuest(const std::string& username, const std::string& password)
+{
+    if (!IsAuthenticated())
+    {
         AuthResult r;
-        r.error = "尚未登录";
+        r.errorCode = "unauthenticated";
+        r.error     = "请先登录游客账号后再升级为正式账号";
         return r;
     }
-    const auto res = GetTransport()->Send(MakeRequest("GET", "/api/v1/auth/me", {}, true));
-    return HandleAuthResponse(res);
+    const nlohmann::json body = {
+        { "username", username },
+        { "password", password }
+    };
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/auth/upgrade-guest", body.dump(), true));
+    return HandleAuthResponse(res, true);
+}
+
+AuthResult APIClient::ChangePassword(const std::string& oldPassword, const std::string& newPassword)
+{
+    if (!IsAuthenticated())
+    {
+        AuthResult r;
+        r.errorCode = "unauthenticated";
+        r.error     = "请先登录正式账号后再修改密码";
+        return r;
+    }
+    nlohmann::json body = {
+        { "old_password", oldPassword },
+        { "new_password", newPassword }
+    };
+    const std::string rt = GetRefreshToken();
+    if (!rt.empty())
+        body["refresh_token"] = rt;
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/auth/change-password", body.dump(), true));
+    return HandleAuthResponse(res, true);
+}
+
+std::vector<sakura::core::SavedAccountEntry> APIClient::GetSavedAccounts() const
+{
+    return GetAuthStore().GetSavedAccounts();
+}
+
+AuthResult APIClient::SwitchSavedAccount(const std::string& userId)
+{
+    AuthResult out;
+    if (userId.empty())
+    {
+        out.errorCode = "invalid_user_id";
+        out.error     = "无效的账号标识";
+        return out;
+    }
+
+    auto& store = GetAuthStore();
+    sakura::core::AuthSessionData switchedSess;
+    if (!store.SwitchToSavedAccount(userId, &switchedSess))
+    {
+        if (switchedSess.activeUserId == userId)
+        {
+            const OnlineUser expiredUser = SessionProfileToOnlineUser(switchedSess);
+            std::string resolvedUrl;
+            {
+                std::lock_guard lock(m_stateMutex);
+                if (!switchedSess.serverUrl.empty())
+                    m_serverUrl = TrimTrailingSlash(switchedSess.serverUrl);
+                resolvedUrl    = m_serverUrl;
+                m_authToken.clear();
+                m_refreshToken.clear();
+                m_expiresAt = 0;
+                m_user      = expiredUser;
+                m_authState = AuthState::SessionExpired;
+            }
+            store.Save();
+            SyncServerUrlToConfig(resolvedUrl);
+            out.ok        = false;
+            out.errorCode = "session_expired";
+            out.error     = "该账号登录凭据已失效，请重新输入密码验证";
+            out.user      = expiredUser;
+            return out;
+        }
+        out.errorCode = "account_not_found";
+        out.error     = "未找到已保存的账号记录";
+        return out;
+    }
+
+    const auto& sess            = switchedSess;
+    const OnlineUser targetUser = SessionProfileToOnlineUser(sess);
+    std::string resolvedUrl;
+    {
+        std::lock_guard lock(m_stateMutex);
+        if (!sess.serverUrl.empty())
+            m_serverUrl = TrimTrailingSlash(sess.serverUrl);
+        resolvedUrl    = m_serverUrl;
+        m_authToken    = sess.accessToken;
+        m_refreshToken = sess.refreshToken;
+        m_expiresAt    = sess.expiresAt;
+        m_user         = targetUser;
+
+        if (m_authToken.empty() && m_refreshToken.empty())
+            m_authState = AuthState::SessionExpired;
+        else
+            m_authState = AuthState::AuthenticatedOffline;
+    }
+    SyncServerUrlToConfig(resolvedUrl);
+
+    if (sess.accessToken.empty() && sess.refreshToken.empty())
+    {
+        out.ok        = false;
+        out.errorCode = "session_expired";
+        out.error     = "该账号登录凭据已过期，请重新输入密码验证";
+        out.user      = targetUser;
+        return out;
+    }
+
+    const long long nowSec = NowUnixSeconds();
+    const bool needsRefresh = sess.accessToken.empty() ||
+        (sess.expiresAt > 0 && !sess.refreshToken.empty() && nowSec >= sess.expiresAt - kProactiveRefreshLeadSeconds);
+    if (needsRefresh && !sess.refreshToken.empty())
+    {
+        const AuthResult refRes = RefreshSession();
+        if (refRes.ok)
+            return refRes;
+        if (GetAuthState() == AuthState::SessionExpired || sess.accessToken.empty())
+            return refRes;
+
+        out.ok           = true;
+        out.user         = GetCurrentUser();
+        out.token        = GetAuthToken();
+        out.refreshToken = GetRefreshToken();
+        out.expiresAt    = GetTokenExpiresAt();
+        return out;
+    }
+
+    const HttpResponse meRes = SendWithAuthRetry(MakeRequest("GET", "/api/v1/auth/me", {}, true));
+    if (meRes.IsSuccess())
+    {
+        return HandleAuthResponse(meRes, true);
+    }
+    if (GetAuthState() == AuthState::SessionExpired)
+    {
+        out.ok        = false;
+        out.errorCode = "session_expired";
+        out.error     = "该账号登录凭据已过期，请重新输入密码验证";
+        out.user      = GetCurrentUser();
+        return out;
+    }
+    if (!meRes.IsNetworkError() && meRes.statusCode < 500 && meRes.statusCode != 404)
+    {
+        MarkOnlineFromAuthenticatedSuccess();
+    }
+    else if (meRes.statusCode == 404)
+    {
+        MarkOnlineFromAuthenticatedSuccess();
+    }
+
+    out.ok           = true;
+    out.user         = GetCurrentUser();
+    out.token        = GetAuthToken();
+    out.refreshToken = GetRefreshToken();
+    out.expiresAt    = GetTokenExpiresAt();
+    return out;
+}
+
+bool APIClient::RemoveSavedAccount(const std::string& userId)
+{
+    if (userId.empty())
+        return false;
+
+    const std::string prevActiveId = GetCurrentUser().id;
+    auto& store                    = GetAuthStore();
+    const bool removed             = store.RemoveSavedAccount(userId);
+    store.Save();
+
+    const auto sess      = store.GetSession();
+    const OnlineUser cur = SessionProfileToOnlineUser(sess);
+    if (cur.id.empty() || prevActiveId == userId)
+    {
+        std::lock_guard lock(m_stateMutex);
+        if (cur.id.empty())
+        {
+            m_authToken.clear();
+            m_refreshToken.clear();
+            m_expiresAt = 0;
+            m_user      = {};
+            m_authState = AuthState::Unauthenticated;
+        }
+        else
+        {
+            m_authToken    = sess.accessToken;
+            m_refreshToken = sess.refreshToken;
+            m_expiresAt    = sess.expiresAt;
+            m_user         = cur;
+            m_authState    = !m_authToken.empty() ? AuthState::AuthenticatedOffline : AuthState::SessionExpired;
+        }
+    }
+    return removed;
 }
 
 void APIClient::EnqueueOfflineScorePayload(const std::string& payloadJson)
@@ -463,10 +1321,10 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
         return out;
     }
 
-    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/scores", bodyStr, true));
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/scores", bodyStr, true));
     if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         EnqueueOfflineScorePayload(bodyStr);
         out.queuedOffline = true;
         out.error         = "网络离线，成绩已加入待同步队列";
@@ -528,18 +1386,26 @@ int APIClient::FlushPendingScores()
 
     nlohmann::json remaining = nlohmann::json::array();
     int flushed = 0;
-    auto transport = GetTransport();
-    for (const auto& item : arr)
+    for (std::size_t idx = 0; idx < arr.size(); ++idx)
     {
-        const auto res = transport->Send(MakeRequest("POST", "/api/v1/scores", item.dump(), true));
+        const auto& item = arr[idx];
+        const auto res   = SendWithAuthRetry(MakeRequest("POST", "/api/v1/scores", item.dump(), true));
         if (res.IsNetworkError() || res.statusCode >= 500)
         {
-            m_status.store(OnlineStatus::Offline);
-            remaining.push_back(item);
+            MarkOfflinePreserveSession();
+            for (std::size_t remIdx = idx; remIdx < arr.size(); ++remIdx)
+                remaining.push_back(arr[remIdx]);
+            break;
+        }
+        else if (res.statusCode == 401)
+        {
+            for (std::size_t remIdx = idx; remIdx < arr.size(); ++remIdx)
+                remaining.push_back(arr[remIdx]);
+            break;
         }
         else if (res.IsSuccess())
         {
-            m_status.store(OnlineStatus::Online);
+            MarkOnlineFromAuthenticatedSuccess();
             ++flushed;
         }
         // 4xx validation errors are dropped rather than retried forever
@@ -559,10 +1425,12 @@ LeaderboardResult APIClient::FetchLeaderboard(const std::string& chartId, const 
         + "?difficulty=" + UrlEncode(difficulty)
         + "&scope=global&limit=" + std::to_string(std::max(1, limit));
 
-    const auto res = GetTransport()->Send(MakeRequest("GET", path, {}, true));
-    if (res.IsNetworkError())
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：无法获取全球排行榜" : res.error;
         return out;
     }
@@ -598,7 +1466,7 @@ bool APIClient::DownloadReplay(const std::string& scoreId, const std::string& de
 {
     if (scoreId.empty() || destPath.empty())
         return false;
-    const auto res = GetTransport()->Send(MakeRequest("GET", "/api/v1/replays/" + UrlEncode(scoreId), {}, false));
+    const auto res = SendWithAuthRetry(MakeRequest("GET", "/api/v1/replays/" + UrlEncode(scoreId), {}, true));
     if (!res.IsSuccess() || res.body.empty())
         return false;
     std::error_code ec;
@@ -703,6 +1571,48 @@ void APIClient::RefreshProfileAsync(std::function<void(AuthResult)> cb)
         auto res = RefreshProfile();
         if (res.ok) FlushPendingScores();
         if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::UpgradeGuestAsync(const std::string& username, const std::string& password,
+                                  std::function<void(AuthResult)> cb)
+{
+    m_status.store(OnlineStatus::Connecting);
+    PostTask([this, username, password, cb = std::move(cb)]() mutable
+    {
+        auto res = UpgradeGuest(username, password);
+        if (res.ok) FlushPendingScores();
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::ChangePasswordAsync(const std::string& oldPassword, const std::string& newPassword,
+                                    std::function<void(AuthResult)> cb)
+{
+    PostTask([this, oldPassword, newPassword, cb = std::move(cb)]() mutable
+    {
+        auto res = ChangePassword(oldPassword, newPassword);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::SwitchSavedAccountAsync(const std::string& userId, std::function<void(AuthResult)> cb)
+{
+    m_status.store(OnlineStatus::Connecting);
+    PostTask([this, userId, cb = std::move(cb)]() mutable
+    {
+        auto res = SwitchSavedAccount(userId);
+        if (res.ok) FlushPendingScores();
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::LogoutAsync(std::function<void()> cb)
+{
+    PostTask([this, cb = std::move(cb)]() mutable
+    {
+        Logout();
+        if (cb) PostMainCallback([cb = std::move(cb)]() mutable { cb(); });
     });
 }
 
@@ -874,10 +1784,10 @@ MarketPublishResult APIClient::PublishChartPackage(const std::string& sakuraFile
     req.body      = pkgBytes;
     req.timeoutMs = 30000;
 
-    const auto res = GetTransport()->Send(req);
-    if (res.IsNetworkError())
+    const auto res = SendWithAuthRetry(std::move(req));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "网络连接失败，无法上传谱面" : res.error;
         return out;
     }
@@ -913,10 +1823,12 @@ MarketListResult APIClient::FetchMarketCharts(const MarketQuery& query)
     if (!query.q.empty())   qs << "&q=" << UrlEncode(query.q);
     if (!query.tag.empty()) qs << "&tag=" << UrlEncode(query.tag);
 
-    const auto res = GetTransport()->Send(MakeRequest("GET", qs.str(), {}, true));
-    if (res.IsNetworkError())
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", qs.str(), {}, true))
+        : GetTransport()->Send(MakeRequest("GET", qs.str(), {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：无法连接在线谱面市场" : res.error;
         return out;
     }
@@ -972,9 +1884,9 @@ MarketDownloadResult APIClient::DownloadAndInstallChart(const MarketChartItem& i
     }
 
     const auto res = GetTransport()->Send(req);
-    if (res.IsNetworkError())
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "下载失败：网络不可达" : res.error;
         return out;
     }
@@ -1089,11 +2001,11 @@ MarketRateResult APIClient::RateMarketChart(const std::string& marketChartId, in
         return out;
     }
     const nlohmann::json body = { { "rating", rating }, { "comment", comment } };
-    const auto res = GetTransport()->Send(
+    const auto res = SendWithAuthRetry(
         MakeRequest("POST", "/api/v1/charts/" + UrlEncode(marketChartId) + "/rate", body.dump(), true));
-    if (res.IsNetworkError())
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：无法提交评价" : res.error;
         return out;
     }
@@ -1223,10 +2135,10 @@ CloudSyncResult APIClient::SyncCloudSave()
         { "settings_updated_at", localSettingsTs }
     };
 
-    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/sync/push", pushBody.dump(), true));
-    if (res.IsNetworkError())
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/sync/push", pushBody.dump(), true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：云端同步暂不可用" : res.error;
         return out;
     }
@@ -1314,11 +2226,16 @@ CloudSyncResult APIClient::SyncCloudSave()
             }
             if (!badge.empty())
             {
+                double curTotalPP = 0.0;
+                double curRating  = 0.0;
                 {
                     std::lock_guard lock(m_stateMutex);
                     m_user.danBadge = badge;
+                    curTotalPP      = m_user.totalPP;
+                    curRating       = m_user.sakuraRating;
                 }
-                cfg.Set("online.dan_badge", badge);
+                GetAuthStore().UpdateProfileMetadata(curTotalPP, curRating, badge);
+                GetAuthStore().Save();
             }
         }
 
@@ -1355,7 +2272,7 @@ CloudSyncResult APIClient::SyncCloudSave()
                 { "settings", settingsObj },
                 { "settings_updated_at", nowSec }
             };
-            GetTransport()->Send(MakeRequest("POST", "/api/v1/sync/push", seedBody.dump(), true));
+            SendWithAuthRetry(MakeRequest("POST", "/api/v1/sync/push", seedBody.dump(), true));
             cfg.Set("online.settings_updated_at", nowSec);
         }
         else if (origLocalSettingsTs == 0)
@@ -1462,11 +2379,13 @@ DailyInfoResult APIClient::FetchDailyChallenge(const std::string& dateUtc8, int 
     const std::string path = "/api/v1/daily?date=" + UrlEncode(targetDate)
         + "&limit=" + std::to_string(std::max(1, limit));
 
-    const auto res = GetTransport()->Send(MakeRequest("GET", path, {}, true));
-    if (res.IsNetworkError() || res.statusCode == 404)
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500 || res.statusCode == 404)
     {
-        if (res.IsNetworkError())
-            m_status.store(OnlineStatus::Offline);
+        if (res.IsNetworkError() || res.statusCode >= 500)
+            MarkOfflinePreserveSession();
         out.ok              = true;
         out.offlineFallback = true;
         out.spec            = sakura::game::ComputeOfflineDailyChallenge(targetDate);
@@ -1574,10 +2493,10 @@ DailyScoreSubmitResult APIClient::SubmitDailyScore(const std::string& dateUtc8,
     if (!replayRaw.empty())
         payload["replay_data"] = replayRaw;
 
-    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/daily/scores", payload.dump(), true));
-    if (res.IsNetworkError())
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/daily/scores", payload.dump(), true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：无法提交每日挑战成绩" : res.error;
         return out;
     }
@@ -1750,18 +2669,19 @@ ArenaRoomState ParseArenaRoomJson(const nlohmann::json& r)
 }
 
 ArenaRoomResult ParseArenaRoomResponse(const HttpResponse& res,
-                                       std::atomic<OnlineStatus>& status,
+                                       const std::function<void()>& onTransientOffline,
+                                       const std::function<void()>& onOnlineReachable,
                                        const char* fallbackError)
 {
     ArenaRoomResult out;
-    if (res.IsNetworkError())
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        status.store(OnlineStatus::Offline);
+        onTransientOffline();
         out.error = res.error.empty() ? "离线：无法连接至对战服务器" : res.error;
         return out;
     }
 
-    status.store(OnlineStatus::Online);
+    onOnlineReachable();
     try
     {
         const auto j = nlohmann::json::parse(res.body);
@@ -1799,22 +2719,31 @@ ArenaRoomResult APIClient::CreateArenaRoom(const std::string& roomName,
         { "difficulty_level", difficultyLevel },
         { "chart_hash", chartHash }
     };
-    const auto res = GetTransport()->Send(MakeRequest("POST", "/api/v1/rooms", body.dump(), true));
-    return ParseArenaRoomResponse(res, m_status, "创建对战房间失败");
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/rooms", body.dump(), true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "创建对战房间失败");
 }
 
 ArenaRoomListResult APIClient::ListArenaRooms()
 {
     ArenaRoomListResult out;
-    const auto res = GetTransport()->Send(MakeRequest("GET", "/api/v1/rooms", {}, true));
-    if (res.IsNetworkError())
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", "/api/v1/rooms", {}, true))
+        : GetTransport()->Send(MakeRequest("GET", "/api/v1/rooms", {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         out.error = res.error.empty() ? "离线：无法获取对战房间列表" : res.error;
         return out;
     }
 
-    m_status.store(OnlineStatus::Online);
+    if (res.IsSuccess() && IsAuthenticated())
+        MarkOnlineFromAuthenticatedSuccess();
+    else
+        m_status.store(OnlineStatus::Online);
     try
     {
         const auto j = nlohmann::json::parse(res.body);
@@ -1852,8 +2781,12 @@ ArenaRoomResult APIClient::JoinArenaRoom(const std::string& code)
         return out;
     }
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/join";
-    const auto res = GetTransport()->Send(MakeRequest("POST", path, "{}", true));
-    return ParseArenaRoomResponse(res, m_status, "加入对战房间失败");
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, "{}", true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "加入对战房间失败");
 }
 
 bool APIClient::LeaveArenaRoom(const std::string& code)
@@ -1863,14 +2796,17 @@ bool APIClient::LeaveArenaRoom(const std::string& code)
         return false;
 
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/leave";
-    const auto res = GetTransport()->Send(MakeRequest("POST", path, "{}", true));
-    if (res.IsNetworkError())
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, "{}", true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
     {
-        m_status.store(OnlineStatus::Offline);
+        MarkOfflinePreserveSession();
         return false;
     }
 
-    m_status.store(OnlineStatus::Online);
+    if (res.IsSuccess())
+        MarkOnlineFromAuthenticatedSuccess();
+    else
+        m_status.store(OnlineStatus::Online);
     if (!res.IsSuccess())
         return false;
     if (res.body.empty())
@@ -1909,8 +2845,12 @@ ArenaRoomResult APIClient::SelectArenaChart(const std::string& code,
         { "chart_hash", chartHash }
     };
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/select";
-    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
-    return ParseArenaRoomResponse(res, m_status, "切换房间曲目失败");
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "切换房间曲目失败");
 }
 
 ArenaRoomResult APIClient::SetArenaReady(const std::string& code, bool ready, bool startMatch)
@@ -1927,8 +2867,12 @@ ArenaRoomResult APIClient::SetArenaReady(const std::string& code, bool ready, bo
         { "start", startMatch }
     };
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/ready";
-    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
-    return ParseArenaRoomResponse(res, m_status, "更新准备状态失败");
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "更新准备状态失败");
 }
 
 ArenaRoomResult APIClient::ReportArenaProgress(const std::string& code,
@@ -1955,8 +2899,12 @@ ArenaRoomResult APIClient::ReportArenaProgress(const std::string& code,
         { "finished", finished }
     };
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/progress";
-    const auto res = GetTransport()->Send(MakeRequest("POST", path, body.dump(), true));
-    return ParseArenaRoomResponse(res, m_status, "同步对战进度失败");
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, body.dump(), true));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "同步对战进度失败");
 }
 
 ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code)
@@ -1969,8 +2917,14 @@ ArenaRoomResult APIClient::FetchArenaRoomState(const std::string& code)
         return out;
     }
     const std::string path = "/api/v1/rooms/" + UrlEncode(trimmed) + "/state";
-    const auto res = GetTransport()->Send(MakeRequest("GET", path, {}, true));
-    return ParseArenaRoomResponse(res, m_status, "获取对战房间状态失败");
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    return ParseArenaRoomResponse(
+        res,
+        [this]() { MarkOfflinePreserveSession(); },
+        [this, &res]() { if (res.IsSuccess() && IsAuthenticated()) MarkOnlineFromAuthenticatedSuccess(); else m_status.store(OnlineStatus::Online); },
+        "获取对战房间状态失败");
 }
 
 void APIClient::CreateArenaRoomAsync(const std::string& roomName, const std::string& chartId,

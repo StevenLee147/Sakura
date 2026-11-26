@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { computeDailyChallenge, createApp } from "../src/app.js";
+import { DEFAULT_JWT_TTL_SEC, hashRefreshToken, REFRESH_TOKEN_TTL_SEC, verifyJwt } from "../src/auth.js";
 import { computeChartRating, PostgresCompatibleAdapter, SqliteStorageAdapter } from "../src/storage/index.js";
 import { createStoreZipArchive } from "../src/zip_validator.js";
 
@@ -1293,5 +1294,514 @@ test("Sakura Online Server v2.0.0 Authoritative Sakura Rating & Updater Assets",
   } finally {
     pgAdapter.close();
     fs.rmSync(pgDir, { recursive: true, force: true });
+  }
+});
+
+test("Sakura Online Server v2.1.0 Dual-Token Sessions, Rotation, Guest Upgrade & Password Change", async () => {
+  const tmpDir = path.join(process.cwd(), `.sakura-v210-test-${crypto.randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const jwtSecret = "v210-unit-test-secret";
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret, serverVersion: "v2.1.0" });
+
+  type AuthPayload = {
+    ok: boolean;
+    token: string;
+    refresh_token: string;
+    expires_at: number;
+    user: {
+      id: string;
+      username: string;
+      is_guest: boolean;
+      total_pp: number;
+      sakura_rating: number;
+      dan_badge: string;
+    };
+  };
+
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    // 1. Dual token issuance across /guest, /register, and /login + hashed session storage
+    const regRes = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Kaguya210",
+        password: "initial_pass_123",
+        device_name: "Desktop-Main",
+      }),
+    });
+    assert.equal(regRes.status, 201);
+    const regData = (await regRes.json()) as AuthPayload;
+    assert.equal(regData.ok, true);
+    assert.equal(regData.user.is_guest, false);
+    assert.ok(regData.refresh_token.length >= 40);
+    assert.ok(Math.abs(regData.expires_at - (nowSec + DEFAULT_JWT_TTL_SEC)) <= 10);
+    const regJwt = verifyJwt(regData.token, jwtSecret);
+    assert.ok(regJwt);
+    assert.equal(regJwt.exp, regData.expires_at);
+    assert.equal(regJwt.guest, false);
+
+    const rawStored = storage.db
+      .prepare("SELECT refresh_token_hash, device_name, expires_at, revoked_at FROM auth_sessions WHERE user_id = ?")
+      .get(regData.user.id) as {
+      refresh_token_hash: string;
+      device_name: string;
+      expires_at: number;
+      revoked_at: number | null;
+    };
+    assert.equal(rawStored.refresh_token_hash, hashRefreshToken(regData.refresh_token));
+    assert.notEqual(rawStored.refresh_token_hash, regData.refresh_token);
+    assert.equal(rawStored.device_name, "Desktop-Main");
+    assert.equal(rawStored.revoked_at, null);
+    assert.ok(Math.abs(Number(rawStored.expires_at) - (nowSec + REFRESH_TOKEN_TTL_SEC)) <= 10);
+
+    const loginRes = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Kaguya210",
+        password: "initial_pass_123",
+        device_name: "Laptop-Sub",
+      }),
+    });
+    assert.equal(loginRes.status, 200);
+    const loginData = (await loginRes.json()) as AuthPayload;
+    assert.ok(loginData.refresh_token.length >= 40);
+    assert.notEqual(loginData.refresh_token, regData.refresh_token);
+    assert.ok(Math.abs(loginData.expires_at - (nowSec + DEFAULT_JWT_TTL_SEC)) <= 10);
+
+    // 2. /auth/refresh rotation & replay rejection (401 session_expired) + expired session rejection
+    const refreshRes = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: regData.refresh_token, device_name: "Desktop-Main-v2" }),
+    });
+    assert.equal(refreshRes.status, 200);
+    const refreshData = (await refreshRes.json()) as AuthPayload;
+    assert.equal(refreshData.ok, true);
+    assert.equal(refreshData.user.id, regData.user.id);
+    assert.notEqual(refreshData.refresh_token, regData.refresh_token);
+
+    // Replay of rotated refresh_token must be rejected with 401 session_expired
+    const replayRes = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: regData.refresh_token }),
+    });
+    assert.equal(replayRes.status, 401);
+    const replayJson = (await replayRes.json()) as { ok: boolean; code: string; error: string };
+    assert.equal(replayJson.ok, false);
+    assert.equal(replayJson.code, "session_expired");
+
+    // Expired session rejection
+    const expToken = "expired_test_token_v210";
+    storage.createAuthSession(regData.user.id, hashRefreshToken(expToken), nowSec - 60, "Old-PC");
+    const expRes = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: expToken }),
+    });
+    assert.equal(expRes.status, 401);
+    assert.equal(((await expRes.json()) as { code: string }).code, "session_expired");
+
+    // 3. /auth/logout revocation & idempotency
+    const logoutRes1 = await app.request("/api/v1/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshData.refresh_token }),
+    });
+    assert.equal(logoutRes1.status, 200);
+    assert.deepEqual(await logoutRes1.json(), { ok: true });
+
+    // Idempotent second logout & empty-body logout
+    const logoutRes2 = await app.request("/api/v1/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshData.refresh_token }),
+    });
+    assert.equal(logoutRes2.status, 200);
+    const logoutEmpty = await app.request("/api/v1/auth/logout", { method: "POST" });
+    assert.equal(logoutEmpty.status, 200);
+
+    const afterLogoutRefresh = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshData.refresh_token }),
+    });
+    assert.equal(afterLogoutRefresh.status, 401);
+    assert.equal(((await afterLogoutRefresh.json()) as { code: string }).code, "session_expired");
+
+    // 4. /auth/upgrade-guest preserving user.id + scores + PP + Sakura Rating + Dan badge + daily + courses + market uploader_name + 409 conflict
+    const guestRes = await app.request("/api/v1/auth/guest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: "RisingPetal", device_name: "Guest-PC" }),
+    });
+    assert.equal(guestRes.status, 201);
+    const guestAuth = (await guestRes.json()) as AuthPayload;
+    assert.equal(guestAuth.user.is_guest, true);
+    const originalGuestId = guestAuth.user.id;
+    const originalGuestName = guestAuth.user.username;
+
+    // Guest submits ranked score
+    const guestScoreRes = await app.request("/api/v1/scores", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chart_id: "instant_bloom",
+        chart_title: "一瞬花绽",
+        chart_hash: "hash_ib_hd_210",
+        difficulty: "Hard",
+        difficulty_level: 9.0,
+        score: 996000,
+        accuracy: 99.6,
+        max_combo: 400,
+        grade: "S",
+        perfect_count: 398,
+        great_count: 2,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 400,
+        synergy_count: 8,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(guestScoreRes.status, 201);
+    const guestScoreJson = (await guestScoreRes.json()) as { total_pp: number; sakura_rating: number };
+    assert.ok(guestScoreJson.total_pp > 0);
+    assert.ok(guestScoreJson.sakura_rating > 0);
+
+    // Guest submits daily score
+    const dailyDate = "2026-11-27";
+    const dailySpec = computeDailyChallenge(dailyDate);
+    const guestDailyRes = await app.request("/api/v1/daily/scores", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        date: dailyDate,
+        chart_id: dailySpec.chartId,
+        chart_title: dailySpec.chartTitle,
+        chart_hash: "hash_daily_210",
+        difficulty: dailySpec.difficulty,
+        difficulty_level: dailySpec.difficultyLevel,
+        score: 988000,
+        accuracy: 99.2,
+        max_combo: 250,
+        grade: "S",
+        perfect_count: 247,
+        great_count: 3,
+        good_count: 0,
+        bad_count: 0,
+        miss_count: 0,
+        total_judgments: 250,
+        is_full_combo: true,
+        is_all_perfect: false,
+        assisted: false,
+      }),
+    });
+    assert.equal(guestDailyRes.status, 201);
+
+    // Guest syncs Dan badge (皆传), achievements, courses, and settings
+    const guestSyncRes = await app.request("/api/v1/sync/push", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        scores: [],
+        achievements: [{ id: "first_ap", unlocked_at: 1700200000 }],
+        course_records: [
+          {
+            course_id: "dan_kaiden",
+            badge_text: "皆传",
+            dan_rank: 11,
+            total_score: 2990000,
+            avg_accuracy: 99.5,
+            remaining_life: 80.0,
+            cleared: true,
+            cleared_at: 1700200100,
+          },
+        ],
+        settings: { note_speed: 7.2 },
+        settings_updated_at: 1700200200,
+      }),
+    });
+    assert.equal(guestSyncRes.status, 200);
+
+    // Guest uploads a market chart and rates it
+    const pkgInfo = JSON.stringify({
+      id: "guest_legacy_chart",
+      title: "Guest Legacy Chart",
+      artist: "Sakura Artist",
+      charter: "RisingPetal",
+      bpm: 180,
+      audio: "track.wav",
+      tags: ["sakura"],
+      difficulties: [{ name: "Normal", level: 5.0, chart_file: "normal.json" }],
+    });
+    const pkgChart = JSON.stringify({
+      offset: 0,
+      bpm: 180,
+      keyboard_notes: [{ lane: 0, time: 500, duration: 0 }],
+      mouse_notes: [],
+    });
+    const pkgZip = createStoreZipArchive({
+      "info.json": pkgInfo,
+      "normal.json": pkgChart,
+      "track.wav": "RIFF____WAVEfmt ",
+    });
+    const chartUpRes = await app.request("/api/v1/charts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: new Uint8Array(pkgZip),
+    });
+    assert.equal(chartUpRes.status, 201);
+    const chartUpJson = (await chartUpRes.json()) as { chart: { id: string; uploader_name: string } };
+    assert.equal(chartUpJson.chart.uploader_name, originalGuestName);
+
+    const rateChartRes = await app.request("/api/v1/charts/guest_legacy_chart/rate", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rating: 5, comment: "My debut chart!" }),
+    });
+    assert.equal(rateChartRes.status, 200);
+
+    const guestMeBefore = await app.request("/api/v1/auth/me", {
+      headers: { Authorization: `Bearer ${guestAuth.token}` },
+    });
+    const preUpgradeUser = ((await guestMeBefore.json()) as { user: AuthPayload["user"] }).user;
+    assert.equal(preUpgradeUser.dan_badge, "皆传");
+
+    // Reject non-guest calling /upgrade-guest (400)
+    const nonGuestUpgrade = await app.request("/api/v1/auth/upgrade-guest", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${loginData.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: "AnotherName", password: "valid_pass_123" }),
+    });
+    assert.equal(nonGuestUpgrade.status, 400);
+
+    // Reject invalid username / password (400)
+    const badNameUpgrade = await app.request("/api/v1/auth/upgrade-guest", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: "x", password: "valid_pass_123" }),
+    });
+    assert.equal(badNameUpgrade.status, 400);
+
+    const badPassUpgrade = await app.request("/api/v1/auth/upgrade-guest", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: "SakuraBloom", password: "12345" }),
+    });
+    assert.equal(badPassUpgrade.status, 400);
+
+    // Reject case-insensitive username conflict (409)
+    const conflictUpgrade = await app.request("/api/v1/auth/upgrade-guest", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: "kaguya210", password: "valid_pass_123" }),
+    });
+    assert.equal(conflictUpgrade.status, 409);
+
+    // Valid in-place guest upgrade (200)
+    const upgradeRes = await app.request("/api/v1/auth/upgrade-guest", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${guestAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: "SakuraBloom",
+        password: "bloom_pass_210",
+        refresh_token: guestAuth.refresh_token,
+        device_name: "Guest-PC-Upgraded",
+      }),
+    });
+    assert.equal(upgradeRes.status, 200);
+    const upgradedAuth = (await upgradeRes.json()) as AuthPayload;
+    assert.equal(upgradedAuth.ok, true);
+    assert.equal(upgradedAuth.user.id, originalGuestId);
+    assert.equal(upgradedAuth.user.username, "SakuraBloom");
+    assert.equal(upgradedAuth.user.is_guest, false);
+    assert.equal(upgradedAuth.user.total_pp, preUpgradeUser.total_pp);
+    assert.equal(upgradedAuth.user.sakura_rating, preUpgradeUser.sakura_rating);
+    assert.equal(upgradedAuth.user.dan_badge, "皆传");
+    assert.equal(verifyJwt(upgradedAuth.token, jwtSecret)?.guest, false);
+
+    // Verify ranked leaderboard, daily leaderboard, cloud sync, and market chart uploader_name all preserved & updated
+    const lbCheck = await app.request("/api/v1/leaderboards/instant_bloom?difficulty=Hard", {
+      headers: { Authorization: `Bearer ${upgradedAuth.token}` },
+    });
+    const lbCheckJson = (await lbCheck.json()) as {
+      my_rank: number;
+      entries: Array<{ user_id: string; username: string; dan_badge: string; pp: number; sakura_rating: number }>;
+    };
+    assert.equal(lbCheckJson.my_rank, 1);
+    assert.equal(lbCheckJson.entries[0].user_id, originalGuestId);
+    assert.equal(lbCheckJson.entries[0].username, "SakuraBloom");
+    assert.equal(lbCheckJson.entries[0].dan_badge, "皆传");
+    assert.equal(lbCheckJson.entries[0].sakura_rating, preUpgradeUser.sakura_rating);
+
+    const dailyCheck = await app.request(`/api/v1/daily/leaderboard?date=${dailyDate}`, {
+      headers: { Authorization: `Bearer ${upgradedAuth.token}` },
+    });
+    const dailyCheckJson = (await dailyCheck.json()) as {
+      my_rank: number;
+      entries: Array<{ user_id: string; username: string }>;
+    };
+    assert.equal(dailyCheckJson.my_rank, 1);
+    assert.equal(dailyCheckJson.entries[0].user_id, originalGuestId);
+    assert.equal(dailyCheckJson.entries[0].username, "SakuraBloom");
+
+    const syncCheck = await app.request("/api/v1/sync/pull", {
+      headers: { Authorization: `Bearer ${upgradedAuth.token}` },
+    });
+    const syncCheckJson = (await syncCheck.json()) as {
+      scores: unknown[];
+      achievements: Array<{ id: string }>;
+      course_records: Array<{ course_id: string; badge_text: string; cleared: boolean }>;
+      settings: { note_speed: number };
+    };
+    assert.equal(syncCheckJson.scores.length, 1);
+    assert.equal(syncCheckJson.achievements.length, 1);
+    assert.equal(syncCheckJson.course_records[0].badge_text, "皆传");
+    assert.equal(syncCheckJson.settings.note_speed, 7.2);
+
+    const chartCheck = await app.request("/api/v1/charts/guest_legacy_chart", {
+      headers: { Authorization: `Bearer ${upgradedAuth.token}` },
+    });
+    const chartCheckJson = (await chartCheck.json()) as {
+      chart: { uploader_id: string; uploader_name: string; my_rating: number };
+      ratings: Array<{ user_id: string; username: string; rating: number }>;
+    };
+    assert.equal(chartCheckJson.chart.uploader_id, originalGuestId);
+    assert.equal(chartCheckJson.chart.uploader_name, "SakuraBloom");
+    assert.equal(chartCheckJson.chart.my_rating, 5);
+    assert.equal(chartCheckJson.ratings[0].user_id, originalGuestId);
+    assert.equal(chartCheckJson.ratings[0].username, "SakuraBloom");
+
+    // 5. /auth/change-password verification, password update, cross-device session revocation, and new dual-token issuance
+    const secondGuestRes = await app.request("/api/v1/auth/guest", { method: "POST" });
+    const secondGuest = (await secondGuestRes.json()) as AuthPayload;
+    const guestPwAttempt = await app.request("/api/v1/auth/change-password", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secondGuest.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ old_password: "", new_password: "new_secret_123" }),
+    });
+    assert.equal(guestPwAttempt.status, 400);
+
+    // Create a second active session on SakuraBloom
+    const bloomLogin2 = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraBloom", password: "bloom_pass_210", device_name: "Tablet" }),
+    });
+    assert.equal(bloomLogin2.status, 200);
+    const bloomSession2 = (await bloomLogin2.json()) as AuthPayload;
+
+    // Wrong old_password -> 401
+    const wrongOldPw = await app.request("/api/v1/auth/change-password", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${upgradedAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ old_password: "wrong_password", new_password: "sakura_new_pw_777" }),
+    });
+    assert.equal(wrongOldPw.status, 401);
+
+    // Valid password change -> 200 + revokes all prior sessions + issues fresh tokens
+    const changePwRes = await app.request("/api/v1/auth/change-password", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${upgradedAuth.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        old_password: "bloom_pass_210",
+        new_password: "sakura_new_pw_777",
+        refresh_token: upgradedAuth.refresh_token,
+        device_name: "Guest-PC-Upgraded",
+      }),
+    });
+    assert.equal(changePwRes.status, 200);
+    const changedAuth = (await changePwRes.json()) as AuthPayload;
+    assert.equal(changedAuth.ok, true);
+    assert.equal(changedAuth.user.id, originalGuestId);
+    assert.notEqual(changedAuth.refresh_token, upgradedAuth.refresh_token);
+
+    // Old password rejected, new password accepted
+    const oldPwLogin = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraBloom", password: "bloom_pass_210" }),
+    });
+    assert.equal(oldPwLogin.status, 401);
+
+    const newPwLogin = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "SakuraBloom", password: "sakura_new_pw_777" }),
+    });
+    assert.equal(newPwLogin.status, 200);
+
+    // Both prior refresh tokens are now revoked
+    const priorRefresh1 = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: upgradedAuth.refresh_token }),
+    });
+    assert.equal(priorRefresh1.status, 401);
+
+    const priorRefresh2 = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: bloomSession2.refresh_token }),
+    });
+    assert.equal(priorRefresh2.status, 401);
+
+    // Newly issued refresh_token from /auth/change-password works
+    const freshRefresh = await app.request("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: changedAuth.refresh_token }),
+    });
+    assert.equal(freshRefresh.status, 200);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

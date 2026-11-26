@@ -145,6 +145,6 @@ v3.0.0       (3.0 赛季排位与曲包收官：Season Ranked 赛季排位与 SP
 
 ## 当前状态
 
-- **当前版本：** v2.0.0
+- **当前版本：** v2.1.0
 - **当前交付：** 游戏内静默流式热更新与原子自重启引擎（`Updater` v2 自动识别安装版/便携版、`SHA256SUMS.txt` 严格摘要校验与 PowerShell / Inno Setup 保档热替换重启）、双区潜力值 **Sakura Rating (B30 + R10)** 星阶体系与 `SceneStats` 5×6 矩阵及 `1920×1080` 月夜墨樱生涯战绩名片 PNG 导出、跨格式双区智能谱面转换引擎（`ChartConverter` 原生支持 Phira `.pez` Official/RPE、osu! `.osz` Mode 0/3、StepMania `.sm` 拖拽与文件选择器一键转双区 Chart v4，内置 RFC 1951 Deflate ZIP 解压）、15 首纯 Suno OGG 官方原创曲库（Vol.02～Vol.04 共 43 张多难度谱面，零合成 WAV 占位曲）、单人 PB/线上回放幽灵对手同屏竞速（`GhostRunner`）、在线多人对战大厅（`SceneArena`）、完整双域协同演奏（Chart v4 舞台演出与双语同步歌词）、`SkinManager` 4 套内置主题皮肤与 6 套打击音包、樱华道场 6 阶段位认定、UTC+8 每日挑战全球日榜、命名多曲单、在线谱面市场（`SceneMarket`）与多端幂等云存档同步。
 - **里程碑状态：** `v0.8.0-alpha` 至 `v2.0.0` 全部十三个规划里程碑版本已 100% 完成研发、全链路验证并正式发布上线（GitHub Releases 双产物及官方生产在线服 `https://steven-lee.tech:233` 均已同步运行）；新一轮活跃战役 `v2.1.0` 至 `v3.0.0` 共六个规划里程碑版本已登记就绪（`⏳ 待开发`）。

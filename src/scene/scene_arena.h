@@ -75,7 +75,9 @@ private:
 
     void RefreshLobby();
     void CreateRoom();
+    void DoCreateRoom();
     void JoinRoom(const std::string& code);
+    void DoJoinRoom(const std::string& cleanCode);
     void LeaveCurrentRoom();
     void PollRoomState();
     void ApplyHostChartSelection();
