@@ -4,7 +4,70 @@ export interface UserRecord {
   passwordHash: string;
   isGuest: boolean;
   danBadge: string;
+  bio?: string;
+  featuredTitle?: string;
   createdAt: number;
+}
+
+export interface UserProfileScoreItem {
+  scoreId: string;
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  score: number;
+  accuracy: number;
+  maxCombo: number;
+  grade: string;
+  pp: number;
+  chartRating: number;
+  isFullCombo: boolean;
+  isAllPerfect: boolean;
+  hasReplay: boolean;
+  playedAt: number;
+}
+
+export interface UserProfileData {
+  userId: string;
+  username: string;
+  isGuest: boolean;
+  bio: string;
+  featuredTitle: string;
+  danBadge: string;
+  sakuraRating: number;
+  totalPP: number;
+  playCount: number;
+  followerCount: number;
+  rivalCount: number;
+  isRival: boolean;
+  isMutual: boolean;
+  createdAt: number;
+  bestScores: UserProfileScoreItem[];
+}
+
+export interface RivalSummaryItem {
+  userId: string;
+  username: string;
+  bio: string;
+  featuredTitle: string;
+  danBadge: string;
+  sakuraRating: number;
+  totalPP: number;
+  playCount: number;
+  isMutual: boolean;
+  addedAt: number;
+}
+
+export interface RatingLadderEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  featuredTitle: string;
+  danBadge: string;
+  sakuraRating: number;
+  totalPP: number;
+  playCount: number;
+  isRival: boolean;
 }
 
 export interface AuthSessionRecord {
@@ -266,10 +329,31 @@ export interface IStorageAdapter {
   getUserTotalPP(userId: string): number;
   getUserSakuraRating(userId: string): number;
   submitScore(userId: string, sub: ScoreSubmission): { scoreId: string; pp: number; rank: number; newBest: boolean };
-  getLeaderboard(chartId: string, difficulty: string, limit: number, currentUserId?: string): {
+  getLeaderboard(
+    chartId: string,
+    difficulty: string,
+    limit: number,
+    currentUserId?: string,
+    scope?: "global" | "rivals"
+  ): {
     entries: LeaderboardEntry[];
     myRank: number | null;
   };
+  getUserProfile(targetUserId: string, viewerUserId?: string): UserProfileData | null;
+  updateUserProfile(userId: string, input: { bio?: string; featuredTitle?: string }): UserProfileData;
+  addRival(
+    userId: string,
+    targetUserId: string
+  ): { isRival: boolean; isMutual: boolean; rivalCount: number; followerCount: number };
+  removeRival(
+    userId: string,
+    targetUserId: string
+  ): { isRival: boolean; rivalCount: number; followerCount: number };
+  listRivals(userId: string): RivalSummaryItem[];
+  getGlobalRatingLadder(
+    limit?: number,
+    viewerUserId?: string
+  ): { entries: RatingLadderEntry[]; myRank: number | null; myRating: number };
   submitDailyScore(userId: string, sub: ScoreSubmission, dateUtc8?: string): {
     scoreId: string;
     date: string;

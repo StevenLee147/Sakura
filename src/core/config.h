@@ -56,9 +56,13 @@ namespace ConfigKeys
     inline constexpr std::string_view kBloom          = "graphics.bloom";           // bool
     inline constexpr std::string_view kSkinPath       = "graphics.skin_path";       // string
 
-    // ── 教程 ─────────────────────────────────────────────────────────────────
-    inline constexpr std::string_view kTutorialCompleted  = "tutorial.completed";    // bool
+    // ── 教程与社交 (v2.5.0) ──────────────────────────────────────────────────
+    inline constexpr std::string_view kTutorialCompleted   = "tutorial.completed";    // bool
     inline constexpr std::string_view kTutorialPromptShown = "tutorial.prompt_shown"; // bool
+    inline constexpr std::string_view kTargetRivalId       = "online.target_rival_id";
+    inline constexpr std::string_view kTargetRivalName     = "online.target_rival_name";
+    inline constexpr std::string_view kPlayerBio           = "online.player_bio";
+    inline constexpr std::string_view kFeaturedTitle       = "online.featured_title";
 }
 
 // ============================================================================

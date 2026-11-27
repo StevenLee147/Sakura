@@ -3,6 +3,7 @@
 #include "scene_stats.h"
 #include "scene_menu.h"
 #include "audio/audio_manager.h"
+#include "core/input.h"
 #include "core/paths.h"
 #include "core/theme.h"
 #include "data/database.h"
@@ -92,21 +93,87 @@ void SceneStats::OnEnter()
     m_fontBody  = rm.GetDefaultFontHandle();
     m_fontSmall = rm.GetDefaultFontHandle();
 
-    m_showAchievements = false;
-    m_showB30Overlay   = false;
+    *m_alive = true;
+    m_showAchievements  = false;
+    m_showB30Overlay    = false;
+    m_socialOverlayMode = 0;
+    m_socialScroll      = 0;
     m_topBar = std::make_unique<sakura::ui::TopBar>("CAREER STATS  ·  生涯统计", m_fontBody,
         [this]() { m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SlideRight, 0.4f); });
+    m_profileModal = std::make_unique<sakura::ui::ProfileCardModal>(m_fontBody);
+    m_profileModal->SetOnRivalChanged([this]() { if (m_socialOverlayMode > 0) FetchSocialData(); });
     sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
 
+    auto& cfg = sakura::core::Config::GetInstance();
+    m_featuredTitle = cfg.Get<std::string>(sakura::core::ConfigKeys::kFeaturedTitle, "");
+    m_playerBio     = cfg.Get<std::string>(sakura::core::ConfigKeys::kPlayerBio, "");
+
+    m_inputTitle = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.34f, 0.062f, 0.17f, 0.036f }, m_fontSmall, 0.016f, 32);
+    m_inputTitle->SetPlaceholder("展示称号 (最多 32 字)");
+    m_inputTitle->SetText(m_featuredTitle);
+    m_inputBio = std::make_unique<sakura::ui::TextInput>(sakura::core::NormRect{ 0.52f, 0.062f, 0.31f, 0.036f }, m_fontSmall, 0.016f, 120);
+    m_inputBio->SetPlaceholder("个性签名 (同步至在线名片与 B30 导出卡)");
+    m_inputBio->SetText(m_playerBio);
+    m_btnSaveProfile = std::make_unique<sakura::ui::Button>(sakura::core::NormRect{ 0.84f, 0.062f, 0.12f, 0.036f }, "保存签名", m_fontSmall, 0.0165f, 0.008f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSaveProfile.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnSaveProfile->SetOnClick([this]()
+    {
+        m_featuredTitle = m_inputTitle->GetText();
+        m_playerBio     = m_inputBio->GetText();
+        auto& c = sakura::core::Config::GetInstance();
+        c.Set(sakura::core::ConfigKeys::kFeaturedTitle, m_featuredTitle);
+        c.Set(sakura::core::ConfigKeys::kPlayerBio, m_playerBio);
+        c.Save();
+        auto& api = sakura::net::APIClient::GetInstance();
+        if (api.IsAuthenticated())
+        {
+            auto alive = m_alive;
+            api.UpdateMyProfileAsync(m_playerBio, m_featuredTitle, [alive](sakura::net::UserProfileResult r)
+            {
+                if (!*alive) return;
+                sakura::ui::ToastManager::Instance().Show(
+                    r.ok ? "个人称号与签名已同步至云端名片" : ("本地已保存，云端同步失败：" + r.error),
+                    r.ok ? sakura::ui::ToastType::Success : sakura::ui::ToastType::Warning, 3.0f);
+            });
+        }
+        else
+        {
+            sakura::ui::ToastManager::Instance().Show("称号与签名已保存在本地（登录在线账号可同步名片）", sakura::ui::ToastType::Success, 2.8f);
+        }
+    });
+
     m_btnBack = std::make_unique<sakura::ui::Button>(
-        sakura::core::NormRect{ 0.04f, 0.93f, 0.18f, 0.05f },
-        "返回", m_fontBody, 0.025f, 0.010f);
+        sakura::core::NormRect{ 0.04f, 0.93f, 0.12f, 0.05f },
+        "返回", m_fontBody, 0.023f, 0.010f);
     sakura::ui::VisualStyle::ApplyButton(m_btnBack.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnBack->SetOnClick([this]()
     {
         m_manager.SwitchScene(
             std::make_unique<SceneMenu>(m_manager),
             TransitionType::SlideRight, 0.4f);
+    });
+
+    m_btnSocialLadder = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.175f, 0.93f, 0.15f, 0.05f },
+        "天梯 / 劲敌", m_fontBody, 0.022f, 0.010f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSocialLadder.get(), sakura::ui::ButtonVariant::Accent);
+    m_btnSocialLadder->SetOnClick([this]()
+    {
+        m_showB30Overlay   = false;
+        m_showAchievements = false;
+        m_socialOverlayMode = (m_socialOverlayMode == 0) ? 1 : 0;
+        if (m_socialOverlayMode > 0) FetchSocialData();
+    });
+
+    m_btnSwitchLadderTab = std::make_unique<sakura::ui::Button>(
+        sakura::core::NormRect{ 0.46f, 0.180f, 0.18f, 0.038f },
+        "切换：我的劲敌", m_fontSmall, 0.0165f, 0.008f);
+    sakura::ui::VisualStyle::ApplyButton(m_btnSwitchLadderTab.get(), sakura::ui::ButtonVariant::Primary);
+    m_btnSwitchLadderTab->SetOnClick([this]()
+    {
+        m_socialOverlayMode = (m_socialOverlayMode == 1) ? 2 : 1;
+        m_socialScroll = 0;
+        FetchSocialData();
     });
 
     m_btnToggleB30Overlay = std::make_unique<sakura::ui::Button>(
@@ -145,8 +212,9 @@ void SceneStats::OnEnter()
     sakura::ui::VisualStyle::ApplyButton(m_btnCloseOverlay.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnCloseOverlay->SetOnClick([this]()
     {
-        m_showAchievements = false;
-        m_showB30Overlay   = false;
+        m_showAchievements  = false;
+        m_showB30Overlay    = false;
+        m_socialOverlayMode = 0;
     });
 
     m_achievementList = std::make_unique<sakura::ui::ScrollList>(
@@ -157,20 +225,66 @@ void SceneStats::OnEnter()
     RefreshData();
 }
 
+void SceneStats::FetchSocialData()
+{
+    auto& api = sakura::net::APIClient::GetInstance();
+    auto alive = m_alive;
+    if (m_socialOverlayMode == 1)
+    {
+        m_socialStatus = "正在同步全球 Sakura Rating Top 100 天梯...";
+        if (m_btnSwitchLadderTab) m_btnSwitchLadderTab->SetText("切换：劲敌名录");
+        api.FetchRatingLadderAsync(100, [this, alive](sakura::net::RatingLadderResult res)
+        {
+            if (!*alive) return;
+            if (!res.ok) { m_socialStatus = res.error; return; }
+            m_ladderMyRank = res.myRank;
+            m_ladderRows   = std::move(res.entries);
+            m_socialStatus = m_ladderRows.empty() ? "全球天梯暂无数据" : "点击任意玩家行可查看 B15 生涯名片或加为劲敌";
+        });
+    }
+    else if (m_socialOverlayMode == 2)
+    {
+        if (m_btnSwitchLadderTab) m_btnSwitchLadderTab->SetText("切换：全球天梯");
+        if (!api.IsAuthenticated()) { m_rivalRows.clear(); m_socialStatus = "请先在右上角登录在线账号后再管理劲敌名录"; return; }
+        m_socialStatus = "正在同步我的劲敌名录...";
+        api.FetchRivalsAsync([this, alive](sakura::net::RivalListResult res)
+        {
+            if (!*alive) return;
+            if (!res.ok) { m_socialStatus = res.error; return; }
+            m_rivalRows    = std::move(res.rivals);
+            m_socialStatus = m_rivalRows.empty() ? "暂未关注任何劲敌 · 可在全球天梯点击选手添加" : "点击劲敌行可打开名片、锁定目标或挑战幽灵";
+        });
+    }
+}
+
 void SceneStats::OnExit()
 {
+    *m_alive = false;
     g_activeStatsRenderer = nullptr;
     g_pendingExportPath.clear();
+    if (m_inputTitle) m_inputTitle->SetFocused(false);
+    if (m_inputBio)   m_inputBio->SetFocused(false);
+    m_profileModal.reset();
     m_topBar.reset();
 }
 
 void SceneStats::OnUpdate(float dt)
 {
     if (m_topBar) m_topBar->Update(dt);
+    if (m_profileModal) m_profileModal->Update(dt);
+    if (m_inputTitle) m_inputTitle->Update(dt);
+    if (m_inputBio)   m_inputBio->Update(dt);
+    if (m_btnSaveProfile) m_btnSaveProfile->Update(dt);
     if (m_btnBack) m_btnBack->Update(dt);
+    if (m_btnSocialLadder) m_btnSocialLadder->Update(dt);
     if (m_btnToggleB30Overlay) m_btnToggleB30Overlay->Update(dt);
     if (m_btnExportB30) m_btnExportB30->Update(dt);
     if (m_btnAchievements) m_btnAchievements->Update(dt);
+    if (m_socialOverlayMode > 0)
+    {
+        if (m_btnSwitchLadderTab) m_btnSwitchLadderTab->Update(dt);
+        if (m_btnCloseOverlay) { m_btnCloseOverlay->SetBounds(kCloseBtnAchievementsRect); m_btnCloseOverlay->Update(dt); }
+    }
 
     if (m_showB30Overlay)
     {
@@ -428,7 +542,11 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
             0.932f, rowY + 0.002f, 0.0165f, rankCol, sakura::core::TextAlign::Right);
     }
 
+    if (m_inputTitle) m_inputTitle->Render(renderer);
+    if (m_inputBio)   m_inputBio->Render(renderer);
+    if (m_btnSaveProfile) m_btnSaveProfile->Render(renderer);
     if (m_btnBack) m_btnBack->Render(renderer);
+    if (m_btnSocialLadder) m_btnSocialLadder->Render(renderer);
     if (m_btnToggleB30Overlay) m_btnToggleB30Overlay->Render(renderer);
     if (m_btnExportB30) m_btnExportB30->Render(renderer);
     if (m_btnAchievements) m_btnAchievements->Render(renderer);
@@ -466,6 +584,60 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
         }
         if (m_achievementList) m_achievementList->Render(renderer);
     }
+    else if (m_socialOverlayMode > 0)
+    {
+        sakura::ui::VisualStyle::DrawScrim(renderer, 0.70f);
+        sakura::ui::VisualStyle::DrawPanel(renderer, { 0.14f, 0.14f, 0.72f, 0.72f }, true, true);
+        renderer.DrawText(m_fontTitle,
+            m_socialOverlayMode == 1 ? "全球 Sakura Rating 天梯 Top 100" : "我的宿命劲敌名录 · RIVALS",
+            0.18f, 0.174f, 0.029f, palette.accent);
+        if (m_btnSwitchLadderTab) m_btnSwitchLadderTab->Render(renderer);
+        if (m_btnCloseOverlay) { m_btnCloseOverlay->SetBounds(kCloseBtnAchievementsRect); m_btnCloseOverlay->Render(renderer); }
+        sakura::ui::VisualStyle::DrawGildedDivider(renderer, 0.18f, 0.82f, 0.228f, 0.72f);
+        renderer.DrawText(m_fontSmall, m_socialStatus, 0.18f, 0.238f, 0.0155f, palette.textDim);
+
+        const int totalRows = (m_socialOverlayMode == 1)
+            ? static_cast<int>(m_ladderRows.size())
+            : static_cast<int>(m_rivalRows.size());
+        for (int s = 0; s < 8 && (m_socialScroll + s) < totalRows; ++s)
+        {
+            const int idx  = m_socialScroll + s;
+            const float ry = 0.272f + static_cast<float>(s) * 0.064f;
+            renderer.DrawRoundedRect({ 0.18f, ry, 0.64f, 0.056f }, 0.008f, { 20, 25, 46, 205 }, true);
+            if (m_socialOverlayMode == 1)
+            {
+                const auto& r = m_ladderRows[static_cast<std::size_t>(idx)];
+                renderer.DrawText(m_fontBody, "#" + std::to_string(r.rank), 0.195f, ry + 0.015f, 0.020f,
+                    r.rank == 1 ? palette.accent : palette.primary);
+                std::string label = r.username;
+                if (!r.danBadge.empty()) label = "[" + r.danBadge + "] " + label;
+                if (!r.featuredTitle.empty()) label += "  ·  " + r.featuredTitle;
+                if (r.isRival) label += "  ✦劲敌";
+                sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontBody, label, 0.255f, ry + 0.015f, 0.019f, 0.36f, palette.text);
+                renderer.DrawText(m_fontTitle, "★ " + sakura::game::PPCalculator::FormatRating(r.sakuraRating),
+                    0.805f, ry + 0.015f, 0.020f, palette.accent, sakura::core::TextAlign::Right);
+            }
+            else
+            {
+                const auto& rv = m_rivalRows[static_cast<std::size_t>(idx)];
+                const double diff = m_ratingSummary.sakuraRating - rv.sakuraRating;
+                std::ostringstream dss; dss << std::showpos << std::fixed << std::setprecision(2) << diff;
+                std::string label = rv.username + (rv.isMutual ? "  [宿命互关]" : "");
+                if (!rv.featuredTitle.empty()) label += "  ·  " + rv.featuredTitle;
+                sakura::ui::VisualStyle::DrawTextFit(renderer, m_fontBody, label, 0.195f, ry + 0.014f, 0.0195f, 0.38f, palette.text);
+                renderer.DrawText(m_fontBody,
+                    "★ " + sakura::game::PPCalculator::FormatRating(rv.sakuraRating) + " (" + dss.str() + ")",
+                    0.805f, ry + 0.015f, 0.019f, diff >= 0 ? sakura::core::Color{ 152, 236, 194, 255 } : palette.primary,
+                    sakura::core::TextAlign::Right);
+            }
+        }
+        if (m_socialOverlayMode == 1 && m_ladderMyRank.has_value())
+        {
+            renderer.DrawText(m_fontBody, "我的当前全球天梯排位：#" + std::to_string(*m_ladderMyRank),
+                0.50f, 0.805f, 0.019f, palette.accent, sakura::core::TextAlign::Center);
+        }
+    }
+    if (m_profileModal) m_profileModal->Render(renderer);
     if (m_topBar && !m_showB30Overlay)
     {
         m_topBar->Render(renderer);
@@ -475,14 +647,18 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
 
 void SceneStats::OnEvent(const SDL_Event& event)
 {
-    if (!m_showB30Overlay && !m_showAchievements && m_topBar && m_topBar->HandleEvent(event))
+    if (!m_showB30Overlay && !m_showAchievements && m_socialOverlayMode == 0 && m_topBar && m_topBar->HandleEvent(event))
         return;
-    if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)
+    if (m_profileModal && m_profileModal->HandleEvent(event))
+        return;
+    const bool typing = (m_inputTitle && m_inputTitle->IsFocused()) || (m_inputBio && m_inputBio->IsFocused());
+    if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE && !typing)
     {
-        if (m_showB30Overlay || m_showAchievements)
+        if (m_showB30Overlay || m_showAchievements || m_socialOverlayMode > 0)
         {
-            m_showB30Overlay   = false;
-            m_showAchievements = false;
+            m_showB30Overlay    = false;
+            m_showAchievements  = false;
+            m_socialOverlayMode = 0;
             return;
         }
 
@@ -515,7 +691,46 @@ void SceneStats::OnEvent(const SDL_Event& event)
         return;
     }
 
+    if (m_socialOverlayMode > 0)
+    {
+        const int totalRows = (m_socialOverlayMode == 1)
+            ? static_cast<int>(m_ladderRows.size())
+            : static_cast<int>(m_rivalRows.size());
+        if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            m_socialScroll = std::clamp(m_socialScroll - static_cast<int>(event.wheel.y), 0, std::max(0, totalRows - 8));
+            return;
+        }
+        if (m_btnSwitchLadderTab && m_btnSwitchLadderTab->HandleEvent(event)) return;
+        if (m_btnCloseOverlay) { m_btnCloseOverlay->SetBounds(kCloseBtnAchievementsRect); if (m_btnCloseOverlay->HandleEvent(event)) return; }
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+        {
+            const auto [mx, my] = sakura::core::Input::GetMousePosition();
+            for (int s = 0; s < 8 && (m_socialScroll + s) < totalRows; ++s)
+            {
+                const int idx  = m_socialScroll + s;
+                const float ry = 0.272f + static_cast<float>(s) * 0.064f;
+                if (mx >= 0.18f && mx <= 0.82f && my >= ry && my <= ry + 0.056f)
+                {
+                    const std::string uid  = (m_socialOverlayMode == 1) ? m_ladderRows[idx].userId   : m_rivalRows[idx].userId;
+                    const std::string name = (m_socialOverlayMode == 1) ? m_ladderRows[idx].username : m_rivalRows[idx].username;
+                    if (!uid.empty() && m_profileModal)
+                        m_profileModal->Open(uid, name);
+                    return;
+                }
+            }
+        }
+        return;
+    }
+
+    bool consumed = false;
+    if (m_inputTitle) consumed = m_inputTitle->HandleEvent(event) || consumed;
+    if (m_inputBio)   consumed = m_inputBio->HandleEvent(event)   || consumed;
+    if (consumed && (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_TEXT_INPUT || event.type == SDL_EVENT_TEXT_EDITING))
+        return;
+    if (m_btnSaveProfile && m_btnSaveProfile->HandleEvent(event)) return;
     if (m_btnBack) m_btnBack->HandleEvent(event);
+    if (m_btnSocialLadder) m_btnSocialLadder->HandleEvent(event);
     if (m_btnToggleB30Overlay) m_btnToggleB30Overlay->HandleEvent(event);
     if (m_btnExportB30) m_btnExportB30->HandleEvent(event);
     if (m_btnAchievements) m_btnAchievements->HandleEvent(event);
@@ -642,12 +857,16 @@ void SceneStats::RenderB30MatrixContent(sakura::core::Renderer& renderer, bool e
         renderer, m_fontTitle, username,
         textStartX, hdrY + hdrH * 0.34f, hdrH * 0.27f, 0.28f, palette.text);
 
-    const std::string ratingBanner = "★ Sakura Rating "
+    std::string ratingBanner = "★ Sakura Rating "
         + sakura::game::PPCalculator::FormatRating(m_ratingSummary.sakuraRating)
         + "   ·   " + m_ratingSummary.tierName;
+    if (!m_featuredTitle.empty())
+        ratingBanner += "   ·   「" + m_featuredTitle + "」";
+    else if (!m_playerBio.empty())
+        ratingBanner += "   ·   " + m_playerBio;
     sakura::ui::VisualStyle::DrawTextFit(
         renderer, m_fontBody, ratingBanner,
-        textStartX, hdrY + hdrH * 0.68f, hdrH * 0.185f, 0.35f, palette.accent);
+        textStartX, hdrY + hdrH * 0.68f, hdrH * 0.175f, 0.38f, palette.accent);
 
     // 右侧 6 项生涯核心指标矩阵 (3 列 × 2 行)
     std::ostringstream totalPpSS;

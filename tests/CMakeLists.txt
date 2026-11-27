@@ -32,6 +32,7 @@ add_executable(SakuraTests
     test_v220_transport_and_arena.cpp
     test_v230_ui_and_select_ux.cpp
     test_v240_audio_and_sfx.cpp
+    test_v250_rivals_and_social.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

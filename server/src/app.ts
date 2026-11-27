@@ -241,7 +241,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.4.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.5.0";
 
   app.use("*", cors());
 
@@ -597,10 +597,14 @@ export function createApp(opts: AppOptions): Hono {
   app.get("/api/v1/leaderboards/:chartId", (c) => {
     const chartId = c.req.param("chartId");
     const difficulty = c.req.query("difficulty") || "Normal";
-    const scope = c.req.query("scope") || "global";
+    const scopeRaw = (c.req.query("scope") || "global").toLowerCase();
+    const scope: "global" | "rivals" = scopeRaw === "rivals" ? "rivals" : "global";
     const limit = Number(c.req.query("limit") || "50");
     const auth = resolveAuth(c.req.header("Authorization"));
-    const lb = storage.getLeaderboard(chartId, difficulty, Number.isFinite(limit) ? limit : 50, auth?.sub);
+    if (scope === "rivals" && !auth) {
+      return c.json({ ok: false, error: "Unauthorized." }, 401);
+    }
+    const lb = storage.getLeaderboard(chartId, difficulty, Number.isFinite(limit) ? limit : 50, auth?.sub, scope);
     return respondJsonWithETag(c, {
       ok: true,
       chart_id: chartId,
@@ -1229,6 +1233,155 @@ export function createApp(opts: AppOptions): Hono {
 
   app.get("/api/v1/rooms/:code", handleGetArenaRoomState);
   app.get("/api/v1/rooms/:code/state", handleGetArenaRoomState);
+
+  const serializeProfile = (p: ReturnType<IStorageAdapter["getUserProfile"]> & object) => ({
+    user_id: p.userId,
+    username: p.username,
+    is_guest: p.isGuest,
+    bio: p.bio,
+    featured_title: p.featuredTitle,
+    dan_badge: p.danBadge,
+    sakura_rating: p.sakuraRating,
+    total_pp: p.totalPP,
+    play_count: p.playCount,
+    follower_count: p.followerCount,
+    rival_count: p.rivalCount,
+    is_rival: p.isRival,
+    is_mutual: p.isMutual,
+    created_at: p.createdAt,
+    best_scores: p.bestScores.map((s) => ({
+      score_id: s.scoreId,
+      chart_id: s.chartId,
+      chart_title: s.chartTitle,
+      difficulty: s.difficulty,
+      difficulty_level: s.difficultyLevel,
+      score: s.score,
+      accuracy: s.accuracy,
+      max_combo: s.maxCombo,
+      grade: s.grade,
+      pp: s.pp,
+      chart_rating: s.chartRating,
+      is_full_combo: s.isFullCombo,
+      is_all_perfect: s.isAllPerfect,
+      has_replay: s.hasReplay,
+      played_at: s.playedAt,
+    })),
+  });
+
+  app.get("/api/v1/users/:id/profile", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    const rawId = c.req.param("id");
+    const targetId = rawId === "me" ? (auth?.sub ?? "") : rawId;
+    if (rawId === "me" && !targetId) {
+      return c.json({ ok: false, error: "Unauthorized." }, 401);
+    }
+    const profile = storage.getUserProfile(targetId, auth?.sub);
+    if (!profile) {
+      return c.json({ ok: false, error: "User not found." }, 404);
+    }
+    return c.json({ ok: true, profile: serializeProfile(profile) });
+  });
+
+  const handleUpdateMyProfile = async (c: Context) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const bioRaw = body.bio;
+      const titleRaw = body.featured_title ?? body.featuredTitle;
+      const updated = storage.updateUserProfile(auth.sub, {
+        bio: typeof bioRaw === "string" ? bioRaw : undefined,
+        featuredTitle: typeof titleRaw === "string" ? titleRaw : undefined,
+      });
+      return c.json({ ok: true, profile: serializeProfile(updated) });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid profile fields.";
+      return c.json({ ok: false, error: msg }, msg.includes("not found") ? 404 : 400);
+    }
+  };
+  app.patch("/api/v1/users/me/profile", handleUpdateMyProfile);
+  app.post("/api/v1/users/me/profile", handleUpdateMyProfile);
+
+  app.post("/api/v1/rivals/:id", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    try {
+      const res = storage.addRival(auth.sub, c.req.param("id"));
+      return c.json({
+        ok: true,
+        is_rival: res.isRival,
+        is_mutual: res.isMutual,
+        rival_count: res.rivalCount,
+        follower_count: res.followerCount,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to add rival.";
+      const lower = msg.toLowerCase();
+      const code = lower.includes("yourself") ? 400 : lower.includes("not found") ? 404 : 422;
+      return c.json({ ok: false, error: msg }, code);
+    }
+  });
+
+  app.delete("/api/v1/rivals/:id", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    const res = storage.removeRival(auth.sub, c.req.param("id"));
+    return c.json({
+      ok: true,
+      is_rival: res.isRival,
+      rival_count: res.rivalCount,
+      follower_count: res.followerCount,
+    });
+  });
+
+  app.get("/api/v1/rivals", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    const rivals = storage.listRivals(auth.sub);
+    return c.json({
+      ok: true,
+      total: rivals.length,
+      rivals: rivals.map((r) => ({
+        user_id: r.userId,
+        username: r.username,
+        bio: r.bio,
+        featured_title: r.featuredTitle,
+        dan_badge: r.danBadge,
+        sakura_rating: r.sakuraRating,
+        total_pp: r.totalPP,
+        play_count: r.playCount,
+        is_mutual: r.isMutual,
+        added_at: r.addedAt,
+      })),
+    });
+  });
+
+  app.get("/api/v1/rankings/rating", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    const limit = Number(c.req.query("limit") || "100");
+    const res = storage.getGlobalRatingLadder(Number.isFinite(limit) ? limit : 100, auth?.sub);
+    return respondJsonWithETag(c, {
+      ok: true,
+      my_rank: res.myRank,
+      my_rating: res.myRating,
+      entries: res.entries.map((e) => ({
+        rank: e.rank,
+        user_id: e.userId,
+        username: e.username,
+        featured_title: e.featuredTitle,
+        dan_badge: e.danBadge,
+        sakura_rating: e.sakuraRating,
+        total_pp: e.totalPP,
+        play_count: e.playCount,
+        is_rival: e.isRival,
+      })),
+    });
+  });
 
   return app;
 }

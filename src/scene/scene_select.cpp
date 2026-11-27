@@ -116,6 +116,32 @@ void SceneSelect::OnEnter() {
     *m_alive=true;
     m_font=ResourceManager::GetInstance().GetDefaultFontHandle();
     m_topBar=std::make_unique<TopBar>("SONG SELECT  ·  曲库选歌",m_font,[this]{Back();});
+    m_profileModal=std::make_unique<ProfileCardModal>(m_font);
+    m_profileModal->SetOnRivalChanged([this]{
+        if(m_selected>=0 && m_showGlobalLeaderboard) FetchGlobalLeaderboard();
+        m_rebuild=true;
+    });
+    m_profileModal->SetOnChallengeGhost([this](const sakura::net::UserProfileScoreItem& item, const std::string& rivalName){
+        for(int i=0;i<static_cast<int>(m_charts.size());++i) {
+            if(m_charts[i].id==item.chartId) {
+                const int dIdx=ResolveMatchingDifficultyIndex(m_charts[i],item.difficulty,item.difficultyLevel);
+                Select(i,dIdx);
+                const std::string dest=Paths::User("replays/rivals/rival_"+item.scoreId+".skr");
+                std::error_code ec; std::filesystem::create_directories(std::filesystem::path(dest).parent_path(),ec);
+                ToastManager::Instance().Show("正在下载劲敌 "+rivalName+" 的幽灵回放...",ToastType::Info,2.0f);
+                auto alive=m_alive; const ChartInfo chartCopy=m_charts[i];
+                sakura::net::APIClient::GetInstance().DownloadReplayAsync(item.scoreId,dest,[this,alive,chartCopy,dIdx,rivalName](bool ok,std::string localPath){
+                    if(!*alive || !ok) return;
+                    PlayOptions opts; opts.mode=PlayMode::Standard; opts.ghostMode=GhostMode::OnlineRival;
+                    opts.ghostReplayFile=localPath; opts.ghostRivalName=rivalName;
+                    PersistSelectContext(true);
+                    m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager,chartCopy,dIdx,opts),TransitionType::SakuraSweep,0.42f);
+                });
+                return;
+            }
+        }
+        ToastManager::Instance().Show("本地尚未安装该谱面："+item.chartTitle,ToastType::Warning,3.0f);
+    });
     auto& cfg=Config::GetInstance();
     const auto favorites=cfg.Get<std::vector<std::string>>("library.favorites",{});
     m_favorites={favorites.begin(),favorites.end()};
@@ -351,12 +377,13 @@ bool SceneSelect::SelectChart(const std::string& id,int difficulty) {
     return false;
 }
 bool SceneSelect::ApplyCachedLeaderboard(const std::string& chartId, const std::string& diffName) {
-    auto cached=sakura::net::APIClient::GetInstance().GetCachedLeaderboard(chartId,diffName);
+    const std::string_view scope=(m_leaderboardViewMode==2)?"rivals":"global";
+    auto cached=sakura::net::APIClient::GetInstance().GetCachedLeaderboard(chartId,diffName,scope);
     if(!cached.has_value()) return false;
     m_globalEntries=std::move(cached->entries);
     m_globalMyRank=cached->myRank;
     m_leaderboardLoading=false;
-    m_leaderboardStatus=m_globalEntries.empty()?"暂无上榜记录 · 完成正式演奏抢占榜首":"";
+    m_leaderboardStatus=m_globalEntries.empty()?((m_leaderboardViewMode==2)?"劲敌圈暂无记录 · 点击全球榜选手可加为劲敌":"暂无上榜记录 · 完成正式演奏抢占榜首"):"";
     return true;
 }
 void SceneSelect::FetchGlobalLeaderboard() {
@@ -364,6 +391,7 @@ void SceneSelect::FetchGlobalLeaderboard() {
     const auto& c=m_charts[m_selected];
     const std::string chartId=c.id;
     const std::string diffName=c.difficulties[m_difficulty].name;
+    const std::string scope=(m_leaderboardViewMode==2)?"rivals":"global";
     m_leaderboardPendingFetch=false;
     m_leaderboardDebounce=0.0f;
     if(m_globalEntries.empty()) {
@@ -372,25 +400,26 @@ void SceneSelect::FetchGlobalLeaderboard() {
     const bool hadCachedEntries=!m_globalEntries.empty();
     m_leaderboardLoading=true;
     if(!hadCachedEntries) {
-        m_leaderboardStatus="正在加载全球排行榜...";
+        m_leaderboardStatus=(scope=="rivals")?"正在同步劲敌圈排行榜...":"正在加载全球排行榜...";
     }
     auto alive=m_alive;
-    sakura::net::APIClient::GetInstance().FetchLeaderboardAsync(chartId,diffName,6,[this,alive,chartId,diffName](sakura::net::LeaderboardResult res){
+    const int modeSnap=m_leaderboardViewMode;
+    sakura::net::APIClient::GetInstance().FetchLeaderboardAsync(chartId,diffName,8,[this,alive,chartId,diffName,modeSnap](sakura::net::LeaderboardResult res){
         if(!*alive) return;
-        if(m_selected<0 || m_charts[m_selected].id!=chartId || m_charts[m_selected].difficulties[m_difficulty].name!=diffName) return;
+        if(m_selected<0 || m_charts[m_selected].id!=chartId || m_charts[m_selected].difficulties[m_difficulty].name!=diffName || m_leaderboardViewMode!=modeSnap) return;
         m_leaderboardLoading=false;
         if(!res.ok) {
             if(m_globalEntries.empty()) {
-                m_leaderboardStatus="离线或暂不可用："+res.error;
+                m_leaderboardStatus=res.error;
             }
             m_rebuild=true;
             return;
         }
         m_globalMyRank=res.myRank;
         m_globalEntries=std::move(res.entries);
-        m_leaderboardStatus=m_globalEntries.empty()?"暂无上榜记录 · 完成正式演奏抢占榜首":"";
+        m_leaderboardStatus=m_globalEntries.empty()?((modeSnap==2)?"劲敌圈暂无成绩 · 点击任意选手可加为劲敌":"暂无上榜记录 · 完成正式演奏抢占榜首"):"";
         m_rebuild=true;
-    });
+    },scope);
 }
 void SceneSelect::WatchOnlineReplay(const sakura::net::LeaderboardRow& row) {
     if(m_selected<0 || !row.hasReplay || row.scoreId.empty()) return;
@@ -537,14 +566,17 @@ void SceneSelect::BuildDetail() {
         else if(m_activeCollectionIndex>=0 && m_activeCollectionIndex<static_cast<int>(m_collections.size())) targetIdx=m_activeCollectionIndex;
         inTargetCol=CollectionManager::ContainsChart(m_collections[static_cast<size_t>(targetIdx)],c.id);
     }
-    m_detailButtons.push_back(Button({0.664f,0.185f,0.082f,0.036f},m_showGlobalLeaderboard?"本地面板":"全球排行",[this]{
-        m_showGlobalLeaderboard=!m_showGlobalLeaderboard;
+    static constexpr const char* kLbModeLabels[3]={"本地面板","全球排行","劲敌排行"};
+    m_detailButtons.push_back(Button({0.664f,0.185f,0.082f,0.036f},kLbModeLabels[m_leaderboardViewMode],[this]{
+        m_leaderboardViewMode=(m_leaderboardViewMode+1)%3;
+        m_showGlobalLeaderboard=(m_leaderboardViewMode>0);
+        m_globalEntries.clear(); m_globalMyRank.reset();
         if(m_showGlobalLeaderboard && m_selected>=0) {
             ApplyCachedLeaderboard(m_charts[m_selected].id,m_charts[m_selected].difficulties[m_difficulty].name);
             FetchGlobalLeaderboard();
         }
         m_rebuild=true;
-    },m_showGlobalLeaderboard,0.0165f));
+    },m_showGlobalLeaderboard,0.0160f));
     m_detailButtons.push_back(Button({0.752f,0.185f,0.060f,0.036f},m_favorites.contains(c.id)?"已收藏":"收藏",[this]{Favorite();},m_favorites.contains(c.id),0.0165f));
     m_detailButtons.push_back(Button({0.818f,0.185f,0.060f,0.036f},"+曲单",[this]{CreatePresetCollection();},false,0.0165f));
     m_detailButtons.push_back(Button({0.884f,0.185f,0.060f,0.036f},inTargetCol?"已入单":"入单",[this]{ToggleCurrentInCollection();},inTargetCol,0.0165f));
@@ -825,6 +857,7 @@ void SceneSelect::OnExit(){
     if(m_search) m_search->SetFocused(false);
     if(m_startInput) m_startInput->SetFocused(false);
     if(m_endInput) m_endInput->SetFocused(false);
+    m_profileModal.reset();
     m_topBar.reset();
     Config::GetInstance().Save();
 }
@@ -832,6 +865,7 @@ void SceneSelect::OnExit(){
 void SceneSelect::OnUpdate(float dt) {
     m_time+=dt;
     if(m_topBar) m_topBar->Update(dt);
+    if(m_profileModal) m_profileModal->Update(dt);
     const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
     m_scrollTarget=std::clamp(m_scrollTarget,0.0f,maxScroll);
     m_scrollPos+=(m_scrollTarget-m_scrollPos)*(1.0f-std::exp(-18.0f*dt));
@@ -1022,8 +1056,27 @@ void SceneSelect::OnRender(Renderer& r) {
         VisualStyle::DrawGildedDivider(r,0.515f,0.938f,0.416f,0.68f);
         r.DrawText(m_font,"DIFFICULTY / 难度选择",0.515f,0.430f,0.016f,dim);
 
+        if(m_best && !m_globalEntries.empty()) {
+            const std::string targetRivalId=Config::GetInstance().Get<std::string>(ConfigKeys::kTargetRivalId,"");
+            const auto me=sakura::net::APIClient::GetInstance().GetCurrentUser();
+            const sakura::net::LeaderboardRow* rivalRow=nullptr;
+            for(const auto& er:m_globalEntries) {
+                if(!targetRivalId.empty() && er.userId==targetRivalId) { rivalRow=&er; break; }
+            }
+            if(!rivalRow && m_leaderboardViewMode==2) {
+                for(const auto& er:m_globalEntries) if(er.userId!=me.id) { rivalRow=&er; break; }
+            }
+            if(rivalRow) {
+                const std::string deltaTxt=sakura::net::APIClient::FormatScoreDeltaText(rivalRow->username,m_best->score,rivalRow->score);
+                const bool ahead=(m_best->score>=rivalRow->score);
+                VisualStyle::DrawBadgePill(r,{0.752f,0.428f,0.188f,0.030f},deltaTxt,m_font,0.0132f,
+                    ahead?Color{28,58,52,225}:Color{74,34,54,225},ahead?Color{152,236,194,215}:pink,ahead?Color{152,236,194,255}:pink);
+            }
+        }
+
         if(m_showGlobalLeaderboard) {
-            const std::string hdr=m_globalMyRank.has_value()?("全球高分榜  ·  我的名次 #"+std::to_string(*m_globalMyRank)):"全球高分榜  ·  GLOBAL TOP";
+            const std::string scopePrefix=(m_leaderboardViewMode==2)?"劲敌圈对决  ·  ":"全球高分榜  ·  ";
+            const std::string hdr=m_globalMyRank.has_value()?(scopePrefix+"我的名次 #"+std::to_string(*m_globalMyRank)):(scopePrefix+"点击选手查看名片");
             r.DrawText(m_font,hdr,0.515f,0.533f,0.019f,gold);
             const int rows=std::min(5,static_cast<int>(m_globalEntries.size()));
             for(int i=0;i<rows;++i) {
@@ -1128,6 +1181,7 @@ void SceneSelect::OnRender(Renderer& r) {
     }
     for(auto& b:m_buttons)b->Render(r);
     m_particles.Render(r);
+    if(m_profileModal) m_profileModal->Render(r);
     if(m_topBar) {
         m_topBar->Render(r);
         m_topBar->RenderDrawer(r);
@@ -1135,6 +1189,19 @@ void SceneSelect::OnRender(Renderer& r) {
 }
 void SceneSelect::OnEvent(const SDL_Event& e) {
     if(m_topBar && m_topBar->HandleEvent(e)) return;
+    if(m_profileModal && m_profileModal->HandleEvent(e)) return;
+    if(m_showGlobalLeaderboard && e.type==SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button==SDL_BUTTON_LEFT) {
+        const auto [mx,my]=Input::GetMousePosition();
+        const int rows=std::min(5,static_cast<int>(m_globalEntries.size()));
+        for(int i=0;i<rows;++i) {
+            const float ry=0.572f+i*0.046f;
+            if(mx>=0.515f && mx<=0.865f && my>=ry && my<=ry+0.039f && !m_globalEntries[i].userId.empty()) {
+                sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+                m_profileModal->Open(m_globalEntries[i].userId,m_globalEntries[i].username);
+                return;
+            }
+        }
+    }
     if(e.type==SDL_EVENT_DROP_FILE && e.drop.data){AcceptImport(e.drop.data);return;}
     if(e.type==SDL_EVENT_MOUSE_BUTTON_UP && e.button.button==SDL_BUTTON_LEFT) {
         m_draggingScrollbar=false;

@@ -723,11 +723,13 @@ uint64_t APIClient::NextRequestSeq()
 }
 
 std::optional<LeaderboardResult> APIClient::GetCachedLeaderboard(const std::string& chartId,
-                                                                 const std::string& difficulty) const
+                                                                 const std::string& difficulty,
+                                                                 std::string_view scope) const
 {
     if (chartId.empty() || difficulty.empty())
         return std::nullopt;
-    const std::string cacheKey  = "leaderboard:" + chartId + ":" + difficulty;
+    const std::string prefix    = (scope == "rivals") ? "leaderboard_rivals:" : "leaderboard:";
+    const std::string cacheKey  = prefix + chartId + ":" + difficulty;
     const CacheLookupResult hit = MutableOnlineCache().Lookup(
         cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
     if (!hit.found || hit.payloadJson.empty())
@@ -736,6 +738,26 @@ std::optional<LeaderboardResult> APIClient::GetCachedLeaderboard(const std::stri
     if (!parsed.ok)
         return std::nullopt;
     return parsed;
+}
+
+std::string APIClient::FormatScoreDeltaText(std::string_view rivalName, int myBestScore, int rivalScore)
+{
+    const long long delta = static_cast<long long>(myBestScore) - static_cast<long long>(rivalScore);
+    const long long absVal = (delta < 0) ? -delta : delta;
+    const std::string raw = std::to_string(absVal);
+    std::string formatted;
+    int digits = 0;
+    for (auto it = raw.rbegin(); it != raw.rend(); ++it)
+    {
+        if (digits > 0 && digits % 3 == 0)
+            formatted.push_back(',');
+        formatted.push_back(*it);
+        ++digits;
+    }
+    std::reverse(formatted.begin(), formatted.end());
+    const std::string sign = (delta >= 0) ? "+" : "-";
+    const std::string who  = rivalName.empty() ? std::string("Rival") : std::string(rivalName);
+    return "VS " + who + " " + sign + formatted;
 }
 
 HttpRequest APIClient::MakeRequest(const std::string& method, const std::string& path,
@@ -1536,6 +1558,7 @@ ScoreSubmitResult APIClient::SubmitScore(const sakura::game::GameResult& result)
         if (!result.chartId.empty())
         {
             MutableOnlineCache().MarkStale("leaderboard:" + result.chartId + ":");
+            MutableOnlineCache().MarkStale("leaderboard_rivals:" + result.chartId + ":");
         }
         SaveToConfig();
         return out;
@@ -1675,7 +1698,10 @@ int APIClient::FlushPendingActions()
             if (item.type == PendingActionType::StandardScore)
             {
                 if (!scoreChartId.empty())
+                {
                     MutableOnlineCache().MarkStale("leaderboard:" + scoreChartId + ":");
+                    MutableOnlineCache().MarkStale("leaderboard_rivals:" + scoreChartId + ":");
+                }
             }
             else if (item.type == PendingActionType::DailyScore)
             {
@@ -1740,11 +1766,19 @@ int APIClient::FlushPendingScores()
 LeaderboardResult APIClient::FetchLeaderboardInternal(const std::string& chartId,
                                                       const std::string& difficulty,
                                                       int limit,
+                                                      std::string_view scope,
                                                       const std::shared_ptr<CancelToken>& cancelToken)
 {
     LeaderboardResult out;
-    const int safeLimit       = std::max(1, limit);
-    const std::string cacheKey = "leaderboard:" + chartId + ":" + difficulty;
+    const std::string cleanScope = (scope == "rivals") ? "rivals" : "global";
+    if (cleanScope == "rivals" && !IsAuthenticated())
+    {
+        out.error = "请先登录在线账号后再查看劲敌圈排行榜";
+        return out;
+    }
+    const int safeLimit        = std::max(1, limit);
+    const std::string prefix   = (cleanScope == "rivals") ? "leaderboard_rivals:" : "leaderboard:";
+    const std::string cacheKey = prefix + chartId + ":" + difficulty;
     auto& cache                = MutableOnlineCache();
     const CacheLookupResult cached = cache.Lookup(cacheKey, kOnlineCacheSoftTtlSec, kOnlineCacheHardTtlSec);
 
@@ -1766,7 +1800,7 @@ LeaderboardResult APIClient::FetchLeaderboardInternal(const std::string& chartId
 
     const std::string path = "/api/v1/leaderboards/" + UrlEncode(chartId)
         + "?difficulty=" + UrlEncode(difficulty)
-        + "&scope=global&limit=" + std::to_string(safeLimit);
+        + "&scope=" + cleanScope + "&limit=" + std::to_string(safeLimit);
 
     HttpRequest req = MakeRequest("GET", path, {}, IsAuthenticated());
     req.cancelToken = cancelToken;
@@ -1838,9 +1872,12 @@ LeaderboardResult APIClient::FetchLeaderboardInternal(const std::string& chartId
     return parsed;
 }
 
-LeaderboardResult APIClient::FetchLeaderboard(const std::string& chartId, const std::string& difficulty, int limit)
+LeaderboardResult APIClient::FetchLeaderboard(const std::string& chartId,
+                                              const std::string& difficulty,
+                                              int limit,
+                                              std::string_view scope)
 {
-    return FetchLeaderboardInternal(chartId, difficulty, limit, nullptr);
+    return FetchLeaderboardInternal(chartId, difficulty, limit, scope, nullptr);
 }
 
 bool APIClient::DownloadReplay(const std::string& scoreId, const std::string& destPath)
@@ -2194,14 +2231,16 @@ void APIClient::FlushPendingActionsAsync(std::function<void(int)> cb)
 }
 
 void APIClient::FetchLeaderboardAsync(const std::string& chartId, const std::string& difficulty, int limit,
-                                      std::function<void(LeaderboardResult)> cb)
+                                      std::function<void(LeaderboardResult)> cb,
+                                      std::string_view scope)
 {
+    const std::string scopeStr(scope);
     auto [seq, token] = BeginChannelRequest(m_leaderboardChannel);
-    PostTask([this, chartId, difficulty, limit, seq, token = std::move(token), cb = std::move(cb)]() mutable
+    PostTask([this, chartId, difficulty, limit, scopeStr, seq, token = std::move(token), cb = std::move(cb)]() mutable
     {
         if (!IsChannelRequestCurrent(m_leaderboardChannel, seq, token))
             return;
-        auto res = FetchLeaderboardInternal(chartId, difficulty, limit, token);
+        auto res = FetchLeaderboardInternal(chartId, difficulty, limit, scopeStr, token);
         if (!IsChannelRequestCurrent(m_leaderboardChannel, seq, token))
             return;
         if (cb)
@@ -4027,6 +4066,372 @@ void APIClient::SendArenaChatAsync(const std::string& code, int phraseId,
         auto res = SendArenaChat(code, phraseId);
         if (cb)
             PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+namespace
+{
+UserProfileData ParseUserProfileJson(const nlohmann::json& p)
+{
+    UserProfileData out;
+    if (!p.is_object())
+        return out;
+    out.userId        = SafeJsonStringOr(p, "user_id", "");
+    out.username      = SafeJsonStringOr(p, "username", "");
+    out.isGuest       = JsonBoolOr(p, "is_guest", false);
+    out.bio           = SafeJsonStringOr(p, "bio", "");
+    out.featuredTitle = SafeJsonStringOr(p, "featured_title", "");
+    out.danBadge      = SafeJsonStringOr(p, "dan_badge", "");
+    out.sakuraRating  = JsonSakuraRatingOr(p);
+    out.totalPP       = p.contains("total_pp") && p["total_pp"].is_number() ? p["total_pp"].get<double>() : 0.0;
+    out.playCount     = JsonIntOr(p, "play_count", 0);
+    out.followerCount = JsonIntOr(p, "follower_count", 0);
+    out.rivalCount    = JsonIntOr(p, "rival_count", 0);
+    out.isRival       = JsonBoolOr(p, "is_rival", false);
+    out.isMutual      = JsonBoolOr(p, "is_mutual", false);
+    out.createdAt     = JsonInt64Or(p, "created_at", 0LL);
+
+    if (p.contains("best_scores") && p["best_scores"].is_array())
+    {
+        for (const auto& s : p["best_scores"])
+        {
+            if (!s.is_object()) continue;
+            UserProfileScoreItem item;
+            item.scoreId         = SafeJsonStringOr(s, "score_id", "");
+            item.chartId         = SafeJsonStringOr(s, "chart_id", "");
+            item.chartTitle      = SafeJsonStringOr(s, "chart_title", "");
+            item.difficulty      = SafeJsonStringOr(s, "difficulty", "Normal");
+            item.difficultyLevel = JsonFloatOr(s, "difficulty_level", 1.0f);
+            item.score           = JsonIntOr(s, "score", 0);
+            item.accuracy        = JsonFloatOr(s, "accuracy", 0.0f);
+            item.maxCombo        = JsonIntOr(s, "max_combo", 0);
+            item.grade           = SafeJsonStringOr(s, "grade", "D");
+            item.pp              = s.contains("pp") && s["pp"].is_number() ? s["pp"].get<double>() : 0.0;
+            item.chartRating     = s.contains("chart_rating") && s["chart_rating"].is_number() ? s["chart_rating"].get<double>() : 0.0;
+            item.isFullCombo     = JsonBoolOr(s, "is_full_combo", false);
+            item.isAllPerfect    = JsonBoolOr(s, "is_all_perfect", false);
+            item.hasReplay       = JsonBoolOr(s, "has_replay", false);
+            item.playedAt        = JsonInt64Or(s, "played_at", 0LL);
+            out.bestScores.push_back(std::move(item));
+        }
+    }
+    return out;
+}
+} // namespace
+
+UserProfileResult APIClient::FetchUserProfile(const std::string& userId)
+{
+    UserProfileResult out;
+    if (userId.empty())
+    {
+        out.error = "用户 ID 不能为空";
+        return out;
+    }
+    const std::string path = "/api/v1/users/" + UrlEncode(userId) + "/profile";
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法获取玩家名片" : res.error;
+        return out;
+    }
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false) || !j.contains("profile"))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取玩家名片失败");
+            return out;
+        }
+        out.ok      = true;
+        out.profile = ParseUserProfileJson(j["profile"]);
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("玩家名片解析失败: ") + e.what();
+        return out;
+    }
+}
+
+UserProfileResult APIClient::UpdateMyProfile(const std::string& bio, const std::string& featuredTitle)
+{
+    UserProfileResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "请先登录在线账号";
+        return out;
+    }
+    const nlohmann::json body = {
+        { "bio", bio },
+        { "featured_title", featuredTitle }
+    };
+    const auto res = SendWithAuthRetry(MakeRequest("PATCH", "/api/v1/users/me/profile", body.dump(), true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法更新个人资料" : res.error;
+        return out;
+    }
+    MarkOnlineFromAuthenticatedSuccess();
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false) || !j.contains("profile"))
+        {
+            out.error = SafeJsonStringOr(j, "error", "更新个人资料失败");
+            return out;
+        }
+        out.ok      = true;
+        out.profile = ParseUserProfileJson(j["profile"]);
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+RivalActionResult APIClient::AddRival(const std::string& targetUserId)
+{
+    RivalActionResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "请先登录在线账号";
+        return out;
+    }
+    const std::string path = "/api/v1/rivals/" + UrlEncode(targetUserId);
+    const auto res = SendWithAuthRetry(MakeRequest("POST", path, "{}", true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法添加劲敌" : res.error;
+        return out;
+    }
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "添加劲敌失败");
+            return out;
+        }
+        out.ok            = true;
+        out.isRival       = JsonBoolOr(j, "is_rival", true);
+        out.isMutual      = JsonBoolOr(j, "is_mutual", false);
+        out.rivalCount    = JsonIntOr(j, "rival_count", 0);
+        out.followerCount = JsonIntOr(j, "follower_count", 0);
+        MutableOnlineCache().MarkStale("leaderboard_rivals:");
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+RivalActionResult APIClient::RemoveRival(const std::string& targetUserId)
+{
+    RivalActionResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "请先登录在线账号";
+        return out;
+    }
+    const std::string path = "/api/v1/rivals/" + UrlEncode(targetUserId);
+    const auto res = SendWithAuthRetry(MakeRequest("DELETE", path, {}, true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法移除劲敌" : res.error;
+        return out;
+    }
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "移除劲敌失败");
+            return out;
+        }
+        out.ok            = true;
+        out.isRival       = JsonBoolOr(j, "is_rival", false);
+        out.rivalCount    = JsonIntOr(j, "rival_count", 0);
+        out.followerCount = JsonIntOr(j, "follower_count", 0);
+        MutableOnlineCache().MarkStale("leaderboard_rivals:");
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+RivalListResult APIClient::FetchRivals()
+{
+    RivalListResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "请先登录在线账号";
+        return out;
+    }
+    const auto res = SendWithAuthRetry(MakeRequest("GET", "/api/v1/rivals", {}, true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法获取劲敌列表" : res.error;
+        return out;
+    }
+    MarkOnlineFromAuthenticatedSuccess();
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取劲敌列表失败");
+            return out;
+        }
+        out.ok = true;
+        if (j.contains("rivals") && j["rivals"].is_array())
+        {
+            for (const auto& r : j["rivals"])
+            {
+                if (!r.is_object()) continue;
+                RivalSummaryItem item;
+                item.userId        = SafeJsonStringOr(r, "user_id", "");
+                item.username      = SafeJsonStringOr(r, "username", "");
+                item.bio           = SafeJsonStringOr(r, "bio", "");
+                item.featuredTitle = SafeJsonStringOr(r, "featured_title", "");
+                item.danBadge      = SafeJsonStringOr(r, "dan_badge", "");
+                item.sakuraRating  = JsonSakuraRatingOr(r);
+                item.totalPP       = r.contains("total_pp") && r["total_pp"].is_number() ? r["total_pp"].get<double>() : 0.0;
+                item.playCount     = JsonIntOr(r, "play_count", 0);
+                item.isMutual      = JsonBoolOr(r, "is_mutual", false);
+                item.addedAt       = JsonInt64Or(r, "added_at", 0LL);
+                out.rivals.push_back(std::move(item));
+            }
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("劲敌列表解析失败: ") + e.what();
+        return out;
+    }
+}
+
+RatingLadderResult APIClient::FetchRatingLadder(int limit)
+{
+    RatingLadderResult out;
+    const int safeLimit = std::clamp(limit, 1, 100);
+    const std::string path = "/api/v1/rankings/rating?limit=" + std::to_string(safeLimit);
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法获取全球天梯" : res.error;
+        return out;
+    }
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取全球天梯失败");
+            return out;
+        }
+        out.ok = true;
+        if (j.contains("my_rank") && j["my_rank"].is_number_integer())
+            out.myRank = j["my_rank"].get<int>();
+        out.myRating = j.contains("my_rating") && j["my_rating"].is_number() ? j["my_rating"].get<double>() : 0.0;
+        if (j.contains("entries") && j["entries"].is_array())
+        {
+            for (const auto& e : j["entries"])
+            {
+                if (!e.is_object()) continue;
+                RatingLadderRow row;
+                row.rank          = JsonIntOr(e, "rank", 0);
+                row.userId        = SafeJsonStringOr(e, "user_id", "");
+                row.username      = SafeJsonStringOr(e, "username", "");
+                row.featuredTitle = SafeJsonStringOr(e, "featured_title", "");
+                row.danBadge      = SafeJsonStringOr(e, "dan_badge", "");
+                row.sakuraRating  = JsonSakuraRatingOr(e);
+                row.totalPP       = e.contains("total_pp") && e["total_pp"].is_number() ? e["total_pp"].get<double>() : 0.0;
+                row.playCount     = JsonIntOr(e, "play_count", 0);
+                row.isRival       = JsonBoolOr(e, "is_rival", false);
+                out.entries.push_back(std::move(row));
+            }
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("全球天梯解析失败: ") + e.what();
+        return out;
+    }
+}
+
+void APIClient::FetchUserProfileAsync(const std::string& userId, std::function<void(UserProfileResult)> cb)
+{
+    PostTask([this, userId, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchUserProfile(userId);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::UpdateMyProfileAsync(const std::string& bio, const std::string& featuredTitle,
+                                     std::function<void(UserProfileResult)> cb)
+{
+    PostTask([this, bio, featuredTitle, cb = std::move(cb)]() mutable
+    {
+        auto res = UpdateMyProfile(bio, featuredTitle);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::AddRivalAsync(const std::string& targetUserId, std::function<void(RivalActionResult)> cb)
+{
+    PostTask([this, targetUserId, cb = std::move(cb)]() mutable
+    {
+        auto res = AddRival(targetUserId);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::RemoveRivalAsync(const std::string& targetUserId, std::function<void(RivalActionResult)> cb)
+{
+    PostTask([this, targetUserId, cb = std::move(cb)]() mutable
+    {
+        auto res = RemoveRival(targetUserId);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::FetchRivalsAsync(std::function<void(RivalListResult)> cb)
+{
+    PostTask([this, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchRivals();
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::FetchRatingLadderAsync(int limit, std::function<void(RatingLadderResult)> cb)
+{
+    PostTask([this, limit, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchRatingLadder(limit);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
     });
 }
 

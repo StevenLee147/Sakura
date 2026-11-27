@@ -95,6 +95,10 @@ void Config::ApplyDefaults()
     setDefault("online.auto_cloud_sync", true);
     setDefault("online.last_cloud_sync_ts", 0LL);
     setDefault("online.settings_updated_at", 0LL);
+    setDefault(ConfigKeys::kTargetRivalId, std::string(""));
+    setDefault(ConfigKeys::kTargetRivalName, std::string(""));
+    setDefault(ConfigKeys::kPlayerBio, std::string(""));
+    setDefault(ConfigKeys::kFeaturedTitle, std::string(""));
     if (Get<std::string>(ConfigKeys::kSkinPath, "").empty())
     {
         Set(ConfigKeys::kSkinPath, std::string("moonlit_sakura"));

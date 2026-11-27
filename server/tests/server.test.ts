@@ -2398,3 +2398,146 @@ test("v2.2.0 ETag 304, Arena Revision Delta, 60s Reconnect, Host Handoff, Quick 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("Sakura Online Server v2.5.0 Player Profiles, Rivals, Rival Leaderboards & Global Rating Ladder", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sakura-srv-v250-"));
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v250-test-secret", serverVersion: "v2.5.0" });
+
+  try {
+    const regUser = async (username: string) => {
+      const r = await app.request("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password: "pass_v250_ok" }),
+      });
+      assert.equal(r.status, 201);
+      return (await r.json()) as { token: string; user: { id: string; username: string } };
+    };
+
+    const alice = await regUser("AliceSakura");
+    const bob   = await regUser("BobMoonlit");
+    const carol = await regUser("CarolOutsider");
+    await app.request("/api/v1/auth/guest", { method: "POST" }); // blank guest must be excluded from ladder
+
+    const submit = async (token: string, level: number, score: number, acc: number) => {
+      const r = await app.request("/api/v1/scores", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chart_id: "sakura_sprint",
+          chart_title: "樱语疾行",
+          chart_hash: "hash_sprint_ex",
+          difficulty: "Expert",
+          difficulty_level: level,
+          score,
+          accuracy: acc,
+          max_combo: 500,
+          grade: "SS",
+          perfect_count: 500,
+          great_count: 0,
+          good_count: 0,
+          bad_count: 0,
+          miss_count: 0,
+          total_judgments: 500,
+          is_full_combo: true,
+          is_all_perfect: acc >= 100,
+          assisted: false,
+        }),
+      });
+      assert.equal(r.status, 201);
+    };
+
+    await submit(carol.token, 13.0, 999500, 99.95); // global #1
+    await submit(bob.token,   13.0, 992000, 99.40); // global #2
+    await submit(alice.token, 13.0, 980000, 98.50); // global #3
+
+    // Update Alice bio & featured_title + length validation
+    const tooLongTitle = await app.request("/api/v1/users/me/profile", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${alice.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ featured_title: "X".repeat(40) }),
+    });
+    assert.equal(tooLongTitle.status, 400);
+
+    const patchRes = await app.request("/api/v1/users/me/profile", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${alice.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ bio: "月夜与樱花共鸣", featured_title: "月夜剑心" }),
+    });
+    assert.equal(patchRes.status, 200);
+    const patched = (await patchRes.json()) as { profile: { bio: string; featured_title: string; best_scores: unknown[] } };
+    assert.equal(patched.profile.bio, "月夜与樱花共鸣");
+    assert.equal(patched.profile.featured_title, "月夜剑心");
+    assert.equal(patched.profile.best_scores.length, 1);
+
+    // Self-follow rejected (400), idempotent addRival & mutual check
+    const selfFollow = await app.request(`/api/v1/rivals/${alice.user.id}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(selfFollow.status, 400);
+
+    const addBob1 = await app.request(`/api/v1/rivals/${bob.user.id}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(addBob1.status, 200);
+    assert.equal(((await addBob1.json()) as { is_mutual: boolean }).is_mutual, false);
+
+    // Idempotent duplicate POST + mutual follow from Bob
+    const addBob2 = await app.request(`/api/v1/rivals/${bob.user.id}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(addBob2.status, 200);
+    const mutualRes = await app.request(`/api/v1/rivals/${alice.user.id}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bob.token}` },
+    });
+    assert.equal(mutualRes.status, 200);
+    assert.equal(((await mutualRes.json()) as { is_mutual: boolean }).is_mutual, true);
+
+    // Rival-scoped leaderboard excludes CarolOutsider (who is global #1) and ranks Bob #1, Alice #2!
+    const noAuthRivalLb = await app.request("/api/v1/leaderboards/sakura_sprint?difficulty=Expert&scope=rivals");
+    assert.equal(noAuthRivalLb.status, 401);
+
+    const rivalLbRes = await app.request("/api/v1/leaderboards/sakura_sprint?difficulty=Expert&scope=rivals", {
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(rivalLbRes.status, 200);
+    const rivalLb = (await rivalLbRes.json()) as { my_rank: number; entries: Array<{ rank: number; username: string }> };
+    assert.equal(rivalLb.entries.length, 2);
+    assert.equal(rivalLb.entries[0].username, "BobMoonlit");
+    assert.equal(rivalLb.entries[0].rank, 1);
+    assert.equal(rivalLb.entries[1].username, "AliceSakura");
+    assert.equal(rivalLb.my_rank, 2);
+
+    // Global Rating Top 100 ladder excludes 0-play guest and marks is_rival accurately
+    const ladderRes = await app.request("/api/v1/rankings/rating", {
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(ladderRes.status, 200);
+    const ladder = (await ladderRes.json()) as {
+      my_rank: number;
+      entries: Array<{ rank: number; username: string; is_rival: boolean }>;
+    };
+    assert.equal(ladder.entries.length, 3);
+    assert.equal(ladder.entries[0].username, "CarolOutsider");
+    assert.equal(ladder.entries[0].is_rival, false);
+    assert.equal(ladder.entries[1].username, "BobMoonlit");
+    assert.equal(ladder.entries[1].is_rival, true);
+    assert.equal(ladder.my_rank, 3);
+
+    // Idempotent DELETE /rivals/:id
+    const delRes = await app.request(`/api/v1/rivals/${bob.user.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${alice.token}` },
+    });
+    assert.equal(delRes.status, 200);
+    assert.equal(((await delRes.json()) as { rival_count: number }).rival_count, 0);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

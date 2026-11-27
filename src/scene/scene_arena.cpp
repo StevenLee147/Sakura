@@ -352,6 +352,7 @@ void SceneArena::OnEnter()
             if (m_currentRoom.has_value()) LeaveCurrentRoom();
             else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
         });
+    m_profileModal   = std::make_unique<ProfileCardModal>(m_font);
     m_time           = 0.0f;
     m_pollTimer      = 0.0f;
     m_chatCooldown   = 0.0f;
@@ -573,6 +574,7 @@ void SceneArena::OnEnter()
 void SceneArena::OnExit()
 {
     *m_alive = false;
+    m_profileModal.reset();
     m_topBar.reset();
     if (m_petalEmitter >= 0)
     {
@@ -2149,6 +2151,7 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         0.215f, 0.920f, 0.0155f, kDim);
 
     m_particles.Render(renderer);
+    if (m_profileModal) m_profileModal->Render(renderer);
     if (m_topBar) { m_topBar->Render(renderer); m_topBar->RenderDrawer(renderer); }
 }
 
@@ -2156,6 +2159,31 @@ void SceneArena::OnEvent(const SDL_Event& event)
 {
     if (m_topBar && m_topBar->HandleEvent(event))
         return;
+    if (m_profileModal)
+    {
+        m_profileModal->Update(1.0f / 60.0f);
+        if (m_profileModal->HandleEvent(event))
+            return;
+    }
+    if (m_currentRoom.has_value())
+    {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+        {
+            const auto [mx, my] = Input::GetMousePosition();
+            const auto ranked = BuildRankedPlayers(*m_currentRoom);
+            for (int slot = 0; slot < static_cast<int>(ranked.size()) && slot < MAX_ARENA_PLAYERS; ++slot)
+            {
+                const float rowY = PLAYER_CARD_Y0 + static_cast<float>(slot) * PLAYER_CARD_STRIDE;
+                if (mx >= PLAYER_CARD_X && mx <= PLAYER_CARD_X + PLAYER_CARD_W &&
+                    my >= rowY && my < rowY + PLAYER_CARD_H && !ranked[slot].userId.empty())
+                {
+                    sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+                    m_profileModal->Open(ranked[slot].userId, ranked[slot].username);
+                    return;
+                }
+            }
+        }
+    }
     if (m_currentRoom.has_value())
     {
         if (m_btnLeaveRoom && m_btnLeaveRoom->HandleEvent(event))

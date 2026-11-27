@@ -8,6 +8,7 @@
 #include "game/select_context.h"
 #include "net/api_client.h"
 #include "ui/button.h"
+#include "ui/profile_card_modal.h"
 #include "ui/text_input.h"
 #include "ui/top_bar.h"
 #include "effects/background.h"
@@ -72,12 +73,14 @@ private:
     std::optional<int> m_dailyMyRank;
     bool m_playAsDaily = false;
     std::unique_ptr<sakura::ui::TopBar> m_topBar;
+    std::unique_ptr<sakura::ui::ProfileCardModal> m_profileModal;
     std::unique_ptr<sakura::ui::TextInput> m_search, m_startInput, m_endInput;
     std::vector<std::unique_ptr<sakura::ui::Button>> m_buttons, m_detailButtons;
     struct DialogState { std::mutex mutex; bool ready = false; std::string path; };
     std::shared_ptr<DialogState> m_dialog = std::make_shared<DialogState>();
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     bool m_showGlobalLeaderboard = false;
+    int m_leaderboardViewMode = 0; // 0=本地面板, 1=全球排行, 2=劲敌排行
     bool m_leaderboardLoading = false;
     bool m_leaderboardPendingFetch = false;
     float m_leaderboardDebounce = 0.0f;

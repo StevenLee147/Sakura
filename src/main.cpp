@@ -956,6 +956,33 @@ bool RunVerifyOnline(const std::string& baseUrl)
 
         (void)apiRivalV220.LeaveArenaRoom(codeV220);
         (void)api.LeaveArenaRoom(codeV220);
+
+        // v2.5.0 E2E: Player bio/title update, B15 profile fetch, Rival follow, scope=rivals leaderboard & Top 100 Rating ladder
+        const auto updProfV250 = api.UpdateMyProfile("E2E Moonlit Sakura", "月夜皆传");
+        if (!updProfV250.ok || updProfV250.profile.bio != "E2E Moonlit Sakura" || updProfV250.profile.featuredTitle != "月夜皆传")
+            return failStep("V250UpdateMyProfile", updProfV250.error);
+
+        const std::string hostIdV250 = api.GetCurrentUser().id;
+        const auto fetchedProfV250 = apiRivalV220.FetchUserProfile(hostIdV250);
+        if (!fetchedProfV250.ok || fetchedProfV250.profile.featuredTitle != "月夜皆传" || fetchedProfV250.profile.bestScores.empty())
+            return failStep("V250FetchUserProfile", fetchedProfV250.error);
+
+        const auto addRivalV250 = apiRivalV220.AddRival(hostIdV250);
+        if (!addRivalV250.ok || !addRivalV250.isRival)
+            return failStep("V250AddRival", addRivalV250.error);
+
+        const auto rivalListV250 = apiRivalV220.FetchRivals();
+        if (!rivalListV250.ok || rivalListV250.rivals.empty() || rivalListV250.rivals[0].userId != hostIdV250)
+            return failStep("V250FetchRivals", rivalListV250.error);
+
+        const auto rivalLbV250 = apiRivalV220.FetchLeaderboard("sakura_breath", "Expert", 10, "rivals");
+        if (!rivalLbV250.ok || rivalLbV250.entries.empty() || rivalLbV250.entries[0].userId != hostIdV250)
+            return failStep("V250RivalScopedLeaderboard", rivalLbV250.error);
+
+        const auto ratingLadderV250 = apiRivalV220.FetchRatingLadder(50);
+        if (!ratingLadderV250.ok || ratingLadderV250.entries.empty() || !ratingLadderV250.entries[0].isRival)
+            return failStep("V250FetchRatingLadder", ratingLadderV250.error);
+
         apiRivalV220.Shutdown();
     }
 

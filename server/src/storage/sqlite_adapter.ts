@@ -22,7 +22,11 @@ import {
   MarketChartItem,
   MarketRatingEntry,
   MarketSearchQuery,
+  RatingLadderEntry,
+  RivalSummaryItem,
   ScoreSubmission,
+  UserProfileData,
+  UserProfileScoreItem,
   UserRecord,
 } from "./types.js";
 
@@ -422,9 +426,27 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         PRIMARY KEY (room_code, user_id)
       );
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_follows (
+        follower_id TEXT NOT NULL,
+        target_id   TEXT NOT NULL,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (follower_id, target_id),
+        FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_id)   REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_user_follows_target   ON user_follows(target_id);
+    `);
     const userCols = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name?: string }>;
     if (!userCols.some((c) => c.name === "dan_badge")) {
       this.db.exec("ALTER TABLE users ADD COLUMN dan_badge TEXT NOT NULL DEFAULT ''");
+    }
+    if (!userCols.some((c) => c.name === "bio")) {
+      this.db.exec("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
+    }
+    if (!userCols.some((c) => c.name === "featured_title")) {
+      this.db.exec("ALTER TABLE users ADD COLUMN featured_title TEXT NOT NULL DEFAULT ''");
     }
     const roomCols = this.db.prepare("PRAGMA table_info(arena_rooms)").all() as Array<{ name?: string }>;
     if (!roomCols.some((c) => c.name === "revision")) {
@@ -528,7 +550,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
 
   findUserById(id: string): UserRecord | null {
     const row = this.db.prepare(
-      "SELECT id, username, password_hash, is_guest, dan_badge, created_at FROM users WHERE id = ?"
+      "SELECT id, username, password_hash, is_guest, dan_badge, bio, featured_title, created_at FROM users WHERE id = ?"
     ).get(id) as Record<string, unknown> | undefined;
     if (!row) return null;
     return {
@@ -537,6 +559,8 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       passwordHash: String(row.password_hash),
       isGuest: Number(row.is_guest) !== 0,
       danBadge: String(row.dan_badge || ""),
+      bio: String(row.bio || ""),
+      featuredTitle: String(row.featured_title || ""),
       createdAt: Number(row.created_at),
     };
   }
@@ -810,10 +834,30 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     return { scoreId, pp, rank: lb.myRank ?? 1, newBest };
   }
 
-  getLeaderboard(chartId: string, difficulty: string, limit: number, currentUserId?: string): {
+  getLeaderboard(
+    chartId: string,
+    difficulty: string,
+    limit: number,
+    currentUserId?: string,
+    scope: "global" | "rivals" = "global"
+  ): {
     entries: LeaderboardEntry[];
     myRank: number | null;
   } {
+    if (scope === "rivals" && !currentUserId) {
+      return { entries: [], myRank: null };
+    }
+    let allowedUsers: Set<string> | null = null;
+    if (scope === "rivals" && currentUserId) {
+      allowedUsers = new Set<string>([currentUserId]);
+      const rivalRows = this.db.prepare(
+        "SELECT target_id FROM user_follows WHERE follower_id = ?"
+      ).all(currentUserId) as Array<{ target_id: string }>;
+      for (const rr of rivalRows) {
+        allowedUsers.add(String(rr.target_id));
+      }
+    }
+
     const capped = Math.max(1, Math.min(100, limit || 50));
     const rows = this.db.prepare(`
       SELECT s.id, s.user_id, u.username, u.dan_badge, s.score, s.accuracy, s.max_combo, s.grade, s.pp,
@@ -831,6 +875,7 @@ export class SqliteStorageAdapter implements IStorageAdapter {
 
     for (const r of rows) {
       const uid = String(r.user_id);
+      if (allowedUsers && !allowedUsers.has(uid)) continue;
       if (seenUsers.has(uid)) continue;
       seenUsers.add(uid);
       uniqueRank++;
@@ -2289,6 +2334,256 @@ export class SqliteStorageAdapter implements IStorageAdapter {
     const sweep = this.sweepArenaRoomInternal(normCode, now, callerUserId, true);
     if (!sweep.exists) return null;
     return this.readArenaRoomDirect(normCode);
+  }
+
+  private sanitizeProfileText(raw: string | undefined, maxCodepoints: number): string {
+    const cleaned = (raw ?? "").replace(/[\x00-\x1F\x7F]/g, "").trim();
+    const cps = Array.from(cleaned);
+    if (cps.length > maxCodepoints) {
+      throw new Error(`Field exceeds maximum length of ${maxCodepoints} characters.`);
+    }
+    return cleaned;
+  }
+
+  private countUserPlays(userId: string): number {
+    const r1 = this.db.prepare("SELECT COUNT(*) AS c FROM scores WHERE user_id = ?").get(userId) as { c: number };
+    const r2 = this.db.prepare("SELECT COUNT(*) AS c FROM cloud_best_scores WHERE user_id = ?").get(userId) as { c: number };
+    return Math.max(Number(r1.c || 0), Number(r2.c || 0));
+  }
+
+  getUserProfile(targetUserId: string, viewerUserId?: string): UserProfileData | null {
+    const user = this.findUserById(targetUserId);
+    if (!user) return null;
+
+    const followerCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE target_id = ?").get(user.id) as { c: number }).c || 0
+    );
+    const rivalCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE follower_id = ?").get(user.id) as { c: number }).c || 0
+    );
+    let isRival = false;
+    let isMutual = false;
+    if (viewerUserId && viewerUserId !== user.id) {
+      isRival = Boolean(
+        this.db.prepare("SELECT 1 FROM user_follows WHERE follower_id = ? AND target_id = ?").get(viewerUserId, user.id)
+      );
+      const followsBack = Boolean(
+        this.db.prepare("SELECT 1 FROM user_follows WHERE follower_id = ? AND target_id = ?").get(user.id, viewerUserId)
+      );
+      isMutual = isRival && followsBack;
+    }
+
+    const bestMap = new Map<string, UserProfileScoreItem>();
+    const scoreRows = this.db.prepare(`
+      SELECT id, chart_id, chart_title, difficulty, difficulty_level, score, accuracy, max_combo,
+             grade, pp, synergy_count, is_full_combo, is_all_perfect, has_replay, played_at
+      FROM scores
+      WHERE user_id = ?
+      ORDER BY score DESC, accuracy DESC, played_at ASC
+    `).all(user.id) as Array<Record<string, unknown>>;
+
+    for (const r of scoreRows) {
+      const key = `${String(r.chart_id)}::${String(r.difficulty)}`;
+      const fc = Number(r.is_full_combo) !== 0;
+      const ap = Number(r.is_all_perfect) !== 0;
+      const cr = Math.round(
+        computeChartRating(Number(r.difficulty_level), Number(r.accuracy), fc, ap, Number(r.synergy_count || 0)) * 100
+      ) / 100;
+      const prev = bestMap.get(key);
+      if (!prev || cr > prev.chartRating || (cr === prev.chartRating && Number(r.score) > prev.score)) {
+        bestMap.set(key, {
+          scoreId: String(r.id),
+          chartId: String(r.chart_id),
+          chartTitle: String(r.chart_title),
+          difficulty: String(r.difficulty),
+          difficultyLevel: Number(r.difficulty_level),
+          score: Number(r.score),
+          accuracy: Number(r.accuracy),
+          maxCombo: Number(r.max_combo),
+          grade: String(r.grade),
+          pp: Number(r.pp),
+          chartRating: cr,
+          isFullCombo: fc,
+          isAllPerfect: ap,
+          hasReplay: Number(r.has_replay) !== 0,
+          playedAt: Number(r.played_at),
+        });
+      }
+    }
+
+    const bestScores = Array.from(bestMap.values())
+      .sort((a, b) => b.chartRating - a.chartRating || b.pp - a.pp || b.score - a.score)
+      .slice(0, 15);
+
+    return {
+      userId: user.id,
+      username: user.username,
+      isGuest: user.isGuest,
+      bio: user.bio ?? "",
+      featuredTitle: user.featuredTitle ?? "",
+      danBadge: user.danBadge,
+      sakuraRating: this.getUserSakuraRating(user.id),
+      totalPP: this.getUserTotalPP(user.id),
+      playCount: this.countUserPlays(user.id),
+      followerCount,
+      rivalCount,
+      isRival,
+      isMutual,
+      createdAt: user.createdAt,
+      bestScores,
+    };
+  }
+
+  updateUserProfile(userId: string, input: { bio?: string; featuredTitle?: string }): UserProfileData {
+    const existing = this.findUserById(userId);
+    if (!existing) throw new Error("User not found.");
+    const nextBio =
+      input.bio !== undefined ? this.sanitizeProfileText(input.bio, 120) : (existing.bio ?? "");
+    const nextTitle =
+      input.featuredTitle !== undefined
+        ? this.sanitizeProfileText(input.featuredTitle, 32)
+        : (existing.featuredTitle ?? "");
+    this.db.prepare("UPDATE users SET bio = ?, featured_title = ? WHERE id = ?").run(nextBio, nextTitle, userId);
+    return this.getUserProfile(userId, userId)!;
+  }
+
+  addRival(
+    userId: string,
+    targetUserId: string
+  ): { isRival: boolean; isMutual: boolean; rivalCount: number; followerCount: number } {
+    if (!userId || !targetUserId || userId === targetUserId) {
+      throw new Error("Cannot add yourself as a rival.");
+    }
+    const target = this.findUserById(targetUserId);
+    if (!target) {
+      throw new Error("Target user not found.");
+    }
+    const already = Boolean(
+      this.db.prepare("SELECT 1 FROM user_follows WHERE follower_id = ? AND target_id = ?").get(userId, targetUserId)
+    );
+    if (!already) {
+      const curCnt = Number(
+        (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE follower_id = ?").get(userId) as { c: number }).c || 0
+      );
+      if (curCnt >= 100) {
+        throw new Error("Maximum limit of 100 rivals reached.");
+      }
+      const now = Math.floor(Date.now() / 1000);
+      this.db.prepare("INSERT OR IGNORE INTO user_follows (follower_id, target_id, created_at) VALUES (?, ?, ?)").run(
+        userId,
+        targetUserId,
+        now
+      );
+    }
+    const isMutual = Boolean(
+      this.db.prepare("SELECT 1 FROM user_follows WHERE follower_id = ? AND target_id = ?").get(targetUserId, userId)
+    );
+    const rivalCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE follower_id = ?").get(userId) as { c: number }).c || 0
+    );
+    const followerCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE target_id = ?").get(targetUserId) as { c: number }).c || 0
+    );
+    return { isRival: true, isMutual, rivalCount, followerCount };
+  }
+
+  removeRival(
+    userId: string,
+    targetUserId: string
+  ): { isRival: boolean; rivalCount: number; followerCount: number } {
+    this.db.prepare("DELETE FROM user_follows WHERE follower_id = ? AND target_id = ?").run(userId, targetUserId);
+    const rivalCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE follower_id = ?").get(userId) as { c: number }).c || 0
+    );
+    const followerCount = Number(
+      (this.db.prepare("SELECT COUNT(*) AS c FROM user_follows WHERE target_id = ?").get(targetUserId) as { c: number }).c || 0
+    );
+    return { isRival: false, rivalCount, followerCount };
+  }
+
+  listRivals(userId: string): RivalSummaryItem[] {
+    const rows = this.db.prepare(`
+      SELECT f.target_id, f.created_at AS added_at, u.username, u.bio, u.featured_title, u.dan_badge
+      FROM user_follows f
+      JOIN users u ON u.id = f.target_id
+      WHERE f.follower_id = ?
+    `).all(userId) as Array<Record<string, unknown>>;
+
+    const items: RivalSummaryItem[] = rows.map((r) => {
+      const tid = String(r.target_id);
+      const isMutual = Boolean(
+        this.db.prepare("SELECT 1 FROM user_follows WHERE follower_id = ? AND target_id = ?").get(tid, userId)
+      );
+      return {
+        userId: tid,
+        username: String(r.username),
+        bio: String(r.bio || ""),
+        featuredTitle: String(r.featured_title || ""),
+        danBadge: String(r.dan_badge || ""),
+        sakuraRating: this.getUserSakuraRating(tid),
+        totalPP: this.getUserTotalPP(tid),
+        playCount: this.countUserPlays(tid),
+        isMutual,
+        addedAt: Number(r.added_at || 0),
+      };
+    });
+
+    items.sort((a, b) => b.sakuraRating - a.sakuraRating || b.totalPP - a.totalPP || b.addedAt - a.addedAt);
+    return items;
+  }
+
+  getGlobalRatingLadder(
+    limit = 100,
+    viewerUserId?: string
+  ): { entries: RatingLadderEntry[]; myRank: number | null; myRating: number } {
+    const capped = Math.max(1, Math.min(100, Math.trunc(limit || 100)));
+    const viewerRivals = new Set<string>();
+    if (viewerUserId) {
+      const rRows = this.db.prepare("SELECT target_id FROM user_follows WHERE follower_id = ?").all(viewerUserId) as Array<{
+        target_id: string;
+      }>;
+      for (const rr of rRows) viewerRivals.add(String(rr.target_id));
+    }
+
+    const users = this.db.prepare(
+      "SELECT id, username, is_guest, featured_title, dan_badge FROM users"
+    ).all() as Array<Record<string, unknown>>;
+
+    const ranked: Array<Omit<RatingLadderEntry, "rank">> = [];
+    for (const u of users) {
+      const uid = String(u.id);
+      const playCount = this.countUserPlays(uid);
+      const isGuest = Number(u.is_guest) !== 0;
+      if (isGuest && playCount <= 0) continue;
+      const sakuraRating = this.getUserSakuraRating(uid);
+      const totalPP = this.getUserTotalPP(uid);
+      if (playCount <= 0 && sakuraRating <= 0 && totalPP <= 0) continue;
+      ranked.push({
+        userId: uid,
+        username: String(u.username),
+        featuredTitle: String(u.featured_title || ""),
+        danBadge: String(u.dan_badge || ""),
+        sakuraRating,
+        totalPP,
+        playCount,
+        isRival: viewerRivals.has(uid),
+      });
+    }
+
+    ranked.sort((a, b) => b.sakuraRating - a.sakuraRating || b.totalPP - a.totalPP || b.playCount - a.playCount);
+    let myRank: number | null = null;
+    const myRating = viewerUserId ? this.getUserSakuraRating(viewerUserId) : 0;
+    const entries: RatingLadderEntry[] = [];
+    for (let i = 0; i < ranked.length; i++) {
+      const rank = i + 1;
+      if (viewerUserId && ranked[i].userId === viewerUserId) {
+        myRank = rank;
+      }
+      if (entries.length < capped) {
+        entries.push({ rank, ...ranked[i] });
+      }
+    }
+    return { entries, myRank, myRating };
   }
 
   close(): void {

@@ -10,6 +10,7 @@
 #include "game/chart.h"
 #include "net/api_client.h"
 #include "ui/button.h"
+#include "ui/profile_card_modal.h"
 #include "ui/text_input.h"
 #include "ui/top_bar.h"
 
@@ -42,6 +43,7 @@ private:
 
     sakura::core::FontHandle m_font = sakura::core::INVALID_HANDLE;
     std::unique_ptr<sakura::ui::TopBar> m_topBar;
+    std::unique_ptr<sakura::ui::ProfileCardModal> m_profileModal;
     sakura::effects::ParticleSystem m_particles;
     int   m_petalEmitter = -1;
     float m_time         = 0.0f;

@@ -276,6 +276,105 @@ struct ArenaRoomListResult
     std::vector<ArenaRoomState> rooms;
 };
 
+// v2.5.0 Player Social Profiles, Rivals & Global Sakura Rating Ladder
+struct UserProfileScoreItem
+{
+    std::string scoreId;
+    std::string chartId;
+    std::string chartTitle;
+    std::string difficulty;
+    float       difficultyLevel = 1.0f;
+    int         score           = 0;
+    float       accuracy        = 0.0f;
+    int         maxCombo        = 0;
+    std::string grade           = "D";
+    double      pp              = 0.0;
+    double      chartRating     = 0.0;
+    bool        isFullCombo     = false;
+    bool        isAllPerfect    = false;
+    bool        hasReplay       = false;
+    long long   playedAt        = 0;
+};
+
+struct UserProfileData
+{
+    std::string                       userId;
+    std::string                       username;
+    bool                              isGuest       = false;
+    std::string                       bio;
+    std::string                       featuredTitle;
+    std::string                       danBadge;
+    double                            sakuraRating  = 0.0;
+    double                            totalPP       = 0.0;
+    int                               playCount     = 0;
+    int                               followerCount = 0;
+    int                               rivalCount    = 0;
+    bool                              isRival       = false;
+    bool                              isMutual      = false;
+    long long                         createdAt     = 0;
+    std::vector<UserProfileScoreItem> bestScores;
+};
+
+struct UserProfileResult
+{
+    bool            ok = false;
+    std::string     error;
+    UserProfileData profile;
+};
+
+struct RivalActionResult
+{
+    bool        ok            = false;
+    std::string error;
+    bool        isRival       = false;
+    bool        isMutual      = false;
+    int         rivalCount    = 0;
+    int         followerCount = 0;
+};
+
+struct RivalSummaryItem
+{
+    std::string userId;
+    std::string username;
+    std::string bio;
+    std::string featuredTitle;
+    std::string danBadge;
+    double      sakuraRating = 0.0;
+    double      totalPP      = 0.0;
+    int         playCount    = 0;
+    bool        isMutual     = false;
+    long long   addedAt      = 0;
+};
+
+struct RivalListResult
+{
+    bool                          ok = false;
+    std::string                   error;
+    std::vector<RivalSummaryItem> rivals;
+};
+
+struct RatingLadderRow
+{
+    int         rank         = 0;
+    std::string userId;
+    std::string username;
+    std::string featuredTitle;
+    std::string danBadge;
+    double      sakuraRating = 0.0;
+    double      totalPP      = 0.0;
+    int         playCount    = 0;
+    bool        isRival      = false;
+};
+
+struct RatingLadderResult
+{
+    bool                         ok       = false;
+    std::string                  error;
+    std::optional<int>           myRank;
+    double                       myRating = 0.0;
+    std::vector<RatingLadderRow> entries;
+};
+
 class APIClient
 {
 public:
@@ -319,7 +418,9 @@ public:
     float GetActiveTransferProgress() const;
     uint64_t NextRequestSeq();
     std::optional<LeaderboardResult> GetCachedLeaderboard(const std::string& chartId,
-                                                          const std::string& difficulty) const;
+                                                          const std::string& difficulty,
+                                                          std::string_view scope = "global") const;
+    static std::string FormatScoreDeltaText(std::string_view rivalName, int myBestScore, int rivalScore);
 
     // Synchronous calls (used by worker threads, --verify-online, and unit tests)
     bool CheckHealth();
@@ -337,8 +438,19 @@ public:
     bool EnqueueCourseRecordOffline(const sakura::game::CourseRecord& record);
     int FlushPendingActions();
     int FlushPendingScores();
-    LeaderboardResult FetchLeaderboard(const std::string& chartId, const std::string& difficulty, int limit = 50);
+    LeaderboardResult FetchLeaderboard(const std::string& chartId,
+                                       const std::string& difficulty,
+                                       int limit = 50,
+                                       std::string_view scope = "global");
     bool DownloadReplay(const std::string& scoreId, const std::string& destPath);
+
+    // v2.5.0 Player Profiles, Rivals & Rating Ladder
+    UserProfileResult FetchUserProfile(const std::string& userId);
+    UserProfileResult UpdateMyProfile(const std::string& bio, const std::string& featuredTitle);
+    RivalActionResult AddRival(const std::string& targetUserId);
+    RivalActionResult RemoveRival(const std::string& targetUserId);
+    RivalListResult FetchRivals();
+    RatingLadderResult FetchRatingLadder(int limit = 100);
 
     // v1.2.0 Online Chart Market & Multi-Device Cloud Sync
     static MarketInstallState GetInstalledMarketState(const MarketChartItem& item,
@@ -406,7 +518,15 @@ public:
     void SubmitScoreAsync(const sakura::game::GameResult& result, std::function<void(ScoreSubmitResult)> cb);
     void FlushPendingActionsAsync(std::function<void(int)> cb = {});
     void FetchLeaderboardAsync(const std::string& chartId, const std::string& difficulty, int limit,
-                               std::function<void(LeaderboardResult)> cb);
+                               std::function<void(LeaderboardResult)> cb,
+                               std::string_view scope = "global");
+    void FetchUserProfileAsync(const std::string& userId, std::function<void(UserProfileResult)> cb);
+    void UpdateMyProfileAsync(const std::string& bio, const std::string& featuredTitle,
+                              std::function<void(UserProfileResult)> cb);
+    void AddRivalAsync(const std::string& targetUserId, std::function<void(RivalActionResult)> cb);
+    void RemoveRivalAsync(const std::string& targetUserId, std::function<void(RivalActionResult)> cb);
+    void FetchRivalsAsync(std::function<void(RivalListResult)> cb);
+    void FetchRatingLadderAsync(int limit, std::function<void(RatingLadderResult)> cb);
     void DownloadReplayAsync(const std::string& scoreId, const std::string& destPath,
                              std::function<void(bool, std::string)> cb);
     void PublishChartPackageAsync(const std::string& sakuraFilePath, const std::string& description,
@@ -490,6 +610,7 @@ private:
     LeaderboardResult FetchLeaderboardInternal(const std::string& chartId,
                                                const std::string& difficulty,
                                                int limit,
+                                               std::string_view scope,
                                                const std::shared_ptr<CancelToken>& cancelToken);
     MarketListResult FetchMarketChartsInternal(const MarketQuery& query,
                                                const std::shared_ptr<CancelToken>& cancelToken);
