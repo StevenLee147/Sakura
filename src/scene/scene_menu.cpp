@@ -154,6 +154,7 @@ void SceneMenu::OnEnter()
     m_fontTitle   = rm.GetDefaultFontHandle();
     m_fontSub     = rm.GetDefaultFontHandle();
     m_fontButton  = rm.GetDefaultFontHandle();
+    m_topBar      = std::make_unique<sakura::ui::TopBar>("SAKURA  ·  月夜墨樱", m_fontSub);
 
     // 初始化入场动画
     m_enterTimer            = 0.0f;
@@ -903,7 +904,8 @@ void SceneMenu::SetupAccountModal()
     sakura::ui::VisualStyle::ApplyButton(m_btnAccountCapsule.get(), sakura::ui::ButtonVariant::Secondary);
     m_btnAccountCapsule->SetTextAlign(sakura::core::TextAlign::Left);
     m_btnAccountCapsule->SetTextPadding(0.026f);
-    m_btnAccountCapsule->SetOnClick([this]() { OpenAccountModal(); });
+    m_btnAccountCapsule->SetVisible(false);
+    m_btnAccountCapsule->SetOnClick([this]() { if (m_topBar) m_topBar->OpenAccountDrawer(); else OpenAccountModal(); });
 
     m_btnMarket = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.695f, 0.088f, 0.253f, 0.042f },
@@ -947,10 +949,12 @@ void SceneMenu::SetupAccountModal()
     m_inputPassword = std::make_unique<sakura::ui::TextInput>(
         sakura::core::NormRect{ 0.248f, 0.448f, 0.270f, 0.042f }, m_fontButton, 0.0185f, 64);
     m_inputPassword->SetPlaceholder("密码 (至少 6 位，访客免填)");
+    m_inputPassword->SetPasswordMode(true);
 
     m_inputNewPassword = std::make_unique<sakura::ui::TextInput>(
         sakura::core::NormRect{ 0.248f, 0.520f, 0.270f, 0.042f }, m_fontButton, 0.0185f, 64);
     m_inputNewPassword->SetPlaceholder("输入新密码 (至少 6 位)");
+    m_inputNewPassword->SetPasswordMode(true);
     m_inputNewPassword->SetVisible(false);
 
     auto handleAuthResult = [this](const sakura::net::AuthResult& res)
@@ -1216,6 +1220,7 @@ void SceneMenu::OnExit()
     m_btnEditorOpen.reset();
     m_btnEditorNew.reset();
     m_btnEditorCancel.reset();
+    m_topBar.reset();
 }
 
 // ── UpdateEnterAnimation ──────────────────────────────────────────────────────
@@ -1259,6 +1264,8 @@ void SceneMenu::UpdateEnterAnimation(float dt)
 
 void SceneMenu::OnUpdate(float dt)
 {
+    if (m_topBar)
+        m_topBar->Update(dt);
     UpdateEnterAnimation(sakura::core::Config::GetInstance().Get<bool>("graphics.reduced_motion", false) ? 10.0f : dt);
 
     // ── 粒子与特效更新 ───────────────────────────────────────────────────────
@@ -2066,6 +2073,12 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
         if (m_btnConfirmYes) m_btnConfirmYes->Render(renderer);
         if (m_btnConfirmNo)  m_btnConfirmNo ->Render(renderer);
     }
+
+    if (m_topBar)
+    {
+        m_topBar->Render(renderer);
+        m_topBar->RenderDrawer(renderer);
+    }
 }
 
 // ── OnEvent ───────────────────────────────────────────────────────────────────
@@ -2080,6 +2093,8 @@ void SceneMenu::OnEvent(const SDL_Event& event)
         auto cfg = sakura::effects::ParticlePresets::ClickSpark();
         m_particles.Emit(mx, my, 5, cfg);
     }
+    if (m_topBar && m_topBar->HandleEvent(event))
+        return;
 
     // 在线账号弹层优先
     if (m_showAccountModal)

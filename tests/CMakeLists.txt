@@ -30,6 +30,7 @@ add_executable(SakuraTests
     test_v200_updater_and_career.cpp
     test_v210_auth_persistence.cpp
     test_v220_transport_and_arena.cpp
+    test_v230_ui_and_select_ux.cpp
 )
 
 target_compile_definitions(SakuraTests PRIVATE

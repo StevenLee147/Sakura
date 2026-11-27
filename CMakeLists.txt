@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 2.2.0
+    VERSION 2.3.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
@@ -302,6 +302,7 @@ if(SAKURA_BUILD_TESTS)
         src/game/pp_calculator.cpp
         src/game/score.cpp
         src/game/chart_utils.cpp
+        src/game/select_context.cpp
         src/game/play_session.cpp
         src/game/replay.cpp
         src/utils/archive.cpp

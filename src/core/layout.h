@@ -3,6 +3,7 @@
 // layout.h — 归一化布局与度量工具
 
 #include "renderer.h"
+#include "safe_layout.h"
 
 #include <algorithm>
 #include <vector>
@@ -68,6 +69,19 @@ public:
             y += itemHeight + gap;
         }
         return result;
+    }
+
+    static SafeAspectLayout ComputeSafeAspect(const Renderer& renderer,
+                                              float maxInteractiveAspect = 18.0f / 9.0f)
+    {
+        return SafeAspectLayout::Compute(
+            renderer.GetScreenWidth(), renderer.GetScreenHeight(), maxInteractiveAspect);
+    }
+
+    static NormRect MapSafe(const SafeAspectLayout& sa, NormRect localRect)
+    {
+        const SafeNormRect mapped = sa.Map({ localRect.x, localRect.y, localRect.width, localRect.height });
+        return { mapped.x, mapped.y, mapped.width, mapped.height };
     }
 };
 

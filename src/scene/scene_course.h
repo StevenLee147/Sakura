@@ -10,6 +10,7 @@
 #include "game/chart.h"
 #include "game/course.h"
 #include "ui/button.h"
+#include "ui/top_bar.h"
 
 #include <memory>
 #include <optional>
@@ -38,6 +39,7 @@ private:
     bool m_showSummaryModal = false;
 
     sakura::core::FontHandle m_font = sakura::core::INVALID_HANDLE;
+    std::unique_ptr<sakura::ui::TopBar> m_topBar;
     sakura::effects::ParticleSystem m_particles;
     int   m_petalEmitter = -1;
     float m_time         = 0.0f;

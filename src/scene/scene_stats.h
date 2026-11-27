@@ -8,6 +8,7 @@
 #include "core/resource_manager.h"
 #include "ui/button.h"
 #include "ui/scroll_list.h"
+#include "ui/top_bar.h"
 #include "game/achievement_manager.h"
 #include "game/pp_calculator.h"
 
@@ -49,6 +50,7 @@ private:
     sakura::core::FontHandle m_fontBody  = sakura::core::INVALID_HANDLE;
     sakura::core::FontHandle m_fontSmall = sakura::core::INVALID_HANDLE;
 
+    std::unique_ptr<sakura::ui::TopBar> m_topBar;
     std::unique_ptr<sakura::ui::Button> m_btnBack;
     std::unique_ptr<sakura::ui::Button> m_btnExportB30;
     std::unique_ptr<sakura::ui::Button> m_btnToggleB30Overlay;

@@ -10,6 +10,7 @@
 #include "ui/progress_bar.h"
 #include "ui/slider.h"
 #include "ui/text_input.h"
+#include "ui/top_bar.h"
 
 #include <array>
 #include <memory>
@@ -43,6 +44,7 @@ private:
     std::shared_ptr<bool>                m_alive  = std::make_shared<bool>(true);
     std::shared_ptr<UploadDialogState>   m_dialog = std::make_shared<UploadDialogState>();
     sakura::core::FontHandle             m_font   = sakura::core::INVALID_HANDLE;
+    std::unique_ptr<sakura::ui::TopBar>  m_topBar;
     sakura::effects::ParticleSystem      m_particles;
     int                                  m_petalEmitter = -1;
     float                                m_time         = 0.0f;

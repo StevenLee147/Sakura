@@ -4,11 +4,41 @@
 #include "core/input.h"
 #include "utils/easing.h"
 
+#include "audio/audio_manager.h"
+#include "ui/visual_style.h"
+
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace sakura::ui
 {
+
+namespace
+{
+TextInput* g_activeTextInput = nullptr;
+
+std::size_t CountCodepoints(std::string_view sv)
+{
+    std::size_t n = 0;
+    for (char ch : sv)
+    {
+        if ((static_cast<unsigned char>(ch) & 0xC0u) != 0x80u)
+            ++n;
+    }
+    return n;
+}
+
+std::string RepeatBullets(std::size_t count)
+{
+    static constexpr std::string_view kBullet = "\xE2\x80\xA2";
+    std::string out;
+    out.reserve(count * kBullet.size());
+    for (std::size_t i = 0; i < count; ++i)
+        out.append(kBullet);
+    return out;
+}
+} // namespace
 
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 
@@ -36,19 +66,43 @@ void TextInput::SetText(const std::string& text)
 
 void TextInput::SetFocused(bool focused)
 {
-    if(m_isFocused==focused)return;
+    if (m_isFocused == focused)
+        return;
     m_isFocused = focused;
     if (focused)
     {
-        if (auto* window = SDL_GetKeyboardFocus()) SDL_StartTextInput(window);
+        g_activeTextInput = this;
+        if (auto* window = SDL_GetKeyboardFocus())
+            SDL_StartTextInput(window);
         m_cursorBlink   = 0.0f;
         m_cursorVisible = true;
     }
     else
     {
-        if (auto* window = SDL_GetKeyboardFocus()) SDL_StopTextInput(window);
-        m_selectedAll = false;
+        m_compositionText.clear();
+        m_compositionCursor = 0;
+        m_selectedAll       = false;
+        if (g_activeTextInput == this)
+        {
+            g_activeTextInput = nullptr;
+            if (auto* window = SDL_GetKeyboardFocus())
+                SDL_StopTextInput(window);
+        }
     }
+}
+
+void TextInput::SetPasswordMode(bool enabled)
+{
+    m_passwordMode = enabled;
+    if (!enabled)
+        m_passwordRevealed = false;
+}
+
+std::string TextInput::GetDisplayString() const
+{
+    if (!m_passwordMode || m_passwordRevealed)
+        return m_text;
+    return RepeatBullets(CountCodepoints(m_text));
 }
 
 // ── 文字操作 ──────────────────────────────────────────────────────────────────
@@ -135,6 +189,20 @@ bool TextInput::HandleEvent(const SDL_Event& event)
     {
         auto [mx, my] = sakura::core::Input::GetMousePosition();
         bool hit = HitTest(mx, my);
+        if (hit && m_passwordMode)
+        {
+            const float padX    = m_bounds.width * 0.03f;
+            const float toggleW = std::min(0.042f, m_bounds.width * 0.18f);
+            const float toggleX = m_bounds.x + m_bounds.width - padX - toggleW;
+            if (mx >= toggleX && mx <= m_bounds.x + m_bounds.width)
+            {
+                m_passwordRevealed = !m_passwordRevealed;
+                if (!m_isFocused)
+                    SetFocused(true);
+                sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+                return true;
+            }
+        }
         if (hit && !m_isFocused)  SetFocused(true);
         if (!hit && m_isFocused)  SetFocused(false);
         return hit;
@@ -142,8 +210,19 @@ bool TextInput::HandleEvent(const SDL_Event& event)
 
     if (!m_isFocused) return false;
 
+    if (event.type == SDL_EVENT_TEXT_EDITING)
+    {
+        m_compositionText   = (event.edit.text != nullptr) ? event.edit.text : "";
+        m_compositionCursor = event.edit.start;
+        m_cursorBlink       = 0.0f;
+        m_cursorVisible     = true;
+        return true;
+    }
+
     if (event.type == SDL_EVENT_TEXT_INPUT)
     {
+        m_compositionText.clear();
+        m_compositionCursor = 0;
         InsertChar(event.text.text);
         m_cursorBlink   = 0.0f;
         m_cursorVisible = true;
@@ -191,12 +270,21 @@ bool TextInput::HandleEvent(const SDL_Event& event)
             case SDL_SCANCODE_C:
                 if (ctrl)
                 {
-                    SDL_SetClipboardText(m_text.c_str());
+                    if (!m_passwordMode)
+                        SDL_SetClipboardText(m_text.c_str());
                     return true;
                 }
                 break;
             case SDL_SCANCODE_X:
-                if (ctrl && m_selectedAll) { SDL_SetClipboardText(m_text.c_str()); DeleteCharBefore(); return true; }
+                if (ctrl)
+                {
+                    if (!m_passwordMode && m_selectedAll)
+                    {
+                        SDL_SetClipboardText(m_text.c_str());
+                        DeleteCharBefore();
+                    }
+                    return true;
+                }
                 break;
             case SDL_SCANCODE_V:
                 if (ctrl)
@@ -249,52 +337,116 @@ void TextInput::Render(sakura::core::Renderer& renderer)
         { borderCol.r, borderCol.g, borderCol.b, static_cast<uint8_t>(borderCol.a * 0.48f) },
         m_isFocused ? 0.0016f : 0.0012f, 10);
 
-    // 文字或占位符
-    float padX = m_bounds.width * 0.03f;
+    const bool masked = m_passwordMode && !m_passwordRevealed;
+    const std::string displayFull = GetDisplayString();
+    const std::size_t safeCursorByte = std::min(m_cursorPos, m_text.size());
+    const std::string displayBefore = masked
+        ? RepeatBullets(CountCodepoints(std::string_view(m_text).substr(0, safeCursorByte)))
+        : m_text.substr(0, safeCursorByte);
+    const std::string displayAfter = masked
+        ? RepeatBullets(CountCodepoints(std::string_view(m_text).substr(safeCursorByte)))
+        : m_text.substr(safeCursorByte);
+
+    const float padX = m_bounds.width * 0.03f;
+    const float toggleReserve = m_passwordMode ? (std::min(0.042f, m_bounds.width * 0.18f) + 0.006f) : 0.0f;
     float textX = m_bounds.x + padX;
     float textY = m_bounds.y + (m_bounds.height - renderer.MeasureText(m_fontHandle, "Ag", m_normFontSize).height) * 0.5f;
-    const float cursorWidth = renderer.MeasureTextWidth(m_fontHandle, m_text.substr(0,m_cursorPos), m_normFontSize);
-    const float available = m_bounds.width - padX * 2;
+    const float beforeW = (m_fontHandle != 0) ? renderer.MeasureTextWidth(m_fontHandle, displayBefore, m_normFontSize) : 0.0f;
+    const float compW   = (!m_compositionText.empty() && m_fontHandle != 0)
+        ? renderer.MeasureTextWidth(m_fontHandle, m_compositionText, m_normFontSize)
+        : 0.0f;
+    const float cursorWidth = beforeW + compW;
+    const float available = std::max(0.01f, m_bounds.width - padX * 2.0f - toggleReserve);
     m_scrollOffset = std::clamp(m_scrollOffset, std::max(0.0f, cursorWidth - available + 0.003f), cursorWidth);
-    SDL_Renderer* raw = renderer.GetSDLRenderer();
-    SDL_Rect previous{}; const bool clipped = SDL_RenderClipEnabled(raw); SDL_GetRenderClipRect(raw,&previous);
-    SDL_Rect clip{static_cast<int>(textX*renderer.GetScreenWidth()),static_cast<int>(m_bounds.y*renderer.GetScreenHeight()),
-        static_cast<int>(available*renderer.GetScreenWidth()),static_cast<int>(m_bounds.height*renderer.GetScreenHeight())};
-    SDL_SetRenderClipRect(raw,&clip);
-    textX -= m_scrollOffset;
-    if(m_selectedAll && m_isFocused) renderer.DrawFilledRect({textX,textY,renderer.MeasureTextWidth(m_fontHandle,m_text,m_normFontSize),m_normFontSize*1.4f},{133,95,145,150});
 
-    if (!m_text.empty())
+    const int screenW = std::max(1, renderer.GetScreenWidth());
+    const int screenH = std::max(1, renderer.GetScreenHeight());
+    if (m_isFocused)
     {
-        renderer.DrawText(m_fontHandle, m_text,
-                          textX, textY,
-                          m_normFontSize,
-                          m_textColor,
-                          sakura::core::TextAlign::Left);
+        if (auto* win = SDL_GetKeyboardFocus())
+        {
+            SDL_Rect imeRect{
+                static_cast<int>(std::lround(m_bounds.x * static_cast<float>(screenW))),
+                static_cast<int>(std::lround(m_bounds.y * static_cast<float>(screenH))),
+                std::max(1, static_cast<int>(std::lround(m_bounds.width * static_cast<float>(screenW)))),
+                std::max(1, static_cast<int>(std::lround(m_bounds.height * static_cast<float>(screenH))))
+            };
+            const float caretNormInBox = std::clamp(padX - m_scrollOffset + cursorWidth, 0.0f, m_bounds.width);
+            const int cursorPx = static_cast<int>(std::lround(caretNormInBox * static_cast<float>(screenW)));
+            SDL_SetTextInputArea(win, &imeRect, cursorPx);
+        }
+    }
+
+    SDL_Renderer* raw = renderer.GetSDLRenderer();
+    SDL_Rect previous{};
+    const bool clipped = SDL_RenderClipEnabled(raw);
+    SDL_GetRenderClipRect(raw, &previous);
+    SDL_Rect clip{
+        static_cast<int>(textX * static_cast<float>(screenW)),
+        static_cast<int>(m_bounds.y * static_cast<float>(screenH)),
+        std::max(1, static_cast<int>(available * static_cast<float>(screenW))),
+        std::max(1, static_cast<int>(m_bounds.height * static_cast<float>(screenH)))
+    };
+    SDL_SetRenderClipRect(raw, &clip);
+    textX -= m_scrollOffset;
+
+    if (m_selectedAll && m_isFocused && !displayFull.empty())
+    {
+        renderer.DrawFilledRect(
+            { textX, textY, renderer.MeasureTextWidth(m_fontHandle, displayFull, m_normFontSize), m_normFontSize * 1.4f },
+            { 133, 95, 145, 150 });
+    }
+
+    if (!m_compositionText.empty() && m_isFocused)
+    {
+        if (!displayBefore.empty())
+            renderer.DrawText(m_fontHandle, displayBefore, textX, textY, m_normFontSize, m_textColor, sakura::core::TextAlign::Left);
+        const float compX = textX + beforeW;
+        renderer.DrawFilledRect({ compX, m_bounds.y + m_bounds.height * 0.16f, compW, m_bounds.height * 0.68f }, { 88, 52, 92, 130 });
+        renderer.DrawText(m_fontHandle, m_compositionText, compX, textY, m_normFontSize, { 246, 178, 206, 255 }, sakura::core::TextAlign::Left);
+        const float ulY = m_bounds.y + m_bounds.height * 0.84f;
+        renderer.DrawLine(compX, ulY, compX + compW, ulY, { 250, 216, 157, 230 }, 0.0016f);
+        if (!displayAfter.empty())
+            renderer.DrawText(m_fontHandle, displayAfter, compX + compW, textY, m_normFontSize, m_textColor, sakura::core::TextAlign::Left);
+    }
+    else if (!displayFull.empty())
+    {
+        renderer.DrawText(m_fontHandle, displayFull, textX, textY, m_normFontSize, m_textColor, sakura::core::TextAlign::Left);
     }
     else if (!m_placeholder.empty())
     {
-        renderer.DrawText(m_fontHandle, m_placeholder,
-                          textX, textY,
-                          m_normFontSize,
-                          m_placeholderColor,
-                          sakura::core::TextAlign::Left);
+        renderer.DrawText(m_fontHandle, m_placeholder, textX, textY, m_normFontSize, m_placeholderColor, sakura::core::TextAlign::Left);
     }
 
-    // 光标
     if (m_isFocused && m_cursorVisible && m_fontHandle != 0 && !m_selectedAll)
     {
-        std::string beforeCursor = m_text.substr(0, m_cursorPos);
-        float cursorOffX = (m_fontHandle != 0)
-            ? renderer.MeasureTextWidth(m_fontHandle, beforeCursor, m_normFontSize)
-            : 0.0f;
-        float cx         = textX + cursorOffX;
-        float cy1        = m_bounds.y + m_bounds.height * 0.15f;
-        float cy2        = m_bounds.y + m_bounds.height * 0.85f;
+        const float cx  = textX + cursorWidth;
+        const float cy1 = m_bounds.y + m_bounds.height * 0.15f;
+        const float cy2 = m_bounds.y + m_bounds.height * 0.85f;
         renderer.DrawLine(cx, cy1, cx, cy2, m_textColor, 0.002f);
     }
     renderer.Flush();
-    SDL_SetRenderClipRect(raw,clipped ? &previous : nullptr);
+    SDL_SetRenderClipRect(raw, clipped ? &previous : nullptr);
+
+    if (m_passwordMode)
+    {
+        const float toggleW = std::min(0.040f, m_bounds.width * 0.17f);
+        const sakura::core::NormRect toggleRect{
+            m_bounds.x + m_bounds.width - padX - toggleW,
+            m_bounds.y + m_bounds.height * 0.17f,
+            toggleW,
+            m_bounds.height * 0.66f
+        };
+        VisualStyle::DrawBadgePill(
+            renderer,
+            toggleRect,
+            m_passwordRevealed ? "隐" : "显",
+            m_fontHandle,
+            m_normFontSize * 0.68f,
+            m_passwordRevealed ? sakura::core::Color{ 72, 46, 84, 215 } : sakura::core::Color{ 26, 32, 56, 200 },
+            m_passwordRevealed ? sakura::core::Color{ 250, 216, 157, 185 } : sakura::core::Color{ 166, 176, 214, 95 },
+            m_passwordRevealed ? sakura::core::Color{ 250, 216, 157, 255 } : sakura::core::Color{ 208, 214, 236, 235 });
+    }
 }
 
 } // namespace sakura::ui

@@ -108,6 +108,12 @@ void SceneCourse::OnEnter()
 
     m_font = ResourceManager::GetInstance().GetDefaultFontHandle();
     m_time = 0.0f;
+    m_topBar = std::make_unique<TopBar>("DAN DOJO  ·  樱华道场", m_font,
+        [this]()
+        {
+            CourseSession::GetInstance().Abort();
+            m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
+        });
 
     m_particles.Clear();
     m_petalEmitter = m_particles.EmitContinuous(
@@ -185,6 +191,7 @@ void SceneCourse::OnExit()
     m_btnBack.reset();
     m_btnStart.reset();
     m_btnCloseSummary.reset();
+    m_topBar.reset();
 }
 
 void SceneCourse::RefreshRecords()
@@ -578,10 +585,18 @@ void SceneCourse::OnRender(Renderer& renderer)
         if (m_btnCloseSummary)
             m_btnCloseSummary->Render(renderer);
     }
+
+    if (m_topBar)
+    {
+        m_topBar->Render(renderer);
+        m_topBar->RenderDrawer(renderer);
+    }
 }
 
 void SceneCourse::OnEvent(const SDL_Event& event)
 {
+    if (m_topBar && m_topBar->HandleEvent(event))
+        return;
     if (m_showSummaryModal && m_finishedSummary.has_value())
     {
         if (m_btnCloseSummary && m_btnCloseSummary->HandleEvent(event))

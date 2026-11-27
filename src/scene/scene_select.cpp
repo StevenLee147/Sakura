@@ -74,47 +74,111 @@ std::unique_ptr<Button> SceneSelect::Button(NormRect rect, const std::string& la
     b->SetTextAlign(TextAlign::Center); b->SetOnClick(std::move(action));
     VisualStyle::ApplyButton(b.get(),primary?ButtonVariant::Primary:ButtonVariant::Secondary); return b;
 }
+void SceneSelect::PersistSelectContext(bool flushToDisk) {
+    if(m_restoringContext) return;
+    SelectMemoryState st=SelectContextManager::Load(Config::GetInstance());
+    if(m_selected>=0 && m_selected<static_cast<int>(m_charts.size())) {
+        const auto& c=m_charts[m_selected];
+        st.chartId=c.id;
+        st.difficultyIndex=std::clamp(m_difficulty,0,std::max(0,static_cast<int>(c.difficulties.size())-1));
+        if(!c.difficulties.empty()) st.difficultyName=c.difficulties[st.difficultyIndex].name;
+    }
+    st.collectionFilter=m_collectionFilter;
+    st.sortMode=m_sort;
+    st.scrollPos=m_scrollTarget;
+    st.minLevel=m_filterMinLevel;
+    st.maxLevel=m_filterMaxLevel;
+    st.lampFilter=m_lampFilter;
+    SelectContextManager::Save(Config::GetInstance(),st,flushToDisk);
+}
+void SceneSelect::RefreshChartLamps() {
+    m_chartLamps.clear();
+    const auto allBest=sakura::data::Database::GetInstance().GetAllBestScores();
+    for(const auto& rec:allBest) {
+        const SelectLamp lamp=ComputeChartLamp(rec);
+        auto it=m_chartLamps.find(rec.chartId);
+        if(it==m_chartLamps.end() || static_cast<int>(lamp)>static_cast<int>(it->second))
+            m_chartLamps[rec.chartId]=lamp;
+    }
+}
+void SceneSelect::TriggerRandomRoulette() {
+    if(m_visible.empty()) return;
+    sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+    const int picked=PickRandomVisibleChart(m_visible,m_selected,SDL_GetTicksNS());
+    if(picked<0) return;
+    if(m_visible.size()<=1) { Select(picked); return; }
+    m_rouletteActive=true;
+    m_rouletteTimer=0.0f;
+    m_rouletteStepAccum=0.0f;
+    m_rouletteFinalChart=picked;
+}
 void SceneSelect::OnEnter() {
+    *m_alive=true;
     m_font=ResourceManager::GetInstance().GetDefaultFontHandle();
+    m_topBar=std::make_unique<TopBar>("SONG SELECT  ·  曲库选歌",m_font,[this]{Back();});
     auto& cfg=Config::GetInstance();
     const auto favorites=cfg.Get<std::vector<std::string>>("library.favorites",{});
     m_favorites={favorites.begin(),favorites.end()};
     m_collections=CollectionManager::LoadFromConfig();
-    m_search=std::make_unique<TextInput>(NormRect{0.04f,0.16f,0.28f,0.051f},m_font,0.022f);
-    m_search->SetPlaceholder("搜索曲名、曲师、标签  /  Ctrl+F");
-    m_search->SetOnChange([this](const std::string&){Filter();});
+    m_buttons.clear(); m_detailButtons.clear();
+    m_search=std::make_unique<TextInput>(NormRect{0.04f,0.16f,0.202f,0.051f},m_font,0.020f);
+    m_search->SetPlaceholder("搜索曲名、曲师、标签 / Ctrl+F");
+    m_search->SetOnChange([this](const std::string&){Filter();PersistSelectContext(false);});
     m_startInput=std::make_unique<TextInput>(NormRect{0.555f,0.762f,0.105f,0.040f},m_font,0.022f,8);
     m_endInput=std::make_unique<TextInput>(NormRect{0.698f,0.762f,0.105f,0.040f},m_font,0.022f,8);
     m_startInput->SetText("0"); m_endInput->SetText("0");
-    m_buttons.push_back(Button({0.326f,0.16f,0.072f,0.051f},"全部",[this]{
+    m_buttons.push_back(Button({0.247f,0.16f,0.062f,0.051f},"全部",[this]{
         const int totalStates=2+static_cast<int>(m_collections.size());
         m_collectionFilter=(m_collectionFilter+1)%totalStates;
         if(m_collectionFilter>=2) m_activeCollectionIndex=m_collectionFilter-2;
-        Filter();
-    },false,0.0185f));
-    m_buttons.push_back(Button({0.402f,0.16f,0.058f,0.051f},"曲名",[this]{m_sort=(m_sort+1)%3;Filter();},false,0.019f));
+        Filter(); PersistSelectContext(false);
+    },false,0.017f));
+    m_buttons.push_back(Button({0.313f,0.16f,0.048f,0.051f},"曲名",[this]{m_sort=(m_sort+1)%3;Filter();PersistSelectContext(false);},false,0.017f));
+    m_buttons.push_back(Button({0.365f,0.16f,0.050f,0.051f},"全灯",[this]{
+        m_lampFilter=static_cast<SelectLampFilter>((static_cast<int>(m_lampFilter)+1)%5);
+        Filter(); PersistSelectContext(false);
+    },false,0.016f));
+    m_buttons.push_back(Button({0.419f,0.16f,0.052f,0.051f},"全定数",[this]{
+        static constexpr std::pair<float,float> kPresets[5]={{1.0f,15.0f},{1.0f,6.5f},{7.0f,10.0f},{10.5f,13.0f},{13.0f,15.0f}};
+        m_levelPresetIdx=(m_levelPresetIdx+1)%5;
+        m_filterMinLevel=kPresets[m_levelPresetIdx].first;
+        m_filterMaxLevel=kPresets[m_levelPresetIdx].second;
+        Filter(); PersistSelectContext(false);
+    },false,0.0155f));
 
     auto dailyBtn=Button({0.355f,0.064f,0.082f,0.044f},"今日挑战",[this]{ActivateDailyChallenge();},false,0.018f);
     VisualStyle::ApplyButton(dailyBtn.get(),ButtonVariant::Accent);
     m_buttons.push_back(std::move(dailyBtn));
-    m_buttons.push_back(Button({0.442f,0.064f,0.082f,0.044f},"樱华道场",[this]{m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
-    m_buttons.push_back(Button({0.529f,0.064f,0.082f,0.044f},"谱面市场",[this]{m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager),TransitionType::SilkShutter,0.38f);},true,0.018f));
+    m_buttons.push_back(Button({0.442f,0.064f,0.082f,0.044f},"樱华道场",[this]{PersistSelectContext(true);m_manager.SwitchScene(std::make_unique<SceneCourse>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+    m_buttons.push_back(Button({0.529f,0.064f,0.082f,0.044f},"谱面市场",[this]{PersistSelectContext(true);m_manager.SwitchScene(std::make_unique<SceneMarket>(m_manager),TransitionType::SilkShutter,0.38f);},true,0.018f));
     m_buttons.push_back(Button({0.616f,0.064f,0.081f,0.044f},"导入谱面",[this]{ImportFolder();},false,0.018f));
-    m_buttons.push_back(Button({0.702f,0.064f,0.081f,0.044f},"新建谱面",[this]{m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+    m_buttons.push_back(Button({0.702f,0.064f,0.081f,0.044f},"新建谱面",[this]{PersistSelectContext(true);m_manager.SwitchScene(std::make_unique<SceneChartWizard>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
     m_buttons.push_back(Button({0.788f,0.064f,0.081f,0.044f},"打开曲库",[]{const std::filesystem::path path=Paths::User("charts");std::error_code ec;std::filesystem::create_directories(path,ec);SDL_OpenURL(("file:///"+path.generic_string()).c_str());},false,0.018f));
-    m_buttons.push_back(Button({0.874f,0.064f,0.086f,0.044f},"偏好设置",[this]{m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
+    m_buttons.push_back(Button({0.874f,0.064f,0.086f,0.044f},"偏好设置",[this]{PersistSelectContext(true);m_manager.SwitchScene(std::make_unique<SceneSettings>(m_manager),TransitionType::SilkShutter,0.38f);},false,0.018f));
 
     m_buttons.push_back(Button({0.04f,0.909f,0.12f,0.057f},"返回主页",[this]{Back();}));
     m_buttons.push_back(Button({0.17f,0.909f,0.09f,0.057f},"刷新 / F5",[this]{Scan();}));
+    m_buttons.push_back(Button({0.27f,0.909f,0.096f,0.057f},"随机 / F2",[this]{TriggerRandomRoulette();}));
     m_buttons.push_back(Button({0.77f,0.909f,0.19f,0.057f},"开始演奏   →",[this]{Start(m_options.mode);},true));
     m_particles.Clear();
     m_petalEmitter=m_particles.EmitContinuous(0.5f,-0.02f,2.6f,sakura::effects::ParticlePresets::SakuraPetal());
     Scan();
 }
 void SceneSelect::Scan() {
+    // Snapshot remembered chart & view state BEFORE Filter/Select can touch Config!
+    const SelectMemoryState desired=SelectContextManager::Load(Config::GetInstance());
+    m_restoringContext=true;
     m_collections=CollectionManager::LoadFromConfig();
+    m_collectionFilter=desired.collectionFilter;
+    m_sort=desired.sortMode;
+    m_filterMinLevel=desired.minLevel;
+    m_filterMaxLevel=desired.maxLevel;
+    m_lampFilter=desired.lampFilter;
+    if(m_filterMinLevel<=1.01f && m_filterMaxLevel>=14.99f) m_levelPresetIdx=0;
     if(m_collectionFilter>1+static_cast<int>(m_collections.size())) m_collectionFilter=0;
+    if(m_collectionFilter>=2) m_activeCollectionIndex=m_collectionFilter-2;
     if(m_activeCollectionIndex>=static_cast<int>(m_collections.size())) m_activeCollectionIndex=0;
+
     ChartLoader loader;
     m_charts=loader.ScanCharts("resources/charts");
     auto custom=loader.ScanCharts(Paths::User("charts"));
@@ -122,11 +186,39 @@ void SceneSelect::Scan() {
         auto existing=std::find_if(m_charts.begin(),m_charts.end(),[&](const ChartInfo& other){return other.id==c.id;});
         if(existing==m_charts.end()) m_charts.push_back(std::move(c)); else *existing=std::move(c);
     }
-    m_selected=-1; Filter();
-    const auto last=Config::GetInstance().Get<std::string>("library.last_chart","");
-    for(int i:m_visible) if(m_charts[i].id==last) {Select(i,Config::GetInstance().Get<int>("library.last_difficulty",0));break;}
+    RefreshChartLamps();
+    m_selected=-1;
+    Filter(false);
+
+    auto target=SelectContextManager::ResolveRestoredSelection(m_charts,m_visible,desired);
+    if(target.clearedObscuringFilters) {
+        m_collectionFilter=0;
+        m_filterMinLevel=1.0f;
+        m_filterMaxLevel=15.0f;
+        m_levelPresetIdx=0;
+        m_lampFilter=SelectLampFilter::All;
+        if(m_search) m_search->SetText("");
+        Filter(false);
+        target=SelectContextManager::ResolveRestoredSelection(m_charts,m_visible,desired);
+    }
+    if(target.chartIndex>=0) {
+        Select(target.chartIndex,target.difficultyIndex);
+        const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
+        if(desired.scrollPos>0.01f) {
+            const auto visIt=std::find(m_visible.begin(),m_visible.end(),m_selected);
+            if(visIt!=m_visible.end()) {
+                const float row=static_cast<float>(visIt-m_visible.begin());
+                if(desired.scrollPos<=row && row<desired.scrollPos+6.0f)
+                    m_scrollTarget=std::clamp(desired.scrollPos,0.0f,maxScroll);
+            }
+        }
+        m_scrollPos=m_scrollTarget;
+        m_scroll=static_cast<int>(std::floor(m_scrollPos));
+    }
+    m_restoringContext=false;
+    PersistSelectContext(false);
 }
-void SceneSelect::Filter() {
+void SceneSelect::Filter(bool allowFallbackSelect) {
     if(m_collectionFilter<0 || m_collectionFilter>1+static_cast<int>(m_collections.size())) m_collectionFilter=0;
     m_visible.clear(); const auto query=Lower(m_search->GetText());
     for(int i=0;i<static_cast<int>(m_charts.size());++i) {
@@ -135,6 +227,10 @@ void SceneSelect::Filter() {
         if(m_collectionFilter==1) matchCol=m_favorites.contains(c.id);
         else if(m_collectionFilter>=2) matchCol=CollectionManager::ContainsChart(m_collections[static_cast<size_t>(m_collectionFilter-2)],c.id);
         if(!matchCol) continue;
+        const auto lampIt=m_chartLamps.find(c.id);
+        const SelectLamp lamp=(lampIt!=m_chartLamps.end())?lampIt->second:SelectLamp::Unplayed;
+        if(!MatchesLampFilter(lamp,m_lampFilter)) continue;
+        if(!ChartMatchesLevelRange(c,-1,m_filterMinLevel,m_filterMaxLevel)) continue;
         std::string hay=c.title+" "+c.artist+" "+c.charter;
         for(const auto& tag:c.tags) hay+=" "+tag;
         if(Lower(hay).find(query)!=std::string::npos) m_visible.push_back(i);
@@ -144,16 +240,32 @@ void SceneSelect::Filter() {
         if(m_sort==2 && m_charts[a].difficulties.back().level!=m_charts[b].difficulties.back().level) return m_charts[a].difficulties.back().level<m_charts[b].difficulties.back().level;
         return m_charts[a].title<m_charts[b].title;
     });
-    m_scroll=0;
+    const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
+    m_scrollTarget=std::clamp(m_scrollTarget,0.0f,maxScroll);
+    m_scrollPos=std::clamp(m_scrollPos,0.0f,maxScroll);
+    m_scroll=static_cast<int>(std::floor(m_scrollTarget));
     if(std::find(m_visible.begin(),m_visible.end(),m_selected)==m_visible.end()) {
-        m_selected=-1; if(!m_visible.empty()) Select(m_visible.front());
+        m_selected=-1;
+        if(allowFallbackSelect && !m_visible.empty()) Select(m_visible.front());
+    } else {
+        const auto visIt=std::find(m_visible.begin(),m_visible.end(),m_selected);
+        const float row=static_cast<float>(visIt-m_visible.begin());
+        if(row<m_scrollTarget) m_scrollTarget=row;
+        if(row>=m_scrollTarget+6.0f) m_scrollTarget=row-5.0f;
+        m_scrollTarget=std::clamp(m_scrollTarget,0.0f,maxScroll);
     }
-    if(m_buttons.size()>=2) {
-        if(m_collectionFilter==0) {m_buttons[0]->SetText("全部");m_buttons[0]->SetFontSize(0.019f);}
-        else if(m_collectionFilter==1) {m_buttons[0]->SetText("已收藏");m_buttons[0]->SetFontSize(0.0185f);}
-        else {m_buttons[0]->SetText(m_collections[static_cast<size_t>(m_collectionFilter-2)].name);m_buttons[0]->SetFontSize(0.016f);}
+    if(m_buttons.size()>=4) {
+        if(m_collectionFilter==0) {m_buttons[0]->SetText("全部");m_buttons[0]->SetFontSize(0.017f);}
+        else if(m_collectionFilter==1) {m_buttons[0]->SetText("收藏");m_buttons[0]->SetFontSize(0.017f);}
+        else {m_buttons[0]->SetText(m_collections[static_cast<size_t>(m_collectionFilter-2)].name);m_buttons[0]->SetFontSize(0.0145f);}
         VisualStyle::ApplyButton(m_buttons[0].get(),m_collectionFilter>0?ButtonVariant::Primary:ButtonVariant::Secondary);
         m_buttons[1]->SetText(m_sort==0?"曲名":m_sort==1?"BPM":"难度");
+        static constexpr const char* kLampLabels[5]={"全灯","未游","CLR+","FC+","AP"};
+        m_buttons[2]->SetText(kLampLabels[static_cast<int>(m_lampFilter)]);
+        VisualStyle::ApplyButton(m_buttons[2].get(),m_lampFilter!=SelectLampFilter::All?ButtonVariant::Accent:ButtonVariant::Secondary);
+        const bool fullRange=(m_filterMinLevel<=1.01f && m_filterMaxLevel>=14.99f);
+        m_buttons[3]->SetText(fullRange?std::string("全定数"):("Lv."+FormatDifficultyLevel(m_filterMinLevel)+"~"+FormatDifficultyLevel(m_filterMaxLevel)));
+        VisualStyle::ApplyButton(m_buttons[3].get(),!fullRange?ButtonVariant::Primary:ButtonVariant::Secondary);
     }
     if(m_selected<0) {
         m_rebuild=true;
@@ -195,10 +307,10 @@ void SceneSelect::Select(int index,int difficulty) {
             m_bgCover.SetBlurStrength(0.84f);
         }
     }
-    Config::GetInstance().Set("library.last_chart",c.id); Config::GetInstance().Set("library.last_difficulty",m_difficulty);
     ChartLoader loader; auto chart=loader.LoadChartData(c.folderPath+"/"+c.difficulties[m_difficulty].chartFile);
     m_best=chart?sakura::data::Database::GetInstance().GetBestScore(c.id,c.difficulties[m_difficulty].name,Replay::Hash(*chart,c.offset)):std::nullopt;
     m_noteCount=chart?JudgmentCount(*chart):0; m_chartEnd=chart?ChartEndTime(*chart):0;
+    m_npsProfile=chart?ComputeDualZoneNpsCurve(*chart,48):DualZoneNpsProfile{};
     if(changed || diffChanged) {
         m_globalEntries.clear();
         m_globalMyRank.reset();
@@ -218,7 +330,15 @@ void SceneSelect::Select(int index,int difficulty) {
     }
     m_rebuild=true;
     const auto it=std::find(m_visible.begin(),m_visible.end(),index);
-    if(it!=m_visible.end()) {const int row=static_cast<int>(it-m_visible.begin());if(row<m_scroll)m_scroll=row;if(row>=m_scroll+6)m_scroll=row-5;}
+    if(it!=m_visible.end()) {
+        const float row=static_cast<float>(it-m_visible.begin());
+        const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
+        if(row<m_scrollTarget) m_scrollTarget=row;
+        if(row>=m_scrollTarget+6.0f) m_scrollTarget=row-5.0f;
+        m_scrollTarget=std::clamp(m_scrollTarget,0.0f,maxScroll);
+        m_scroll=static_cast<int>(std::floor(m_scrollTarget));
+    }
+    if(!m_restoringContext) PersistSelectContext(false);
 }
 void SceneSelect::SelectRelative(int delta) {
     if(m_visible.empty()) return;
@@ -471,8 +591,8 @@ void SceneSelect::BuildDetail() {
             },m_options.ghostMode!=GhostMode::Off,0.0165f));
         }
         if(m_options.mode!=PlayMode::Standard) {
-            m_detailButtons.push_back(Button({0.815f,0.677f,0.057f,0.037f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
-            m_detailButtons.push_back(Button({0.883f,0.677f,0.057f,0.037f},"+",[this]{m_options.rate=std::min(2.0f,m_options.rate+0.1f);}));
+            m_detailButtons.push_back(Button({0.815f,0.648f,0.057f,0.035f},"−",[this]{m_options.rate=std::max(0.5f,m_options.rate-0.1f);}));
+            m_detailButtons.push_back(Button({0.883f,0.648f,0.057f,0.035f},"+",[this]{m_options.rate=std::min(2.0f,m_options.rate+0.1f);}));
         }
         if(m_options.mode==PlayMode::Practice) m_detailButtons.push_back(Button({0.825f,0.762f,0.116f,0.040f},m_options.loop?"循环：开":"循环：关",[this]{m_options.loop=!m_options.loop;m_rebuild=true;}));
     }
@@ -481,7 +601,7 @@ void SceneSelect::BuildDetail() {
         m_buttons.back()->SetText(asDaily?"开始今日挑战 →":"开始演奏   →");
     }
     m_detailButtons.push_back(Button({0.515f,0.827f,0.18f,0.040f},"播放最近回放",[this]{Start(PlayMode::Replay);}));
-    m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile),TransitionType::SilkShutter,0.38f);}));
+    m_detailButtons.push_back(Button({0.711f,0.827f,0.23f,0.040f},"在工房中编辑",[this]{PersistSelectContext(true);const auto& c=m_charts[m_selected];m_manager.SwitchScene(std::make_unique<SceneEditor>(m_manager,c.folderPath,c.difficulties[m_difficulty].chartFile),TransitionType::SilkShutter,0.38f);}));
 }
 void SceneSelect::Favorite() {
     const auto id=m_charts[m_selected].id;
@@ -491,6 +611,7 @@ void SceneSelect::Favorite() {
 }
 void SceneSelect::Start(PlayMode mode) {
     if(m_selected<0 || m_ghostDownloading) return;
+    PersistSelectContext(true);
     auto options=m_options; options.mode=mode;
     options.ghostReplayFile.clear();
     options.ghostRivalName.clear();
@@ -691,8 +812,9 @@ void SceneSelect::AcceptImport(const std::string& path) {
         Scan();ToastManager::Instance().Show("谱面已导入曲库："+info->title,ToastType::Success);
     }catch(const std::exception& e){std::error_code ec;std::filesystem::remove_all(target,ec);ToastManager::Instance().Show(e.what(),ToastType::Error,5);}
 }
-void SceneSelect::Back(){m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SilkShutter,0.36f);}
+void SceneSelect::Back(){PersistSelectContext(true);m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager),TransitionType::SilkShutter,0.36f);}
 void SceneSelect::OnExit(){
+    PersistSelectContext(true);
     *m_alive=false;
     if(m_petalEmitter>=0)m_particles.StopEmitter(m_petalEmitter);
     m_particles.Clear();
@@ -700,12 +822,40 @@ void SceneSelect::OnExit(){
     ResourceManager::GetInstance().UnloadTexture(m_cover);
     m_cover=INVALID_HANDLE;
     sakura::audio::AudioManager::GetInstance().StopMusic();
-    m_search->SetFocused(false);m_startInput->SetFocused(false);m_endInput->SetFocused(false);
+    if(m_search) m_search->SetFocused(false);
+    if(m_startInput) m_startInput->SetFocused(false);
+    if(m_endInput) m_endInput->SetFocused(false);
+    m_topBar.reset();
     Config::GetInstance().Save();
 }
 
 void SceneSelect::OnUpdate(float dt) {
     m_time+=dt;
+    if(m_topBar) m_topBar->Update(dt);
+    const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
+    m_scrollTarget=std::clamp(m_scrollTarget,0.0f,maxScroll);
+    m_scrollPos+=(m_scrollTarget-m_scrollPos)*(1.0f-std::exp(-18.0f*dt));
+    if(std::abs(m_scrollTarget-m_scrollPos)<0.002f) m_scrollPos=m_scrollTarget;
+    m_scroll=static_cast<int>(std::floor(m_scrollPos));
+
+    if(m_rouletteActive && !m_visible.empty()) {
+        m_rouletteTimer+=dt;
+        const float progress=std::clamp(m_rouletteTimer/0.55f,0.0f,1.0f);
+        const float interval=0.032f+0.110f*progress*progress;
+        m_rouletteStepAccum+=dt;
+        while(m_rouletteStepAccum>=interval && progress<1.0f) {
+            m_rouletteStepAccum-=interval;
+            const auto it=std::find(m_visible.begin(),m_visible.end(),m_selected);
+            const int nextRow=(it==m_visible.end())?0:((static_cast<int>(it-m_visible.begin())+1)%static_cast<int>(m_visible.size()));
+            Select(m_visible[nextRow]);
+            sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonHover);
+        }
+        if(progress>=1.0f) {
+            m_rouletteActive=false;
+            if(m_rouletteFinalChart>=0) Select(m_rouletteFinalChart);
+            sakura::audio::AudioManager::GetInstance().PlayUISFX(sakura::audio::UISFXType::ButtonClick);
+        }
+    }
     if(m_leaderboardPendingFetch) {
         m_leaderboardDebounce-=dt;
         if(m_leaderboardDebounce<=0.0f) {
@@ -750,52 +900,85 @@ void SceneSelect::OnRender(Renderer& r) {
     m_search->Render(r);
 
     const auto [mx,my]=Input::GetMousePosition();
-    for(int row=0;row<6&&row+m_scroll<static_cast<int>(m_visible.size());++row) {
-        const int index=m_visible[row+m_scroll];const auto& c=m_charts[index];const float y=0.24f+row*0.102f;const bool selected=index==m_selected;
-        const bool hovered=(mx>=0.04f&&mx<=0.46f&&my>=y&&my<y+0.090f);
-        const float indent=selected?0.008f:(hovered?0.004f:0.0f);
-        const NormRect cardRect{0.04f+indent,y,0.42f-indent,0.090f};
+    {
+        SDL_Renderer* raw=r.GetSDLRenderer();
+        SDL_Rect prevClip{}; const bool wasClipped=SDL_RenderClipEnabled(raw); SDL_GetRenderClipRect(raw,&prevClip);
+        const int sw=std::max(1,r.GetScreenWidth()), sh=std::max(1,r.GetScreenHeight());
+        SDL_Rect listClip{static_cast<int>(0.028f*sw),static_cast<int>(0.232f*sh),static_cast<int>(0.442f*sw),static_cast<int>(0.624f*sh)};
+        SDL_SetRenderClipRect(raw,&listClip);
+        const int baseRow=std::max(0,static_cast<int>(std::floor(m_scrollPos)));
+        const float frac=m_scrollPos-static_cast<float>(baseRow);
+        for(int slot=0;slot<=6 && (baseRow+slot)<static_cast<int>(m_visible.size());++slot) {
+            const int index=m_visible[baseRow+slot];const auto& c=m_charts[index];
+            const float y=0.24f+(static_cast<float>(slot)-frac)*0.102f;
+            if(y>0.855f || y+0.090f<0.232f) continue;
+            const bool selected=index==m_selected;
+            const bool hovered=(mx>=0.04f&&mx<=0.458f&&my>=std::max(0.236f,y)&&my<std::min(0.852f,y+0.090f));
+            const float indent=selected?0.008f:(hovered?0.004f:0.0f);
+            const NormRect cardRect{0.04f+indent,y,0.418f-indent,0.090f};
 
-        if(selected) {
-            VisualStyle::DrawGlassCard(r,cardRect,
-                {82,52,88,238},{44,34,68,242},
-                {250,216,157,225},{246,178,206,135},0.012f,0.55f);
-            r.DrawRoundedGradientRect({cardRect.x+0.005f,y+0.015f,0.0035f,0.060f},0.0017f,gold,pink,gold,pink,6,true);
-        } else {
-            VisualStyle::DrawGlassCard(r,cardRect,
-                hovered?Color{36,44,74,224}:Color{22,28,52,208},
-                hovered?Color{24,30,54,232}:Color{14,18,36,220},
-                hovered?Color{246,178,206,135}:Color{166,176,214,68},
-                {112,122,168,36},0.011f,0.34f);
+            if(selected) {
+                VisualStyle::DrawGlassCard(r,cardRect,
+                    {82,52,88,238},{44,34,68,242},
+                    {250,216,157,225},{246,178,206,135},0.012f,0.55f);
+                r.DrawRoundedGradientRect({cardRect.x+0.005f,y+0.015f,0.0035f,0.060f},0.0017f,gold,pink,gold,pink,6,true);
+            } else {
+                VisualStyle::DrawGlassCard(r,cardRect,
+                    hovered?Color{36,44,74,224}:Color{22,28,52,208},
+                    hovered?Color{24,30,54,232}:Color{14,18,36,220},
+                    hovered?Color{246,178,206,135}:Color{166,176,214,68},
+                    {112,122,168,36},0.011f,0.34f);
+            }
+
+            const bool fav=m_favorites.contains(c.id);
+            r.DrawText(m_font,selected?"▶":(fav?"♥":"♪"),cardRect.x+0.016f,y+0.026f,0.023f,selected?gold:(fav?pink:dim));
+            VisualStyle::DrawTextFit(r,m_font,c.title,cardRect.x+0.046f,y+0.011f,0.027f,0.250f,white);
+            VisualStyle::DrawTextFit(r,m_font,c.artist+"  ·  "+Number(c.bpm,0)+" BPM",cardRect.x+0.046f,y+0.052f,0.0165f,0.235f,dim);
+
+            int dispDiffIdx = static_cast<int>(c.difficulties.size()) - 1;
+            if (selected) {
+                dispDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(c.difficulties.size()) - 1);
+            } else if (m_selected >= 0 && m_selected < static_cast<int>(m_charts.size())) {
+                const auto& curChart = m_charts[m_selected];
+                const int curDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(curChart.difficulties.size()) - 1);
+                dispDiffIdx = ResolveMatchingDifficultyIndex(
+                    c, curChart.difficulties[curDiffIdx].name, curChart.difficulties[curDiffIdx].level);
+            }
+            const auto& cardDiff = c.difficulties[dispDiffIdx];
+            VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.122f,y+0.013f,0.108f,0.026f},
+                cardDiff.name+" Lv."+FormatDifficultyLevel(cardDiff.level),m_font,0.0130f,
+                selected?Color{104,64,98,220}:Color{36,44,74,195},
+                selected?gold:Color{174,184,218,95},selected?gold:pink);
+
+            const auto lampIt=m_chartLamps.find(c.id);
+            const SelectLamp lamp=(lampIt!=m_chartLamps.end())?lampIt->second:SelectLamp::Unplayed;
+            if(lamp!=SelectLamp::Unplayed) {
+                const char* lampTxt=(lamp==SelectLamp::AllPerfect?"✦ AP":(lamp==SelectLamp::FullCombo?"★ FC":"● CLR"));
+                const Color lampCol=(lamp==SelectLamp::AllPerfect?Color{142,232,255,255}:(lamp==SelectLamp::FullCombo?gold:Color{152,236,194,255}));
+                VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.068f,y+0.050f,0.054f,0.024f},
+                    lampTxt,m_font,0.012f,{28,34,58,215},lampCol,lampCol);
+            } else {
+                r.DrawText(m_font,std::to_string(c.difficulties.size())+" 谱面",cardRect.x+cardRect.width-0.016f,y+0.055f,0.0145f,dim,TextAlign::Right);
+            }
         }
-
-        const bool fav=m_favorites.contains(c.id);
-        r.DrawText(m_font,selected?"▶":(fav?"♥":"♪"),cardRect.x+0.016f,y+0.026f,0.023f,selected?gold:(fav?pink:dim));
-        VisualStyle::DrawTextFit(r,m_font,c.title,cardRect.x+0.046f,y+0.011f,0.028f,0.275f,white);
-        VisualStyle::DrawTextFit(r,m_font,c.artist+"  ·  "+Number(c.bpm,0)+" BPM",cardRect.x+0.046f,y+0.052f,0.017f,0.275f,dim);
-
-        int dispDiffIdx = static_cast<int>(c.difficulties.size()) - 1;
-        if (selected) {
-            dispDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(c.difficulties.size()) - 1);
-        } else if (m_selected >= 0 && m_selected < static_cast<int>(m_charts.size())) {
-            const auto& curChart = m_charts[m_selected];
-            const int curDiffIdx = std::clamp(m_difficulty, 0, static_cast<int>(curChart.difficulties.size()) - 1);
-            dispDiffIdx = ResolveMatchingDifficultyIndex(
-                c, curChart.difficulties[curDiffIdx].name, curChart.difficulties[curDiffIdx].level);
-        }
-        const auto& cardDiff = c.difficulties[dispDiffIdx];
-        VisualStyle::DrawBadgePill(r,{cardRect.x+cardRect.width-0.124f,y+0.014f,0.110f,0.026f},
-            cardDiff.name+" Lv."+FormatDifficultyLevel(cardDiff.level),m_font,0.0132f,
-            selected?Color{104,64,98,220}:Color{36,44,74,195},
-            selected?gold:Color{174,184,218,95},selected?gold:pink);
-        r.DrawText(m_font,std::to_string(c.difficulties.size())+" 谱面",cardRect.x+cardRect.width-0.016f,y+0.056f,0.015f,dim,TextAlign::Right);
+        r.Flush();
+        SDL_SetRenderClipRect(raw,wasClipped?&prevClip:nullptr);
+    }
+    if(m_visible.size()>6) {
+        constexpr NormRect trackRect{0.464f,0.242f,0.006f,0.600f};
+        r.DrawRoundedRect(trackRect,0.003f,{22,28,52,185},true);
+        const float maxScroll=static_cast<float>(std::max(1,static_cast<int>(m_visible.size())-6));
+        const float thumbH=std::max(0.056f,trackRect.height*(6.0f/static_cast<float>(m_visible.size())));
+        const float thumbY=trackRect.y+(trackRect.height-thumbH)*std::clamp(m_scrollPos/maxScroll,0.0f,1.0f);
+        const bool sbHover=m_draggingScrollbar || (mx>=trackRect.x-0.008f&&mx<=trackRect.x+trackRect.width+0.008f&&my>=trackRect.y&&my<=trackRect.y+trackRect.height);
+        r.DrawRoundedGradientRect({trackRect.x,thumbY,trackRect.width,thumbH},0.003f,sbHover?gold:pink,sbHover?gold:pink,pink,{156,128,210,225});
     }
     if(m_visible.empty()) {
         VisualStyle::DrawGlassCard(r,{0.06f,0.42f,0.38f,0.16f},{26,32,58,210},{16,20,40,224},{250,216,157,120},{140,150,192,48},0.014f,0.40f);
         r.DrawText(m_font,"没有匹配的曲目",0.25f,0.455f,0.029f,white,TextAlign::Center);
-        r.DrawText(m_font,"清空搜索、切换曲单筛选，或导入谱面",0.25f,0.515f,0.018f,dim,TextAlign::Center);
+        r.DrawText(m_font,"清空搜索、切换灯态/定数筛选，或导入谱面",0.25f,0.515f,0.018f,dim,TextAlign::Center);
     }
-    r.DrawText(m_font,std::to_string(m_visible.size())+" 首曲目   ·   ↑ ↓ 选曲   /   ← → 难度   /   Enter 演奏",0.04f,0.866f,0.017f,dim);
+    r.DrawText(m_font,std::to_string(m_visible.size())+" 首曲目  ·  ↑↓ 选曲  /  ←→ 难度  /  F2 随机  /  Enter 演奏",0.04f,0.866f,0.0165f,dim);
 
     VisualStyle::DrawGlassCard(r,{0.49f,0.16f,0.47f,0.72f},
         {24,30,56,216},{14,18,36,232},{250,216,157,170},{168,158,214,68},0.018f,0.56f);
@@ -893,39 +1076,133 @@ void SceneSelect::OnRender(Renderer& r) {
                     VisualStyle::DrawTextFit(r,m_font,ghostHint,0.760f,0.720f,0.0155f,0.178f,ghostColor);
                 }
             }
-            if(m_options.mode!=PlayMode::Standard)r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.698f,0.022f,gold);
-            if(m_options.mode==PlayMode::Practice){r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);}
-            else r.DrawText(m_font,"A / S / D / F / Space  +  鼠标    ·    Esc 暂停",0.515f,0.760f,0.019f,dim);
+            if(m_options.mode!=PlayMode::Standard) r.DrawText(m_font,"播放速度  "+Number(m_options.rate)+"×",0.515f,0.654f,0.021f,gold);
+
+            // Dual-Zone NPS Density Curve (Gold = Keyboard 4K/Thumb, Pink = Mouse Circle/Slider)
+            const NormRect npsBox=(m_options.mode==PlayMode::Practice)
+                ? NormRect{0.515f,0.692f,0.425f,0.058f}
+                : NormRect{0.515f,0.754f,0.425f,0.062f};
+            r.DrawRoundedRect(npsBox,0.008f,{16,20,38,200},true);
+            r.DrawRoundedRectOutlineGradient(npsBox,0.008f,{250,216,157,95},{140,150,196,42},0.0010f);
+            r.DrawText(m_font,"NPS DENSITY · 键(金) / 鼠(粉)",npsBox.x+0.010f,npsBox.y+0.005f,0.012f,dim);
+            r.DrawText(m_font,"Peak "+Number(m_npsProfile.peakTotalNps,1)+" NPS",npsBox.x+npsBox.width-0.010f,npsBox.y+0.005f,0.012f,gold,TextAlign::Right);
+            if(!m_npsProfile.keyboardNps.empty() && m_npsProfile.peakTotalNps>0.01f) {
+                const int nB=static_cast<int>(m_npsProfile.keyboardNps.size());
+                const float plotX=npsBox.x+0.008f, plotW=npsBox.width-0.016f;
+                const float plotBot=npsBox.y+npsBox.height-0.006f, plotH=npsBox.height-0.024f;
+                const float peak=std::max(1.0f,m_npsProfile.peakTotalNps);
+                for(int bi=0;bi+1<nB;++bi) {
+                    const float x1=plotX+(static_cast<float>(bi)/static_cast<float>(nB-1))*plotW;
+                    const float x2=plotX+(static_cast<float>(bi+1)/static_cast<float>(nB-1))*plotW;
+                    const float kb1=std::clamp(m_npsProfile.keyboardNps[bi]/peak,0.0f,1.0f);
+                    const float kb2=std::clamp(m_npsProfile.keyboardNps[bi+1]/peak,0.0f,1.0f);
+                    const float tot1=std::clamp((m_npsProfile.keyboardNps[bi]+m_npsProfile.mouseNps[bi])/peak,0.0f,1.0f);
+                    const float tot2=std::clamp((m_npsProfile.keyboardNps[bi+1]+m_npsProfile.mouseNps[bi+1])/peak,0.0f,1.0f);
+                    r.DrawLine(x1,plotBot-tot1*plotH,x2,plotBot-tot2*plotH,pink,0.0018f);
+                    r.DrawLine(x1,plotBot-kb1*plotH,x2,plotBot-kb2*plotH,gold,0.0018f);
+                }
+            }
+            if(m_options.mode==PlayMode::Practice) {
+                const float durSec=std::max(1.0f,static_cast<float>(m_chartEnd)/1000.0f);
+                float sSec=0.0f, eSec=durSec;
+                try { sSec=std::clamp(std::stof(m_startInput->GetText()),0.0f,durSec); } catch(...) {}
+                try { const float rawE=std::stof(m_endInput->GetText()); eSec=(rawE<=0.0f)?durSec:std::clamp(rawE,sSec,durSec); } catch(...) {}
+                const float hx1=npsBox.x+0.008f+(sSec/durSec)*(npsBox.width-0.016f);
+                const float hx2=npsBox.x+0.008f+(eSec/durSec)*(npsBox.width-0.016f);
+                r.DrawFilledRect({hx1,npsBox.y+0.018f,std::max(0.002f,hx2-hx1),npsBox.height-0.022f},{250,216,157,42});
+                r.DrawLine(hx1,npsBox.y+0.014f,hx1,npsBox.y+npsBox.height-0.003f,gold,0.0024f);
+                r.DrawLine(hx2,npsBox.y+0.014f,hx2,npsBox.y+npsBox.height-0.003f,pink,0.0024f);
+                r.DrawText(m_font,"秒",0.522f,0.77f,0.02f,dim);r.DrawText(m_font,"至",0.674f,0.77f,0.02f,dim);m_startInput->Render(r);m_endInput->Render(r);
+            }
         }
 
-        if(m_previewPlaying) {
+        if(m_previewPlaying && m_options.mode!=PlayMode::Practice && m_showGlobalLeaderboard) {
             sakura::audio::AudioVisualizer::GetInstance().RenderWave(r,{0.515f,0.792f,0.425f,0.024f},{246,178,206,150},0.65f);
         }
         for(auto& b:m_detailButtons)b->Render(r);
     }
     for(auto& b:m_buttons)b->Render(r);
     m_particles.Render(r);
+    if(m_topBar) {
+        m_topBar->Render(r);
+        m_topBar->RenderDrawer(r);
+    }
 }
 void SceneSelect::OnEvent(const SDL_Event& e) {
+    if(m_topBar && m_topBar->HandleEvent(e)) return;
     if(e.type==SDL_EVENT_DROP_FILE && e.drop.data){AcceptImport(e.drop.data);return;}
+    if(e.type==SDL_EVENT_MOUSE_BUTTON_UP && e.button.button==SDL_BUTTON_LEFT) {
+        m_draggingScrollbar=false;
+        m_draggingPracticeHandle=0;
+    }
+    auto mouse=Input::GetMousePosition();
+    if(e.type==SDL_EVENT_MOUSE_MOTION) {
+        if(m_draggingScrollbar && m_visible.size()>6) {
+            const float maxScroll=static_cast<float>(std::max(1,static_cast<int>(m_visible.size())-6));
+            const float ratio=std::clamp((mouse.y-0.242f)/0.600f,0.0f,1.0f);
+            m_scrollTarget=ratio*maxScroll;
+            m_scrollPos=m_scrollTarget;
+            return;
+        }
+        if(m_draggingPracticeHandle!=0 && m_options.mode==PlayMode::Practice && m_chartEnd>0) {
+            const float durSec=std::max(1.0f,static_cast<float>(m_chartEnd)/1000.0f);
+            const float frac=std::clamp((mouse.x-0.523f)/0.409f,0.0f,1.0f);
+            const int sec=static_cast<int>(std::lround(frac*durSec));
+            if(m_draggingPracticeHandle==1) m_startInput->SetText(std::to_string(std::max(0,sec)));
+            else m_endInput->SetText(std::to_string(std::max(1,sec)));
+            return;
+        }
+    }
     bool consumed=m_search->HandleEvent(e);
     if(m_options.mode==PlayMode::Practice){consumed=m_startInput->HandleEvent(e)||consumed;consumed=m_endInput->HandleEvent(e)||consumed;}
-    if(consumed && (e.type==SDL_EVENT_KEY_DOWN || e.type==SDL_EVENT_TEXT_INPUT))return;
+    if(consumed && (e.type==SDL_EVENT_KEY_DOWN || e.type==SDL_EVENT_TEXT_INPUT || e.type==SDL_EVENT_TEXT_EDITING))return;
     const bool typing=m_search->IsFocused()||m_startInput->IsFocused()||m_endInput->IsFocused();
     if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&!typing) {
         if(e.key.scancode==SDL_SCANCODE_ESCAPE){Back();return;}
         if(e.key.scancode==SDL_SCANCODE_F5){Scan();return;}
+        if(e.key.scancode==SDL_SCANCODE_F2){TriggerRandomRoulette();return;}
         if(e.key.scancode==SDL_SCANCODE_F&&(e.key.mod&SDL_KMOD_CTRL)){m_search->SetFocused(true);return;}
         if(e.key.scancode==SDL_SCANCODE_UP){SelectRelative(-1);return;}
         if(e.key.scancode==SDL_SCANCODE_DOWN){SelectRelative(1);return;}
+        if(e.key.scancode==SDL_SCANCODE_PAGEUP){SelectRelative(-6);return;}
+        if(e.key.scancode==SDL_SCANCODE_PAGEDOWN){SelectRelative(6);return;}
+        if(e.key.scancode==SDL_SCANCODE_HOME && !m_visible.empty()){Select(m_visible.front());return;}
+        if(e.key.scancode==SDL_SCANCODE_END && !m_visible.empty()){Select(m_visible.back());return;}
         if(e.key.scancode==SDL_SCANCODE_RETURN){Start(m_options.mode);return;}
         if(m_selected>=0&&(e.key.scancode==SDL_SCANCODE_LEFT||e.key.scancode==SDL_SCANCODE_RIGHT)){Select(m_selected,m_difficulty+(e.key.scancode==SDL_SCANCODE_LEFT?-1:1));return;}
     }
-    auto mouse=Input::GetMousePosition();
-    if(e.type==SDL_EVENT_MOUSE_WHEEL&&mouse.x<0.47f){m_scroll=std::clamp(m_scroll-static_cast<int>(e.wheel.y),0,std::max(0,static_cast<int>(m_visible.size())-6));}
-    if(e.type==SDL_EVENT_MOUSE_BUTTON_DOWN&&e.button.button==SDL_BUTTON_LEFT&&mouse.x>=0.04f&&mouse.x<=0.46f&&mouse.y>=0.24f&&mouse.y<0.852f){
-        const int row=static_cast<int>((mouse.y-0.24f)/0.102f)+m_scroll;
-        if(row<static_cast<int>(m_visible.size())){Select(m_visible[row]);if(e.button.clicks==2)Start(m_options.mode);return;}
+    if(e.type==SDL_EVENT_MOUSE_WHEEL&&mouse.x<0.475f){
+        const float maxScroll=static_cast<float>(std::max(0,static_cast<int>(m_visible.size())-6));
+        m_scrollTarget=std::clamp(m_scrollTarget-e.wheel.y*0.85f,0.0f,maxScroll);
+        PersistSelectContext(false);
+        return;
+    }
+    if(e.type==SDL_EVENT_MOUSE_BUTTON_DOWN&&e.button.button==SDL_BUTTON_LEFT) {
+        if(m_visible.size()>6 && mouse.x>=0.458f && mouse.x<=0.478f && mouse.y>=0.240f && mouse.y<=0.848f) {
+            m_draggingScrollbar=true;
+            const float maxScroll=static_cast<float>(std::max(1,static_cast<int>(m_visible.size())-6));
+            m_scrollTarget=std::clamp((mouse.y-0.242f)/0.600f,0.0f,1.0f)*maxScroll;
+            m_scrollPos=m_scrollTarget;
+            return;
+        }
+        if(m_selected>=0 && !m_showGlobalLeaderboard && m_options.mode==PlayMode::Practice &&
+           mouse.x>=0.515f && mouse.x<=0.940f && mouse.y>=0.692f && mouse.y<=0.750f && m_chartEnd>0) {
+            const float durSec=std::max(1.0f,static_cast<float>(m_chartEnd)/1000.0f);
+            float sSec=0.0f, eSec=durSec;
+            try { sSec=std::clamp(std::stof(m_startInput->GetText()),0.0f,durSec); } catch(...) {}
+            try { const float rawE=std::stof(m_endInput->GetText()); eSec=(rawE<=0.0f)?durSec:std::clamp(rawE,sSec,durSec); } catch(...) {}
+            const float hx1=0.523f+(sSec/durSec)*0.409f;
+            const float hx2=0.523f+(eSec/durSec)*0.409f;
+            m_draggingPracticeHandle=(std::abs(mouse.x-hx1)<=std::abs(mouse.x-hx2))?1:2;
+            const int sec=static_cast<int>(std::lround(std::clamp((mouse.x-0.523f)/0.409f,0.0f,1.0f)*durSec));
+            if(m_draggingPracticeHandle==1) m_startInput->SetText(std::to_string(std::max(0,sec)));
+            else m_endInput->SetText(std::to_string(std::max(1,sec)));
+            return;
+        }
+        if(mouse.x>=0.04f&&mouse.x<0.458f&&mouse.y>=0.24f&&mouse.y<0.852f){
+            const int row=static_cast<int>(std::floor(((mouse.y-0.24f)/0.102f)+m_scrollPos));
+            if(row>=0 && row<static_cast<int>(m_visible.size())){Select(m_visible[row]);if(e.button.clicks==2)Start(m_options.mode);return;}
+        }
     }
     for(auto& b:m_buttons)if(b->HandleEvent(e))return;
     if(m_selected>=0) for(auto& b:m_detailButtons)if(b->HandleEvent(e))return;

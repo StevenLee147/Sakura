@@ -11,6 +11,7 @@
 #include "ui/button.h"
 #include "ui/text_input.h"
 #include "ui/toast.h"
+#include "ui/top_bar.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 
@@ -121,6 +122,7 @@ private:
     // ── 在线账号胶囊与登录弹层 ───────────────────────────────────────────────────
     static constexpr int MAX_SAVED_ACCOUNT_SLOTS = 5;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    std::unique_ptr<sakura::ui::TopBar> m_topBar;
     std::unique_ptr<sakura::ui::Button> m_btnAccountCapsule;
     std::unique_ptr<sakura::ui::Button> m_btnMarket;
     std::unique_ptr<sakura::ui::Button> m_btnDojo;

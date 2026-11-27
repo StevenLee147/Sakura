@@ -2,11 +2,14 @@
 #include "scene.h"
 #include "scene_manager.h"
 #include "game/chart.h"
+#include "game/chart_utils.h"
 #include "game/course.h"
 #include "game/play_session.h"
+#include "game/select_context.h"
 #include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/text_input.h"
+#include "ui/top_bar.h"
 #include "effects/background.h"
 #include "effects/particle_system.h"
 #include <functional>
@@ -15,6 +18,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace sakura::scene {
@@ -39,6 +43,19 @@ private:
     int m_collectionFilter = 0;
     int m_activeCollectionIndex = 0;
     int m_selected = -1, m_difficulty = 0, m_scroll = 0, m_sort = 0;
+    float m_scrollPos = 0.0f, m_scrollTarget = 0.0f;
+    bool m_draggingScrollbar = false;
+    bool m_restoringContext = false;
+    float m_filterMinLevel = 1.0f, m_filterMaxLevel = 15.0f;
+    int m_levelPresetIdx = 0;
+    sakura::game::SelectLampFilter m_lampFilter = sakura::game::SelectLampFilter::All;
+    std::unordered_map<std::string, sakura::game::SelectLamp> m_chartLamps;
+    sakura::game::DualZoneNpsProfile m_npsProfile;
+    int m_draggingPracticeHandle = 0; // 0=none, 1=start, 2=end
+    bool m_rouletteActive = false;
+    float m_rouletteTimer = 0.0f;
+    float m_rouletteStepAccum = 0.0f;
+    int m_rouletteFinalChart = -1;
     bool m_rebuild = false;
     float m_previewTimer = 0, m_time = 0;
     bool m_previewPlaying = false;
@@ -54,6 +71,7 @@ private:
     std::string m_dailyResolvedChartId;
     std::optional<int> m_dailyMyRank;
     bool m_playAsDaily = false;
+    std::unique_ptr<sakura::ui::TopBar> m_topBar;
     std::unique_ptr<sakura::ui::TextInput> m_search, m_startInput, m_endInput;
     std::vector<std::unique_ptr<sakura::ui::Button>> m_buttons, m_detailButtons;
     struct DialogState { std::mutex mutex; bool ready = false; std::string path; };
@@ -74,8 +92,11 @@ private:
     void ToggleCurrentInCollection();
     void ActivateDailyChallenge();
     bool IsSelectedMatchingDaily() const;
+    void PersistSelectContext(bool flushToDisk = false);
+    void RefreshChartLamps();
+    void TriggerRandomRoulette();
     void Scan();
-    void Filter();
+    void Filter(bool allowFallbackSelect = true);
     void Select(int index, int difficulty = -1);
     void SelectRelative(int delta);
     void BuildDetail();

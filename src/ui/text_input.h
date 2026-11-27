@@ -34,6 +34,14 @@ public:
     bool IsFocused() const { return m_isFocused; }
     void SetFocused(bool focused);
 
+    // 密码遮罩与 CJK 输入法预编辑状态 (v2.3.0)
+    void SetPasswordMode(bool enabled);
+    bool IsPasswordMode() const { return m_passwordMode; }
+    void SetPasswordRevealed(bool revealed) { m_passwordRevealed = revealed; }
+    bool IsPasswordRevealed() const { return m_passwordRevealed; }
+    std::string GetDisplayString() const;
+    const std::string& GetCompositionText() const { return m_compositionText; }
+
     // 颜色
     void SetBgColor(sakura::core::Color c)          { m_bgColor = c; }
     void SetBorderColor(sakura::core::Color c)      { m_borderColor = c; }
@@ -58,6 +66,10 @@ private:
     size_t                   m_cursorPos = 0;    // 字符索引
     bool                     m_isFocused = false;
     bool                     m_selectedAll = false;
+    bool                     m_passwordMode = false;
+    bool                     m_passwordRevealed = false;
+    std::string              m_compositionText;
+    int                      m_compositionCursor = 0;
 
     sakura::core::FontHandle m_fontHandle;
     float                    m_normFontSize;

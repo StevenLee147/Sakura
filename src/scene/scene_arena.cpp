@@ -346,6 +346,12 @@ void SceneArena::OnEnter()
 
     *m_alive         = true;
     m_font           = ResourceManager::GetInstance().GetDefaultFontHandle();
+    m_topBar         = std::make_unique<TopBar>("MULTIPLAYER ARENA  ·  多人对战", m_font,
+        [this]()
+        {
+            if (m_currentRoom.has_value()) LeaveCurrentRoom();
+            else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
+        });
     m_time           = 0.0f;
     m_pollTimer      = 0.0f;
     m_chatCooldown   = 0.0f;
@@ -567,6 +573,7 @@ void SceneArena::OnEnter()
 void SceneArena::OnExit()
 {
     *m_alive = false;
+    m_topBar.reset();
     if (m_petalEmitter >= 0)
     {
         m_particles.StopEmitter(m_petalEmitter);
@@ -1690,6 +1697,7 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
             0.21f, 0.920f, 0.0155f, kDim);
 
         m_particles.Render(renderer);
+        if (m_topBar) { m_topBar->Render(renderer); m_topBar->RenderDrawer(renderer); }
         return;
     }
 
@@ -2141,10 +2149,13 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         0.215f, 0.920f, 0.0155f, kDim);
 
     m_particles.Render(renderer);
+    if (m_topBar) { m_topBar->Render(renderer); m_topBar->RenderDrawer(renderer); }
 }
 
 void SceneArena::OnEvent(const SDL_Event& event)
 {
+    if (m_topBar && m_topBar->HandleEvent(event))
+        return;
     if (m_currentRoom.has_value())
     {
         if (m_btnLeaveRoom && m_btnLeaveRoom->HandleEvent(event))

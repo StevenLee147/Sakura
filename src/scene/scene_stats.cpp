@@ -93,6 +93,8 @@ void SceneStats::OnEnter()
 
     m_showAchievements = false;
     m_showB30Overlay   = false;
+    m_topBar = std::make_unique<sakura::ui::TopBar>("CAREER STATS  ·  生涯统计", m_fontBody,
+        [this]() { m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SlideRight, 0.4f); });
 
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.04f, 0.93f, 0.18f, 0.05f },
@@ -157,10 +159,12 @@ void SceneStats::OnExit()
 {
     g_activeStatsRenderer = nullptr;
     g_pendingExportPath.clear();
+    m_topBar.reset();
 }
 
 void SceneStats::OnUpdate(float dt)
 {
+    if (m_topBar) m_topBar->Update(dt);
     if (m_btnBack) m_btnBack->Update(dt);
     if (m_btnToggleB30Overlay) m_btnToggleB30Overlay->Update(dt);
     if (m_btnExportB30) m_btnExportB30->Update(dt);
@@ -460,10 +464,17 @@ void SceneStats::OnRender(sakura::core::Renderer& renderer)
         }
         if (m_achievementList) m_achievementList->Render(renderer);
     }
+    if (m_topBar && !m_showB30Overlay)
+    {
+        m_topBar->Render(renderer);
+        m_topBar->RenderDrawer(renderer);
+    }
 }
 
 void SceneStats::OnEvent(const SDL_Event& event)
 {
+    if (!m_showB30Overlay && !m_showAchievements && m_topBar && m_topBar->HandleEvent(event))
+        return;
     if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)
     {
         if (m_showB30Overlay || m_showAchievements)

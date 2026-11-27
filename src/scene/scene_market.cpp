@@ -9,6 +9,7 @@
 #include "core/resource_manager.h"
 #include "game/chart_loader.h"
 #include "game/chart_utils.h"
+#include "game/select_context.h"
 #include "ui/toast.h"
 #include "ui/visual_style.h"
 #include "utils/logger.h"
@@ -74,6 +75,8 @@ void SceneMarket::OnEnter()
     *m_alive = true;
     m_font   = ResourceManager::GetInstance().GetDefaultFontHandle();
     m_time   = 0.0f;
+    m_topBar = std::make_unique<TopBar>("ATELIER MARKET  ·  在线谱面市场", m_font,
+        [this]() { m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.36f); });
 
     m_particles.Clear();
     m_petalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 2.8f, sakura::effects::ParticlePresets::SakuraPetal());
@@ -148,6 +151,7 @@ void SceneMarket::OnExit()
     m_particles.Clear();
     if (m_searchInput)
         m_searchInput->SetFocused(false);
+    m_topBar.reset();
 }
 
 void SceneMarket::UpdateSortButtonStyles()
@@ -396,15 +400,18 @@ void SceneMarket::PlaySelectedInLibrary()
     const std::string targetId = !m_installedChartIds[m_selected].empty()
         ? m_installedChartIds[m_selected]
         : m_items[m_selected].chartSlug;
-    Config::GetInstance().Set("library.last_chart", targetId);
-    Config::GetInstance().Set("library.last_difficulty", 0);
-    Config::GetInstance().Save();
+    sakura::game::SelectMemoryState st = sakura::game::SelectContextManager::Load(Config::GetInstance());
+    st.chartId         = targetId;
+    st.difficultyIndex = 0;
+    st.difficultyName.clear();
+    sakura::game::SelectContextManager::Save(Config::GetInstance(), st, true);
     m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::SakuraSweep, 0.40f);
 }
 
 void SceneMarket::OnUpdate(float dt)
 {
     m_time += dt;
+    if (m_topBar) m_topBar->Update(dt);
     m_particles.Update(dt);
 
     std::string chosenUpload;
@@ -593,10 +600,17 @@ void SceneMarket::OnRender(Renderer& r)
 
     if (m_btnBack) m_btnBack->Render(r);
     m_particles.Render(r);
+    if (m_topBar)
+    {
+        m_topBar->Render(r);
+        m_topBar->RenderDrawer(r);
+    }
 }
 
 void SceneMarket::OnEvent(const SDL_Event& e)
 {
+    if (m_topBar && m_topBar->HandleEvent(e))
+        return;
     if (e.type == SDL_EVENT_DROP_FILE && e.drop.data)
     {
         UploadPackageFile(e.drop.data);

@@ -103,6 +103,7 @@ void ResetConfigToDefaultsPreservingAuth()
 void SceneSettings::OnEnter()
 {
     m_font = ResourceManager::GetInstance().GetDefaultFontHandle();
+    m_topBar = std::make_unique<TopBar>("PREFERENCES  ·  偏好设置", m_font, [this] { Back(); });
     m_saved = StripLegacyOnlineCredentials(Config::GetInstance().GetRoot());
     m_dirty = false;
     m_modal = 0;
@@ -631,6 +632,7 @@ void SceneSettings::RestoreBackup()
 
 void SceneSettings::OnUpdate(float dt)
 {
+    if (m_topBar) m_topBar->Update(dt);
     {
         std::lock_guard lock(m_dialog->mutex);
         if (!m_dialog->directory.empty())
@@ -653,6 +655,8 @@ void SceneSettings::OnUpdate(float dt)
 
 void SceneSettings::OnEvent(const SDL_Event& event)
 {
+    if (!m_modal && m_listening < 0 && m_topBar && m_topBar->HandleEvent(event))
+        return;
     if (m_modal)
     {
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {m_modal = 0;m_closeRequested=false;}
@@ -780,6 +784,11 @@ void SceneSettings::OnRender(Renderer& renderer)
             (m_modal == 2 ? "成绩和谱面会保留，设置恢复后仍可取消。" : "当前存档会先备份，再替换成绩与设置。"),
             0.5f, 0.456f, 0.021f, palette.textDim, TextAlign::Center);
         for (auto& button : m_modalButtons) button->Render(renderer);
+    }
+    if (m_topBar)
+    {
+        m_topBar->Render(renderer);
+        m_topBar->RenderDrawer(renderer);
     }
 }
 } // namespace sakura::scene

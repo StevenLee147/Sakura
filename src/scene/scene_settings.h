@@ -5,6 +5,7 @@
 #include "core/updater.h"
 #include "net/api_client.h"
 #include "ui/button.h"
+#include "ui/top_bar.h"
 #include "ui/ui_base.h"
 
 #if __has_include("version.h")
@@ -39,6 +40,7 @@ private:
     struct DialogState { std::mutex mutex; std::string directory; };
     SceneManager& m_manager;
     sakura::core::FontHandle m_font = 0;
+    std::unique_ptr<sakura::ui::TopBar> m_topBar;
     std::array<std::vector<Row>, 6> m_pages;
     std::array<std::unique_ptr<sakura::ui::Button>, 6> m_tabs;
     std::vector<std::unique_ptr<sakura::ui::Button>> m_footer;

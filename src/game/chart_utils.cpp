@@ -309,4 +309,75 @@ ActiveLyricState EvaluateActiveLyric(const ChartData& chart, int nowMs)
     return state;
 }
 
+DualZoneNpsProfile ComputeDualZoneNpsCurve(const ChartData& chart, int bucketCount)
+{
+    DualZoneNpsProfile profile;
+    const int buckets = std::max(1, bucketCount);
+    profile.keyboardNps.assign(static_cast<std::size_t>(buckets), 0.0f);
+    profile.mouseNps.assign(static_cast<std::size_t>(buckets), 0.0f);
+
+    const int rawEndMs = ChartEndTime(chart);
+    profile.durationMs = rawEndMs;
+    if (chart.keyboardNotes.empty() && chart.mouseNotes.empty())
+        return profile;
+
+    const int spanMs      = std::max(1000, rawEndMs);
+    const float bucketSec = static_cast<float>(spanMs) / (1000.0f * static_cast<float>(buckets));
+    if (bucketSec <= 0.0f)
+        return profile;
+
+    auto addEventAt = [&](std::vector<float>& target, int timeMs)
+    {
+        const int clamped = std::clamp(timeMs, 0, spanMs - 1);
+        const int idx     = std::clamp(
+            static_cast<int>((static_cast<long long>(clamped) * buckets) / spanMs),
+            0,
+            buckets - 1);
+        target[static_cast<std::size_t>(idx)] += 1.0f;
+    };
+
+    int totalEvents = 0;
+    for (const auto& kn : chart.keyboardNotes)
+    {
+        addEventAt(profile.keyboardNps, kn.time);
+        ++totalEvents;
+        if (kn.type == NoteType::Hold && kn.duration > 0)
+        {
+            addEventAt(profile.keyboardNps, kn.time + kn.duration);
+            ++totalEvents;
+        }
+    }
+
+    for (const auto& mn : chart.mouseNotes)
+    {
+        addEventAt(profile.mouseNps, mn.time);
+        ++totalEvents;
+        if (mn.type == NoteType::Slider && !mn.sliderPath.empty())
+        {
+            const std::size_t wpCount = mn.sliderPath.size();
+            const int dur = std::max(0, mn.sliderDuration);
+            for (std::size_t w = 0; w < wpCount; ++w)
+            {
+                const int wpTime = mn.time + static_cast<int>(
+                    (static_cast<long long>(dur) * static_cast<long long>(w + 1)) /
+                    static_cast<long long>(wpCount));
+                addEventAt(profile.mouseNps, wpTime);
+                ++totalEvents;
+            }
+        }
+    }
+
+    float peak = 0.0f;
+    for (int i = 0; i < buckets; ++i)
+    {
+        const auto idx = static_cast<std::size_t>(i);
+        profile.keyboardNps[idx] /= bucketSec;
+        profile.mouseNps[idx]    /= bucketSec;
+        peak = std::max(peak, profile.keyboardNps[idx] + profile.mouseNps[idx]);
+    }
+    profile.peakTotalNps = peak;
+    profile.avgTotalNps  = static_cast<float>(totalEvents) / (static_cast<float>(spanMs) / 1000.0f);
+    return profile;
+}
+
 } // namespace sakura::game

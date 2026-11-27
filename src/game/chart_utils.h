@@ -92,4 +92,15 @@ struct ActiveLyricState
 StageVisualState EvaluateStageVisuals(const ChartData& chart, int nowMs, bool reducedMotion = false);
 ActiveLyricState EvaluateActiveLyric(const ChartData& chart, int nowMs);
 
+struct DualZoneNpsProfile
+{
+    std::vector<float> keyboardNps;
+    std::vector<float> mouseNps;
+    float              peakTotalNps = 0.0f;
+    float              avgTotalNps  = 0.0f;
+    int                durationMs   = 0;
+};
+
+DualZoneNpsProfile ComputeDualZoneNpsCurve(const ChartData& chart, int bucketCount = 48);
+
 } // namespace sakura::game
