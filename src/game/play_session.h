@@ -43,6 +43,19 @@ struct SessionInput
     float y = 0.5f;
 };
 
+enum class HitEventKind
+{
+    Tap,
+    HoldHead,
+    HoldTail,
+    ThumbTap,
+    Circle,
+    SliderHead,
+    SliderTick,
+    LinkChord,
+    SynergyBurst
+};
+
 struct JudgmentEvent
 {
     JudgeResult result = JudgeResult::None;
@@ -53,6 +66,7 @@ struct JudgmentEvent
     int error = 0;
     bool timed = false;
     bool synergy = false;
+    HitEventKind noteKind = HitEventKind::Tap;
 };
 
 // The same deterministic engine drives human play, demonstration, replay and tests.

@@ -23,10 +23,16 @@ namespace ConfigKeys
     inline constexpr std::string_view kFpsLimit       = "display.fps_limit";        // int (0=无限制)
 
     // ── 音频 ─────────────────────────────────────────────────────────────────
-    inline constexpr std::string_view kMasterVolume   = "audio.master_volume";     // float 0.0~1.0
-    inline constexpr std::string_view kMusicVolume    = "audio.music_volume";      // float 0.0~1.0
-    inline constexpr std::string_view kSfxVolume      = "audio.sfx_volume";        // float 0.0~1.0
-    inline constexpr std::string_view kAudioOffset    = "audio.global_offset_ms";  // int   毫秒延迟补偿
+    inline constexpr std::string_view kMasterVolume      = "audio.master_volume";     // float 0.0~1.0
+    inline constexpr std::string_view kMusicVolume       = "audio.music_volume";      // float 0.0~1.0
+    inline constexpr std::string_view kSfxVolume         = "audio.sfx_volume";        // float 0.0~1.0
+    inline constexpr std::string_view kHitsoundVolume    = "audio.hitsound_volume";   // float 0.0~1.0
+    inline constexpr std::string_view kUiSfxVolume       = "audio.ui_sfx_volume";     // float 0.0~1.0
+    inline constexpr std::string_view kAudioOffset       = "audio.global_offset_ms";  // int   毫秒延迟补偿
+    inline constexpr std::string_view kAudioLatencyMode  = "audio.latency_mode";      // ultra_low | balanced | safe
+    inline constexpr std::string_view kAudioOutputDevice = "audio.output_device";     // default or device id
+    inline constexpr std::string_view kSfxHumanize       = "audio.sfx_humanize";      // bool
+    inline constexpr std::string_view kMenuBgmEnabled    = "audio.menu_bgm_enabled";  // bool
 
     // ── 游戏玩法 ──────────────────────────────────────────────────────────────
     inline constexpr std::string_view kNoteSpeed      = "gameplay.note_speed";     // float 1.0~10.0

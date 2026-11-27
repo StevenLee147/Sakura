@@ -155,6 +155,7 @@ void SceneMenu::OnEnter()
     m_fontSub     = rm.GetDefaultFontHandle();
     m_fontButton  = rm.GetDefaultFontHandle();
     m_topBar      = std::make_unique<sakura::ui::TopBar>("SAKURA  ·  月夜墨樱", m_fontSub);
+    sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
 
     // 初始化入场动画
     m_enterTimer            = 0.0f;

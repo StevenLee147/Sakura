@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Sakura
-    VERSION 2.3.0
+    VERSION 2.4.0
     DESCRIPTION "Sakura-樱 混合模式音乐节奏游戏"
     LANGUAGES CXX
 )
@@ -281,6 +281,7 @@ if(SAKURA_BUILD_TESTS)
     # 提取可独立测试的游戏逻辑（无 SDL3 运行时依赖）
     add_library(sakura-game-logic STATIC
         src/audio/clock_sync.cpp
+        src/audio/sfx_generator.cpp
         src/audio/time_stretcher.cpp
         src/core/auth_store.cpp
         src/core/config.cpp

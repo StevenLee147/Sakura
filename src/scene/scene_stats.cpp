@@ -2,6 +2,7 @@
 
 #include "scene_stats.h"
 #include "scene_menu.h"
+#include "audio/audio_manager.h"
 #include "core/paths.h"
 #include "core/theme.h"
 #include "data/database.h"
@@ -95,6 +96,7 @@ void SceneStats::OnEnter()
     m_showB30Overlay   = false;
     m_topBar = std::make_unique<sakura::ui::TopBar>("CAREER STATS  ·  生涯统计", m_fontBody,
         [this]() { m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SlideRight, 0.4f); });
+    sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
 
     m_btnBack = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.04f, 0.93f, 0.18f, 0.05f },

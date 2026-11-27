@@ -284,7 +284,7 @@ void SceneGame::OnEnter()
     {
         if(event.keyboard && event.lane >= 0 && event.lane < KEY_BIND_COUNT) m_lanePulse[event.lane]=1.0f;
         AddJudgeFlash(event.result, event.keyboard, event.lane,
-            MOUSE_X + event.x * MOUSE_W, MOUSE_Y + event.y * MOUSE_H, event.error, event.timed, event.synergy);
+            MOUSE_X + event.x * MOUSE_W, MOUSE_Y + event.y * MOUSE_H, event.error, event.timed, event.synergy, event.noteKind);
     });
     m_judgeFlashes.clear();
     m_cursorTrail.clear();
@@ -381,7 +381,8 @@ void SceneGame::HandleMouseClick(float normX, float normY, bool rightButton)
 void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
                                int lane, float px, float py,
                                int hitErrorMs, bool showHitError,
-                               bool isSynergy)
+                               bool isSynergy,
+                               sakura::game::HitEventKind noteKind)
 {
     if (m_options.isCourseMode && sakura::game::CourseSession::GetInstance().IsActive() &&
         r != sakura::game::JudgeResult::None)
@@ -451,16 +452,37 @@ void SceneGame::AddJudgeFlash(sakura::game::JudgeResult r, bool isKb,
         m_hitShockwaves.push_back({ emitX, emitY, 0.22f, 0.22f, burstCol, isKb, lane, isSynergy });
     }
 
-    // ── 判定音效 ──────────────────────────────────────────────────────────────
-    if(r==sakura::game::JudgeResult::Miss || sakura::core::Config::GetInstance().Get<bool>("audio.judgment_sounds",false))
+    // ── 判定音效与断连警示 ────────────────────────────────────────────────────
+    if (r == sakura::game::JudgeResult::Miss && m_lastCheckedCombo >= 20)
+        sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::ComboBreak);
+    else if (r == sakura::game::JudgeResult::Miss || sakura::core::Config::GetInstance().Get<bool>("audio.judgment_sounds", false))
         sakura::audio::AudioManager::GetInstance().PlayJudgeSFX(r);
 
-    // ── Hitsound（按音符类型）────────────────────────────────────────────────
-    auto hsType = isKb
-        ? (lane == sakura::game::kThumbLaneIndex ? sakura::audio::HitsoundType::HoldStart : sakura::audio::HitsoundType::Tap)
-        : sakura::audio::HitsoundType::Circle;
+    // ── 10 类双区分层打击音精准派发 (v2.4.0) ─────────────────────────────────
     if (r != sakura::game::JudgeResult::Miss)
+    {
+        using sakura::audio::HitsoundType;
+        using sakura::game::HitEventKind;
+        HitsoundType hsType = HitsoundType::Tap;
+        switch (noteKind)
+        {
+            case HitEventKind::HoldHead:     hsType = HitsoundType::HoldStart;    break;
+            case HitEventKind::HoldTail:     hsType = HitsoundType::HoldEnd;      break;
+            case HitEventKind::ThumbTap:     hsType = HitsoundType::ThumbBar;     break;
+            case HitEventKind::Circle:       hsType = HitsoundType::Circle;       break;
+            case HitEventKind::SliderHead:   hsType = HitsoundType::SliderStart;  break;
+            case HitEventKind::SliderTick:   hsType = HitsoundType::SliderTick;   break;
+            case HitEventKind::LinkChord:    hsType = HitsoundType::LinkChord;    break;
+            case HitEventKind::SynergyBurst: hsType = HitsoundType::SynergyBurst; break;
+            case HitEventKind::Tap:
+            default:
+                hsType = isKb
+                    ? (lane == sakura::game::kThumbLaneIndex ? HitsoundType::ThumbBar : HitsoundType::Tap)
+                    : HitsoundType::Circle;
+                break;
+        }
         sakura::audio::AudioManager::GetInstance().PlayHitsound(hsType);
+    }
 }
 
 // ── OnUpdate ──────────────────────────────────────────────────────────────────
@@ -838,6 +860,7 @@ void SceneGame::OnUpdate(float dt)
         m_particles.Emit(0.50f, JUDGE_LINE_Y, 36,
             sakura::effects::ParticlePresets::ComboMilestone());
         m_chromaTimer = std::max(m_chromaTimer, 0.36f);
+        sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::FeverTrigger);
         m_lastFeverCount = feverCount;
     }
 

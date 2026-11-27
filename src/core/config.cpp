@@ -67,6 +67,12 @@ void Config::ApplyDefaults()
     setDefault("audio.hitsounds_enabled", true);
     setDefault("audio.judgment_sounds", false);
     setDefault("audio.pitch_lock", true);
+    setDefault(ConfigKeys::kHitsoundVolume, 0.85f);
+    setDefault(ConfigKeys::kUiSfxVolume, 0.75f);
+    setDefault(ConfigKeys::kAudioLatencyMode, std::string("balanced"));
+    setDefault(ConfigKeys::kAudioOutputDevice, std::string("default"));
+    setDefault(ConfigKeys::kSfxHumanize, true);
+    setDefault(ConfigKeys::kMenuBgmEnabled, true);
     setDefault("graphics.glow", true);
     setDefault("graphics.background_blur", true);
     setDefault("graphics.shake", true);
@@ -109,6 +115,8 @@ void Config::ApplyDefaults()
     boundFloat(ConfigKeys::kMasterVolume, 0.8f, 0, 1);
     boundFloat(ConfigKeys::kMusicVolume, 0.8f, 0, 1);
     boundFloat(ConfigKeys::kSfxVolume, 0.7f, 0, 1);
+    boundFloat(ConfigKeys::kHitsoundVolume, 0.85f, 0, 1);
+    boundFloat(ConfigKeys::kUiSfxVolume, 0.75f, 0, 1);
     boundFloat("gameplay.background_dim", 0.75f, 0, 1);
     boundFloat("visual.bg_dim", 0.65f, 0.20f, 0.90f);
     boundFloat("gameplay.lane_opacity", 0.9f, 0.2f, 1);

@@ -487,8 +487,15 @@ void App::RenderDiagnosticsOverlay()
         else if (syncMode == sakura::audio::ClockSyncMode::Idle) driftCol = { 176, 184, 208, 220 };
         drawRow(3, "音画时钟偏差", ss.str(), driftCol);
     }
-    m_renderer.DrawText(font, "SDL3 GPU | WSOLA | Media Foundation BGA",
-        card.x + 0.014f, card.y + card.height - 0.025f, 0.0125f, { 214, 184, 212, 185 });
+    {
+        const auto& am = sakura::audio::AudioManager::GetInstance();
+        std::ostringstream audioSs;
+        audioSs << "SDL3 GPU | Audio " << am.GetActualSampleRate() << "Hz / "
+                << am.GetPeriodFrames() << "f (" << std::fixed << std::setprecision(1)
+                << am.GetEstimatedOutputLatencyMs() << "ms) | BGA";
+        m_renderer.DrawText(font, audioSs.str(),
+            card.x + 0.014f, card.y + card.height - 0.025f, 0.0122f, { 214, 184, 212, 195 });
+    }
 }
 
 void App::Render()

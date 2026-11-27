@@ -16,6 +16,7 @@
 #include <cmath>
 #include "utils/logger.h"
 
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -42,129 +43,258 @@ AudioManager& AudioManager::GetInstance()
     return instance;
 }
 
-// ── 初始化 ────────────────────────────────────────────────────────────────────
+namespace
+{
+std::atomic<bool> g_suppressAudioDeviceNotifs{ false };
+
+void EngineDeviceNotificationProc(const ma_device_notification* pNotification)
+{
+    if (!pNotification || g_suppressAudioDeviceNotifs.load(std::memory_order_acquire))
+        return;
+    if (pNotification->type == ma_device_notification_type_stopped ||
+        pNotification->type == ma_device_notification_type_rerouted ||
+        pNotification->type == ma_device_notification_type_interruption_ended)
+    {
+        AudioManager::GetInstance().NotifyDeviceReroute();
+    }
+}
+} // namespace
+
+void AudioManager::NotifyDeviceReroute()
+{
+    m_deviceRebuildPending.store(true, std::memory_order_release);
+}
+
+float AudioManager::GetEstimatedOutputLatencyMs() const
+{
+    const int sr = std::max(1, m_actualSampleRate);
+    return static_cast<float>(m_periodFrames * 1000.0) / static_cast<float>(sr);
+}
+
+void AudioManager::ClearDeck(MusicDeck& deck)
+{
+    if (deck.sound)
+    {
+        ma_sound_stop(deck.sound);
+        ma_sound_uninit(deck.sound);
+        delete deck.sound;
+        deck.sound = nullptr;
+    }
+    if (deck.decoder)
+    {
+        ma_decoder_uninit(deck.decoder);
+        delete deck.decoder;
+        deck.decoder = nullptr;
+    }
+    if (deck.stretchedBuffer)
+    {
+        auto* ab = static_cast<ma_audio_buffer*>(deck.stretchedBuffer);
+        ma_audio_buffer_uninit(ab);
+        delete ab;
+        deck.stretchedBuffer = nullptr;
+    }
+    std::vector<float>{}.swap(deck.stretchedPcm);
+    std::vector<unsigned char>{}.swap(deck.compressedMusic);
+    deck.activeStretchRate = 1.0f;
+    deck.path.clear();
+    deck.loopStartSec    = 0.0;
+    deck.loopEndSec      = 0.0;
+    deck.fadingOut       = false;
+    deck.fadeOutTimer    = 0.0f;
+    deck.fadeOutDuration = 0.0f;
+}
 
 bool AudioManager::Initialize()
 {
     if (m_initialized)
-    {
-        LOG_WARN("AudioManager 已经初始化");
         return true;
-    }
 
-    // 从 Config 读取音量设置
-    auto& cfg = sakura::core::Config::GetInstance();
-    m_masterVolume = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kMasterVolume), 1.0f);
-    m_musicVolume  = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kMusicVolume),  0.8f);
-    m_sfxVolume    = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kSfxVolume),    0.8f);
+    auto& cfg        = sakura::core::Config::GetInstance();
+    m_masterVolume   = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kMasterVolume), 1.0f);
+    m_musicVolume    = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kMusicVolume), 0.8f);
+    m_sfxVolume      = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kSfxVolume), 0.8f);
+    m_hitsoundVolume = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kHitsoundVolume), 0.85f);
+    m_uiSfxVolume    = cfg.Get<float>(std::string(sakura::core::ConfigKeys::kUiSfxVolume), 0.75f);
+    m_latencyMode    = cfg.Get<std::string>(std::string(sakura::core::ConfigKeys::kAudioLatencyMode), "balanced");
+    m_outputDeviceId = cfg.Get<std::string>(std::string(sakura::core::ConfigKeys::kAudioOutputDevice), "default");
+    m_periodFrames   = SfxGenerator::LatencyFramesForMode(m_latencyMode);
 
-    // 创建 ma_engine
-    m_engine = new ma_engine();
+    m_initialized = RebuildAudioBackend();
+    return m_initialized;
+}
+
+bool AudioManager::RebuildAudioBackend()
+{
+    const MusicDeck& prevActive = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    const bool hadMusic         = (prevActive.sound != nullptr && !prevActive.path.empty());
+    const std::string savedPath = prevActive.path;
+    const double savedPos       = hadMusic ? GetMusicPosition() : 0.0;
+    const double savedLoopStart = prevActive.loopStartSec;
+    const double savedLoopEnd   = prevActive.loopEndSec;
+    const bool savedLooping     = m_offlineClock ? m_virtualLooping : (prevActive.sound && ma_sound_is_looping(prevActive.sound) == MA_TRUE);
+    const bool savedPaused      = m_musicPaused;
+    const std::string savedSet  = m_hitsoundSetName;
+
+    g_suppressAudioDeviceNotifs.store(true, std::memory_order_release);
+    ClearDeck(m_decks[0]);
+    ClearDeck(m_decks[1]);
+    for (auto& [p, voices] : m_sfxCache)
+        for (auto& slot : voices) if (slot.sound) { ma_sound_uninit(slot.sound); delete slot.sound; slot.sound = nullptr; }
+    m_sfxCache.clear();
+    for (auto& [p, voices] : m_uiSfxCache)
+        for (auto& slot : voices) if (slot.sound) { ma_sound_uninit(slot.sound); delete slot.sound; slot.sound = nullptr; }
+    m_uiSfxCache.clear();
+    if (m_sfxGroup)   { ma_sound_group_uninit(m_sfxGroup);   delete m_sfxGroup;   m_sfxGroup   = nullptr; }
+    if (m_uiSfxGroup) { ma_sound_group_uninit(m_uiSfxGroup); delete m_uiSfxGroup; m_uiSfxGroup = nullptr; }
+    if (m_engine)     { ma_engine_uninit(m_engine);          delete m_engine;     m_engine     = nullptr; }
+    if (m_context)    { ma_context_uninit(m_context);        delete m_context;    m_context    = nullptr; }
+
+    m_periodFrames = SfxGenerator::LatencyFramesForMode(m_latencyMode);
+    m_engine       = new ma_engine();
     ma_engine_config engineConfig = ma_engine_config_init();
-    // 使用默认设备和格式
+    ma_device_id chosenDevId{};
+    bool useChosenDev = false;
+
     if (m_offlineClock)
     {
-        // 录制模式不打开任何输出设备：引擎只负责解码与时长查询，播放头由 Update 推进
         engineConfig.noDevice   = MA_TRUE;
         engineConfig.channels   = 2;
         engineConfig.sampleRate = 48000;
     }
+    else
+    {
+        m_context = new ma_context();
+        if (ma_context_init(nullptr, 0, nullptr, m_context) == MA_SUCCESS)
+        {
+            engineConfig.pContext = m_context;
+            if (!m_outputDeviceId.empty() && m_outputDeviceId != "default")
+            {
+                ma_device_info* pPlaybackInfos = nullptr;
+                ma_uint32 playbackCount = 0;
+                if (ma_context_get_devices(m_context, &pPlaybackInfos, &playbackCount, nullptr, nullptr) == MA_SUCCESS)
+                {
+                    for (ma_uint32 i = 0; i < playbackCount; ++i)
+                    {
+                        if (m_outputDeviceId == pPlaybackInfos[i].name)
+                        {
+                            chosenDevId  = pPlaybackInfos[i].id;
+                            useChosenDev = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            delete m_context;
+            m_context = nullptr;
+        }
+        if (useChosenDev)
+            engineConfig.pPlaybackDeviceID = &chosenDevId;
+        engineConfig.periodSizeInFrames   = static_cast<ma_uint32>(m_periodFrames);
+        engineConfig.notificationCallback = EngineDeviceNotificationProc;
+    }
 
     ma_result result = ma_engine_init(&engineConfig, m_engine);
+    if (result != MA_SUCCESS && useChosenDev)
+    {
+        LOG_WARN("指定音频输出设备不可用 ({})，自动回退系统默认设备", m_outputDeviceId);
+        engineConfig.pPlaybackDeviceID = nullptr;
+        result = ma_engine_init(&engineConfig, m_engine);
+    }
     if (result != MA_SUCCESS)
     {
         LOG_ERROR("ma_engine_init 失败: error={}", static_cast<int>(result));
         delete m_engine;
         m_engine = nullptr;
+        if (m_context) { ma_context_uninit(m_context); delete m_context; m_context = nullptr; }
+        g_suppressAudioDeviceNotifs.store(false, std::memory_order_release);
         return false;
     }
 
-    // 设置主音量
+    m_actualSampleRate = static_cast<int>(ma_engine_get_sample_rate(m_engine));
+    if (m_actualSampleRate <= 0)
+        m_actualSampleRate = 48000;
+
     ma_engine_set_volume(m_engine, m_masterVolume);
-
-    m_sfxGroup = new ma_sound_group();
-    if (ma_sound_group_init(m_engine, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_sfxGroup) != MA_SUCCESS)
+    m_sfxGroup   = new ma_sound_group();
+    m_uiSfxGroup = new ma_sound_group();
+    if (ma_sound_group_init(m_engine, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_sfxGroup) != MA_SUCCESS ||
+        ma_sound_group_init(m_engine, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_uiSfxGroup) != MA_SUCCESS)
     {
-        delete m_sfxGroup;
-        m_sfxGroup = nullptr;
-        ma_engine_uninit(m_engine);
-        delete m_engine;
-        m_engine = nullptr;
+        if (m_sfxGroup)   { ma_sound_group_uninit(m_sfxGroup); delete m_sfxGroup; m_sfxGroup = nullptr; }
+        if (m_uiSfxGroup) { delete m_uiSfxGroup; m_uiSfxGroup = nullptr; }
+        ma_engine_uninit(m_engine); delete m_engine; m_engine = nullptr;
+        if (m_context) { ma_context_uninit(m_context); delete m_context; m_context = nullptr; }
+        g_suppressAudioDeviceNotifs.store(false, std::memory_order_release);
         return false;
     }
-    ma_sound_group_set_volume(m_sfxGroup, m_sfxVolume);
+    ApplySfxVolumes();
     m_initialized = true;
-    LOG_INFO("AudioManager 初始化成功，主音量={:.2f}，音乐音量={:.2f}，音效音量={:.2f}{}",
-             m_masterVolume, m_musicVolume, m_sfxVolume, m_offlineClock ? "（离线时钟，无输出设备）" : "");
+    g_suppressAudioDeviceNotifs.store(false, std::memory_order_release);
+
+    if (!savedSet.empty())
+        LoadHitsoundSet(savedSet);
+    if (hadMusic && std::filesystem::exists(savedPath))
+    {
+        auto& deck = m_decks[static_cast<std::size_t>(m_activeDeck)];
+        if (InitDeckFromFile(deck, savedPath, savedLooping, savedPos, savedPaused, 60))
+        {
+            deck.loopStartSec = savedLoopStart;
+            deck.loopEndSec   = savedLoopEnd;
+            m_musicPath       = savedPath;
+            m_musicPaused     = savedPaused;
+            AudioVisualizer::GetInstance().SetSourceFile(savedPath);
+        }
+    }
+
+    LOG_INFO("AudioManager 就绪: {} Hz, {} frames (~{:.1f} ms){}",
+             m_actualSampleRate, m_periodFrames, GetEstimatedOutputLatencyMs(),
+             m_offlineClock ? " [OfflineClock]" : "");
     return true;
 }
 
 void AudioManager::SetOfflineClock(bool enabled)
 {
     if (m_initialized)
-    {
-        LOG_WARN("AudioManager::SetOfflineClock 必须在 Initialize 之前调用，已忽略");
         return;
-    }
     m_offlineClock = enabled;
 }
 
-// ── 关闭 ──────────────────────────────────────────────────────────────────────
-
 void AudioManager::Shutdown()
 {
-    if (!m_initialized) return;
-
-    // 停止并释放当前音乐
+    if (!m_initialized)
+        return;
+    g_suppressAudioDeviceNotifs.store(true, std::memory_order_release);
     StopMusic();
     AudioVisualizer::GetInstance().ClearSource();
-
-    for (auto& [path, voices] : m_sfxCache)
-        for (auto* voice : voices) if (voice) { ma_sound_uninit(voice); delete voice; }
+    for (auto& [p, voices] : m_sfxCache)
+        for (auto& slot : voices) if (slot.sound) { ma_sound_uninit(slot.sound); delete slot.sound; slot.sound = nullptr; }
     m_sfxCache.clear();
-    if (m_sfxGroup) { ma_sound_group_uninit(m_sfxGroup); delete m_sfxGroup; m_sfxGroup = nullptr; }
-
-    // 释放引擎
-    if (m_engine)
-    {
-        ma_engine_uninit(m_engine);
-        delete m_engine;
-        m_engine = nullptr;
-    }
-
-    m_initialized  = false;
-    m_musicPaused  = false;
-    m_fadingOut    = false;
-    LOG_INFO("AudioManager 已关闭");
+    for (auto& [p, voices] : m_uiSfxCache)
+        for (auto& slot : voices) if (slot.sound) { ma_sound_uninit(slot.sound); delete slot.sound; slot.sound = nullptr; }
+    m_uiSfxCache.clear();
+    if (m_sfxGroup)   { ma_sound_group_uninit(m_sfxGroup);   delete m_sfxGroup;   m_sfxGroup   = nullptr; }
+    if (m_uiSfxGroup) { ma_sound_group_uninit(m_uiSfxGroup); delete m_uiSfxGroup; m_uiSfxGroup = nullptr; }
+    if (m_engine)     { ma_engine_uninit(m_engine);          delete m_engine;     m_engine     = nullptr; }
+    if (m_context)    { ma_context_uninit(m_context);        delete m_context;    m_context    = nullptr; }
+    m_initialized = false;
+    m_musicPaused = false;
+    m_fadingOut   = false;
+    g_suppressAudioDeviceNotifs.store(false, std::memory_order_release);
 }
 
-// ── 背景音乐 ──────────────────────────────────────────────────────────────────
-
-bool AudioManager::PlayMusic(const std::string& path, int loops, double startPositionSeconds, bool startPaused)
+bool AudioManager::InitDeckFromFile(MusicDeck& deck, const std::string& path, bool shouldLoop,
+                                    double startSec, bool startPaused, int fadeInMs)
 {
-    if (!m_initialized || !m_engine)
-    {
-        LOG_ERROR("AudioManager::PlayMusic: AudioManager 未初始化");
-        return false;
-    }
-
-    if (!std::filesystem::exists(path))
-    {
-        LOG_ERROR("音乐文件不存在: {}", path);
-        return false;
-    }
-
-    // 停止当前音乐
-    StopMusic();
-
-    // 创建新的 ma_sound
-    m_music = new ma_sound();
-    m_activeStretchRate = 1.0f;
-    ma_uint32 flags = MA_SOUND_FLAG_STREAM;  // 流式加载，适合长音乐
+    ClearDeck(deck);
+    deck.sound             = new ma_sound();
+    deck.activeStretchRate = 1.0f;
 
     ma_result result = MA_ERROR;
-    auto extension=std::filesystem::path(path).extension().string();
-    std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+    auto ext = std::filesystem::path(path).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     const bool useWsola = !m_offlineClock && std::abs(m_playbackSpeed - 1.0f) >= 0.01f &&
         sakura::core::Config::GetInstance().Get<bool>("audio.pitch_lock", true);
 
@@ -175,12 +305,12 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
         auto decCfg = ma_decoder_config_init(ma_format_f32, 2, kTargetSr);
         ma_result decRes = MA_ERROR;
         std::vector<unsigned char> oggBytes;
-        if (extension == ".ogg" || extension == ".oga")
+        if (ext == ".ogg" || ext == ".oga")
         {
             const auto fsz = std::filesystem::file_size(path);
             if (fsz > 0 && fsz <= 256 * 1024 * 1024)
             {
-                oggBytes.resize(static_cast<size_t>(fsz));
+                oggBytes.resize(static_cast<std::size_t>(fsz));
                 std::ifstream src(path, std::ios::binary);
                 if (src.read(reinterpret_cast<char*>(oggBytes.data()), static_cast<std::streamsize>(fsz)))
                     decRes = ma_decoder_init_memory(oggBytes.data(), oggBytes.size(), &decCfg, &tempDec);
@@ -206,25 +336,25 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
             ma_decoder_uninit(&tempDec);
             if (!rawPcm.empty())
             {
-                m_stretchedPcm = TimeStretcher::StretchInterleaved(rawPcm, 2, kTargetSr, m_playbackSpeed);
+                deck.stretchedPcm = TimeStretcher::StretchInterleaved(rawPcm, 2, kTargetSr, m_playbackSpeed);
                 auto* audioBuf = new ma_audio_buffer();
-                m_stretchedBuffer = audioBuf;
+                deck.stretchedBuffer = audioBuf;
                 auto bufCfg = ma_audio_buffer_config_init(
-                    ma_format_f32, 2, m_stretchedPcm.size() / 2, m_stretchedPcm.data(), nullptr);
+                    ma_format_f32, 2, deck.stretchedPcm.size() / 2, deck.stretchedPcm.data(), nullptr);
                 bufCfg.sampleRate = kTargetSr;
                 if (ma_audio_buffer_init(&bufCfg, audioBuf) == MA_SUCCESS)
                 {
                     result = ma_sound_init_from_data_source(
-                        m_engine, audioBuf, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, m_music);
+                        m_engine, audioBuf, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, deck.sound);
                     if (result == MA_SUCCESS)
-                        m_activeStretchRate = m_playbackSpeed;
+                        deck.activeStretchRate = m_playbackSpeed;
                 }
                 if (result != MA_SUCCESS)
                 {
                     ma_audio_buffer_uninit(audioBuf);
                     delete audioBuf;
-                    m_stretchedBuffer = nullptr;
-                    m_stretchedPcm.clear();
+                    deck.stretchedBuffer = nullptr;
+                    deck.stretchedPcm.clear();
                 }
             }
         }
@@ -232,198 +362,261 @@ bool AudioManager::PlayMusic(const std::string& path, int loops, double startPos
 
     if (result != MA_SUCCESS)
     {
-        if(extension==".ogg" || extension==".oga"){
-            const auto size=std::filesystem::file_size(path);
-            if(size==0 || size>256*1024*1024){delete m_music;m_music=nullptr;return false;}
-            m_compressedMusic.resize(static_cast<size_t>(size));
-            std::ifstream source(path,std::ios::binary);
-            if(!source.read(reinterpret_cast<char*>(m_compressedMusic.data()),static_cast<std::streamsize>(size))){delete m_music;m_music=nullptr;m_compressedMusic.clear();return false;}
-            m_musicDecoder=new ma_decoder();
-            auto decoderConfig=ma_decoder_config_init(ma_format_f32,0,0);
-            result=ma_decoder_init_memory(m_compressedMusic.data(),m_compressedMusic.size(),&decoderConfig,m_musicDecoder);
-            if(result==MA_SUCCESS)result=ma_sound_init_from_data_source(m_engine,m_musicDecoder,MA_SOUND_FLAG_NO_SPATIALIZATION,nullptr,m_music);
-            else {delete m_musicDecoder;m_musicDecoder=nullptr;}
-        }else result = ma_sound_init_from_file(
-            m_engine,
-            path.c_str(),
-            flags,
-            nullptr,
-            nullptr,
-            m_music
-        );
-    }
-
-    if (result != MA_SUCCESS)
-    {
-        LOG_ERROR("ma_sound_init_from_file 失败 [{}]: error={}", path, static_cast<int>(result));
-        delete m_music;
-        m_music = nullptr;
-        if(m_musicDecoder){ma_decoder_uninit(m_musicDecoder);delete m_musicDecoder;m_musicDecoder=nullptr;}
-        m_compressedMusic.clear();
-        return false;
-    }
-
-    m_musicPath = path;
-    AudioVisualizer::GetInstance().SetSourceFile(path);
-
-    // 设置循环
-    bool shouldLoop = (loops == -1) || (loops > 0);
-    ma_sound_set_looping(m_music, shouldLoop ? MA_TRUE : MA_FALSE);
-
-    // 设置音量
-    ApplyMusicVolume();
-
-    // 设置播放速度（WSOLA 激活时 m_playbackSpeed / m_activeStretchRate == 1.0f 保持原调）
-    ma_sound_set_pitch(m_music, m_playbackSpeed / m_activeStretchRate);
-
-    // 在 start 前 seek 到指定起始位置
-    double appliedStartSeconds = 0.0;
-    if (startPositionSeconds > 0.0)
-    {
-        ma_result seekResult = ma_sound_seek_to_second(
-            m_music, static_cast<float>(startPositionSeconds / static_cast<double>(m_activeStretchRate)));
-        if (seekResult != MA_SUCCESS)
+        if (ext == ".ogg" || ext == ".oga")
         {
-            LOG_WARN("PlayMusic: 起始位置 seek 失败 (pos={:.3f}s, error={}), 将从头播放",
-                     startPositionSeconds, static_cast<int>(seekResult));
+            const auto size = std::filesystem::file_size(path);
+            if (size == 0 || size > 256 * 1024 * 1024) { ClearDeck(deck); return false; }
+            deck.compressedMusic.resize(static_cast<std::size_t>(size));
+            std::ifstream source(path, std::ios::binary);
+            if (!source.read(reinterpret_cast<char*>(deck.compressedMusic.data()), static_cast<std::streamsize>(size)))
+            {
+                ClearDeck(deck);
+                return false;
+            }
+            deck.decoder = new ma_decoder();
+            auto decCfg = ma_decoder_config_init(ma_format_f32, 0, 0);
+            result = ma_decoder_init_memory(deck.compressedMusic.data(), deck.compressedMusic.size(), &decCfg, deck.decoder);
+            if (result == MA_SUCCESS)
+                result = ma_sound_init_from_data_source(m_engine, deck.decoder, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, deck.sound);
+            else
+                { delete deck.decoder; deck.decoder = nullptr; }
         }
         else
         {
-            appliedStartSeconds = startPositionSeconds;
-            LOG_DEBUG("PlayMusic: seek 到 {:.3f}s 成功", startPositionSeconds);
+            result = ma_sound_init_from_file(m_engine, path.c_str(), MA_SOUND_FLAG_STREAM, nullptr, nullptr, deck.sound);
         }
-    }
-
-    // 开始播放
-    if (m_offlineClock)
-    {
-        // 离线时钟从不启动 ma_sound，只维护虚拟播放头
-        m_virtualDuration = GetMusicDuration();
-        m_virtualCursor   = m_virtualDuration > 0.0
-            ? std::min(appliedStartSeconds, m_virtualDuration) : appliedStartSeconds;
-        m_virtualPlaying  = !startPaused;
-        m_virtualAtEnd    = false;
-        m_virtualLooping  = shouldLoop;
-        result = MA_SUCCESS;
-    }
-    else
-    {
-        result = startPaused ? MA_SUCCESS : ma_sound_start(m_music);
     }
     if (result != MA_SUCCESS)
     {
-        LOG_ERROR("ma_sound_start 失败: error={}", static_cast<int>(result));
+        ClearDeck(deck);
         return false;
     }
 
+    deck.path = path;
+    ma_sound_set_looping(deck.sound, shouldLoop ? MA_TRUE : MA_FALSE);
+    ma_sound_set_volume(deck.sound, m_musicVolume);
+    ma_sound_set_pitch(deck.sound, m_playbackSpeed / deck.activeStretchRate);
+
+    if (startSec > 0.0)
+        ma_sound_seek_to_second(deck.sound, static_cast<float>(startSec / static_cast<double>(deck.activeStretchRate)));
+
+    if (!m_offlineClock)
+    {
+        if (fadeInMs > 0)
+            ma_sound_set_fade_in_milliseconds(deck.sound, 0.0f, 1.0f, static_cast<ma_uint64>(fadeInMs));
+        if (!startPaused && ma_sound_start(deck.sound) != MA_SUCCESS)
+        {
+            ClearDeck(deck);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AudioManager::PlayMusic(const std::string& path, int loops, double startPositionSeconds, bool startPaused)
+{
+    if (!m_initialized || !m_engine || !std::filesystem::exists(path))
+        return false;
+
+    StopMusic();
+    const bool shouldLoop = (loops == -1) || (loops > 0);
+    auto& deck = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (!InitDeckFromFile(deck, path, shouldLoop, startPositionSeconds, startPaused, 0))
+        return false;
+
+    m_musicPath   = path;
     m_musicPaused = startPaused;
     m_fadingOut   = false;
-    LOG_INFO("开始播放音乐: {} (loop={}, startPos={:.3f}s)", path, loops, startPositionSeconds);
+    AudioVisualizer::GetInstance().SetSourceFile(path);
+
+    if (m_offlineClock)
+    {
+        m_virtualDuration  = GetMusicDuration();
+        m_virtualCursor    = (m_virtualDuration > 0.0) ? std::min(startPositionSeconds, m_virtualDuration) : startPositionSeconds;
+        m_virtualLoopStart = 0.0;
+        m_virtualLoopEnd   = 0.0;
+        m_virtualPlaying   = !startPaused;
+        m_virtualAtEnd     = false;
+        m_virtualLooping   = shouldLoop;
+    }
     return true;
+}
+
+bool AudioManager::CrossfadeMusic(const std::string& path, double startSec,
+                                  double loopStartSec, double loopEndSec, int fadeMs)
+{
+    if (!m_initialized || !m_engine || !std::filesystem::exists(path))
+        return false;
+
+    const int clampedFade = std::clamp(fadeMs, 40, 2000);
+    const int oldIdx      = m_activeDeck;
+    const int nextIdx     = 1 - m_activeDeck;
+
+    if (m_decks[static_cast<std::size_t>(oldIdx)].sound)
+    {
+        auto& oldDeck = m_decks[static_cast<std::size_t>(oldIdx)];
+        if (!m_offlineClock)
+            ma_sound_set_fade_in_milliseconds(oldDeck.sound, -1.0f, 0.0f, static_cast<ma_uint64>(clampedFade));
+        oldDeck.fadingOut       = true;
+        oldDeck.fadeOutTimer    = 0.0f;
+        oldDeck.fadeOutDuration = static_cast<float>(clampedFade) / 1000.0f;
+    }
+
+    const bool wholeTrackLoop = (loopEndSec <= loopStartSec);
+    auto& nextDeck = m_decks[static_cast<std::size_t>(nextIdx)];
+    if (!InitDeckFromFile(nextDeck, path, wholeTrackLoop, std::max(0.0, startSec), false, clampedFade))
+        return false;
+
+    nextDeck.loopStartSec = std::max(0.0, loopStartSec);
+    nextDeck.loopEndSec   = (loopEndSec > loopStartSec) ? loopEndSec : 0.0;
+    m_activeDeck          = nextIdx;
+    m_musicPath           = path;
+    m_musicPaused         = false;
+    m_fadingOut           = false;
+    AudioVisualizer::GetInstance().SetSourceFile(path);
+
+    if (m_offlineClock)
+    {
+        ClearDeck(m_decks[static_cast<std::size_t>(oldIdx)]);
+        m_virtualDuration  = GetMusicDuration();
+        m_virtualCursor    = std::max(0.0, startSec);
+        m_virtualLoopStart = nextDeck.loopStartSec;
+        m_virtualLoopEnd   = nextDeck.loopEndSec;
+        m_virtualPlaying   = true;
+        m_virtualAtEnd     = false;
+        m_virtualLooping   = true;
+    }
+    return true;
+}
+
+void AudioManager::EnsureMenuBgm()
+{
+    if (!m_initialized)
+        return;
+    const bool enabled = sakura::core::Config::GetInstance().Get<bool>(
+        std::string(sakura::core::ConfigKeys::kMenuBgmEnabled), true);
+    static constexpr const char* kMenuBgmRel = "resources/sound/bgm/moonlit_menu.ogg";
+    if (!enabled)
+    {
+        if (m_musicPath.find("moonlit_menu.ogg") != std::string::npos && IsPlaying())
+            FadeOutMusic(280);
+        return;
+    }
+    if (!std::filesystem::exists(kMenuBgmRel))
+        return;
+    if (m_musicPath == kMenuBgmRel && IsPlaying() && !m_fadingOut)
+        return;
+    SetPlaybackSpeed(1.0f);
+    CrossfadeMusic(kMenuBgmRel, 0.0, 0.0, 0.0, 280);
 }
 
 bool AudioManager::PlayMusicFromHandle(sakura::core::MusicHandle handle, int loops)
 {
     auto path = sakura::core::ResourceManager::GetInstance().GetMusicPath(handle);
-    if (!path)
-    {
-        LOG_WARN("PlayMusicFromHandle: 无效 MusicHandle {}", handle);
-        return false;
-    }
-
-    return PlayMusic(*path, loops);
+    return path ? PlayMusic(*path, loops) : false;
 }
 
 void AudioManager::PauseMusic()
 {
-    if (!m_music || m_musicPaused) return;
-
-    if (!m_offlineClock) ma_sound_stop(m_music);
+    auto* snd = m_decks[static_cast<std::size_t>(m_activeDeck)].sound;
+    if (!snd || m_musicPaused) return;
+    if (!m_offlineClock) ma_sound_stop(snd);
     m_musicPaused = true;
-    LOG_DEBUG("音乐已暂停");
 }
 
 void AudioManager::ResumeMusic()
 {
-    if (!m_music || !m_musicPaused) return;
-
+    auto* snd = m_decks[static_cast<std::size_t>(m_activeDeck)].sound;
+    if (!snd || !m_musicPaused) return;
     if (m_offlineClock)
     {
-        // 与 ma_sound_start 一致：已播放到结尾的声音从头开始
-        if (m_virtualAtEnd)
-        {
-            m_virtualCursor = 0.0;
-            m_virtualAtEnd  = false;
-        }
+        if (m_virtualAtEnd) { m_virtualCursor = 0.0; m_virtualAtEnd = false; }
         m_virtualPlaying = true;
     }
     else
     {
-        ma_sound_start(m_music);
+        ma_sound_start(snd);
     }
     m_musicPaused = false;
-    LOG_DEBUG("音乐已恢复");
 }
 
 void AudioManager::StopMusic()
 {
-    if (!m_music) return;
-
-    ma_sound_stop(m_music);
-    ma_sound_uninit(m_music);
-    delete m_music;
-    m_music       = nullptr;
-    if(m_musicDecoder){ma_decoder_uninit(m_musicDecoder);delete m_musicDecoder;m_musicDecoder=nullptr;}
-    if(m_stretchedBuffer){auto* ab=static_cast<ma_audio_buffer*>(m_stretchedBuffer);ma_audio_buffer_uninit(ab);delete ab;m_stretchedBuffer=nullptr;}
-    std::vector<float>{}.swap(m_stretchedPcm);
-    m_activeStretchRate = 1.0f;
-    std::vector<unsigned char>{}.swap(m_compressedMusic);
-    m_musicPath   = "";
-    m_musicPaused = false;
-    m_fadingOut   = false;
-    m_virtualCursor   = 0.0;
-    m_virtualDuration = -1.0;
-    m_virtualPlaying  = false;
-    m_virtualAtEnd    = false;
-    m_virtualLooping  = false;
+    ClearDeck(m_decks[0]);
+    ClearDeck(m_decks[1]);
+    m_musicPath        = "";
+    m_musicPaused      = false;
+    m_fadingOut        = false;
+    m_virtualCursor    = 0.0;
+    m_virtualDuration  = -1.0;
+    m_virtualLoopStart = 0.0;
+    m_virtualLoopEnd   = 0.0;
+    m_virtualPlaying   = false;
+    m_virtualAtEnd     = false;
+    m_virtualLooping   = false;
     AudioVisualizer::GetInstance().ClearSource();
-    LOG_DEBUG("音乐已停止");
 }
 
 void AudioManager::FadeOutMusic(int ms)
 {
-    if (!m_music || !IsPlaying()) return;
-
-    // 使用 miniaudio 内置淡出 API
-    // ma_sound_set_fade_in_milliseconds(sound, startVol, endVol, durationMs)
-    float currentVol = 1.0f;
-    ma_sound_set_fade_in_milliseconds(m_music, currentVol, 0.0f,
-                                     static_cast<ma_uint64>(std::max(0, ms)));
-
+    auto* snd = m_decks[static_cast<std::size_t>(m_activeDeck)].sound;
+    if (!snd || !IsPlaying()) return;
+    if (!m_offlineClock)
+        ma_sound_set_fade_in_milliseconds(snd, -1.0f, 0.0f, static_cast<ma_uint64>(std::max(0, ms)));
     m_fadingOut    = true;
     m_fadeDuration = static_cast<float>(ms) / 1000.0f;
     m_fadeTimer    = 0.0f;
-    LOG_DEBUG("音乐淡出 {}ms", ms);
 }
 
 void AudioManager::Update(float dt)
 {
-    if (m_offlineClock && m_music && m_virtualPlaying && !m_musicPaused)
+    if (m_rebuildCooldown > 0.0f)
+        m_rebuildCooldown = std::max(0.0f, m_rebuildCooldown - dt);
+    if (!m_offlineClock && m_rebuildCooldown <= 0.0f && m_deviceRebuildPending.exchange(false, std::memory_order_acq_rel))
     {
-        // 虚拟时间：每次 Update 精确推进 dt × 播放速度，与渲染/编码耗时无关
+        m_rebuildCooldown = 0.60f;
+        LOG_INFO("[AudioManager] 检测到音频输出端点变更，正在执行零中断热重连...");
+        RebuildAudioBackend();
+    }
+
+    for (auto& deck : m_decks)
+    {
+        if (deck.fadingOut)
+        {
+            deck.fadeOutTimer += dt;
+            if (deck.fadeOutTimer >= deck.fadeOutDuration)
+                ClearDeck(deck);
+        }
+    }
+
+    auto& active = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (m_offlineClock && active.sound && m_virtualPlaying && !m_musicPaused)
+    {
         m_virtualCursor += static_cast<double>(dt) * static_cast<double>(m_playbackSpeed);
-        if (m_virtualDuration > 0.0 && m_virtualCursor >= m_virtualDuration)
+        if (m_virtualLoopEnd > m_virtualLoopStart && m_virtualCursor >= m_virtualLoopEnd)
+        {
+            m_virtualCursor = m_virtualLoopStart;
+        }
+        else if (m_virtualDuration > 0.0 && m_virtualCursor >= m_virtualDuration)
         {
             if (m_virtualLooping)
-            {
                 m_virtualCursor = std::fmod(m_virtualCursor, m_virtualDuration);
-            }
             else
-            {
-                m_virtualCursor  = m_virtualDuration;
-                m_virtualPlaying = false;
-                m_virtualAtEnd   = true;
-            }
+                { m_virtualCursor = m_virtualDuration; m_virtualPlaying = false; m_virtualAtEnd = true; }
+        }
+    }
+    else if (!m_offlineClock && active.sound && !m_musicPaused && !m_fadingOut &&
+             active.loopEndSec > active.loopStartSec + 0.8)
+    {
+        const double pos = GetMusicPosition();
+        const double dur = GetMusicDuration();
+        const double effEnd = (dur > 0.5) ? std::min(active.loopEndSec, dur - 0.15) : active.loopEndSec;
+        if (effEnd > active.loopStartSec + 0.5 && pos >= effEnd - 0.28)
+        {
+            const std::string p = active.path;
+            const double ls = active.loopStartSec;
+            const double le = active.loopEndSec;
+            CrossfadeMusic(p, ls, ls, le, 280);
         }
     }
 
@@ -436,164 +629,308 @@ void AudioManager::Update(float dt)
 
 bool AudioManager::SetMusicPosition(double seconds)
 {
-    if (!m_music || !std::isfinite(seconds)) return false;
+    const auto& active = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (!active.sound || !std::isfinite(seconds))
+        return false;
     seconds = std::clamp(seconds, 0.0, std::max(0.0, GetMusicDuration()));
-
     if (m_offlineClock)
     {
         m_virtualCursor = seconds;
         m_virtualAtEnd  = false;
         return true;
     }
-
-    // 使用 ma_sound_seek_to_second 自动处理数据源采样率转换与 WSOLA 变速比例
-    ma_result result = ma_sound_seek_to_second(
-        m_music, static_cast<float>(seconds / static_cast<double>(m_activeStretchRate)));
-    if (result != MA_SUCCESS)
-    {
-        LOG_ERROR("SetMusicPosition 失败: error={}", static_cast<int>(result));
-        return false;
-    }
-    return true;
+    return ma_sound_seek_to_second(
+        active.sound, static_cast<float>(seconds / static_cast<double>(active.activeStretchRate))) == MA_SUCCESS;
 }
 
 double AudioManager::GetMusicPosition() const
 {
-    if (!m_music) return 0.0;
-    if (m_offlineClock) return m_virtualCursor;
-
+    const auto& active = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (!active.sound)
+        return 0.0;
+    if (m_offlineClock)
+        return m_virtualCursor;
     float cursor = 0.0f;
-    ma_result result = ma_sound_get_cursor_in_seconds(m_music, &cursor);
-    if (result != MA_SUCCESS) return 0.0;
-    return static_cast<double>(cursor) * static_cast<double>(m_activeStretchRate);
+    if (ma_sound_get_cursor_in_seconds(active.sound, &cursor) != MA_SUCCESS)
+        return 0.0;
+    return static_cast<double>(cursor) * static_cast<double>(active.activeStretchRate);
 }
 
 double AudioManager::GetMusicDuration() const
 {
-    if (!m_music) return -1.0;
-
+    const auto& active = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (!active.sound)
+        return -1.0;
     float length = 0.0f;
-    ma_result result = ma_sound_get_length_in_seconds(m_music, &length);
-    if (result != MA_SUCCESS) return -1.0;
-    return static_cast<double>(length) * static_cast<double>(m_activeStretchRate);
+    if (ma_sound_get_length_in_seconds(active.sound, &length) != MA_SUCCESS)
+        return -1.0;
+    return static_cast<double>(length) * static_cast<double>(active.activeStretchRate);
 }
 
 bool AudioManager::IsPlaying() const
 {
-    if (!m_music) return false;
-    if (m_offlineClock) return m_virtualPlaying && !m_musicPaused;
-    return ma_sound_is_playing(m_music) == MA_TRUE && !m_musicPaused;
+    const auto& active = m_decks[static_cast<std::size_t>(m_activeDeck)];
+    if (!active.sound)
+        return false;
+    if (m_offlineClock)
+        return m_virtualPlaying && !m_musicPaused;
+    return ma_sound_is_playing(active.sound) == MA_TRUE && !m_musicPaused;
 }
 
 bool AudioManager::IsPaused() const
 {
-    return m_music != nullptr && m_musicPaused;
+    return m_decks[static_cast<std::size_t>(m_activeDeck)].sound != nullptr && m_musicPaused;
 }
 
-// ── 音效 ──────────────────────────────────────────────────────────────────────
-
-void AudioManager::CacheSFX(const std::string& path)
+void AudioManager::CacheSFX(const std::string& path, bool isUi)
 {
-    if (!m_initialized || m_sfxCache.contains(path) || !std::filesystem::exists(path)) return;
-    std::array<ma_sound*, 4> voices{};
-    for (auto& voice : voices)
+    if (!m_initialized || !m_engine || path.empty() || !std::filesystem::exists(path))
+        return;
+    if (isUi)
     {
-        voice = new ma_sound();
-        if (ma_sound_init_from_file(m_engine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION,
-                m_sfxGroup, nullptr, voice) != MA_SUCCESS)
+        if (m_uiSfxCache.contains(path))
+            return;
+        std::array<SfxVoiceSlot, 6> voices{};
+        for (auto& slot : voices)
         {
-            delete voice;
-            voice = nullptr;
+            slot.sound = new ma_sound();
+            if (ma_sound_init_from_file(m_engine, path.c_str(),
+                    MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION, m_uiSfxGroup, nullptr, slot.sound) != MA_SUCCESS)
+            {
+                delete slot.sound;
+                slot.sound = nullptr;
+            }
+        }
+        m_uiSfxCache.emplace(path, voices);
+        return;
+    }
+    if (m_sfxCache.contains(path))
+        return;
+    std::array<SfxVoiceSlot, kVoicesPerSfx> voices{};
+    for (auto& slot : voices)
+    {
+        slot.sound = new ma_sound();
+        if (ma_sound_init_from_file(m_engine, path.c_str(),
+                MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION, m_sfxGroup, nullptr, slot.sound) != MA_SUCCESS)
+        {
+            delete slot.sound;
+            slot.sound = nullptr;
         }
     }
     m_sfxCache.emplace(path, voices);
 }
 
+void AudioManager::PlaySFXInternal(const std::string& path, bool isUiSfx, bool allowHumanize)
+{
+    if (!m_initialized || !m_engine || path.empty())
+        return;
+    CacheSFX(path, isUiSfx);
+
+    SfxVoiceSlot* chosen = nullptr;
+    bool stoleActive     = false;
+    auto selectFromRange = [&](auto* slots, std::size_t count)
+    {
+        SfxVoiceSlot* bestIdle = nullptr;
+        SfxVoiceSlot* oldestBusy = nullptr;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            auto& s = slots[i];
+            if (!s.sound) continue;
+            if (!m_offlineClock && ma_sound_is_playing(s.sound) == MA_TRUE)
+            {
+                if (!oldestBusy || s.playOrder < oldestBusy->playOrder)
+                    oldestBusy = &s;
+            }
+            else
+            {
+                if (!bestIdle || s.playOrder < bestIdle->playOrder)
+                    bestIdle = &s;
+            }
+        }
+        if (bestIdle) chosen = bestIdle;
+        else if (oldestBusy) { chosen = oldestBusy; stoleActive = true; }
+    };
+
+    if (isUiSfx)
+    {
+        auto it = m_uiSfxCache.find(path);
+        if (it == m_uiSfxCache.end()) return;
+        selectFromRange(it->second.data(), it->second.size());
+    }
+    else
+    {
+        auto it = m_sfxCache.find(path);
+        if (it == m_sfxCache.end()) return;
+        selectFromRange(it->second.data(), it->second.size());
+    }
+    if (!chosen || !chosen->sound)
+        return;
+
+    chosen->playOrder = ++m_voicePlayCounter;
+    float gain  = 1.0f;
+    float pitch = 1.0f;
+
+    if (!isUiSfx)
+    {
+        const auto nowMs = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+        while (!m_recentHitTimestampsMs.empty() && nowMs > m_recentHitTimestampsMs.front() + 35ULL)
+            m_recentHitTimestampsMs.pop_front();
+        m_recentHitTimestampsMs.push_back(nowMs);
+        gain *= SfxGenerator::ComputePolyphonicGainScale(static_cast<int>(m_recentHitTimestampsMs.size()));
+
+        if (allowHumanize && sakura::core::Config::GetInstance().Get<bool>(
+                std::string(sakura::core::ConfigKeys::kSfxHumanize), true))
+        {
+            m_humanizeRng = m_humanizeRng * 1664525u + 1013904223u;
+            const float rPitch = (static_cast<float>((m_humanizeRng >> 8U) & 0xFFFFu) / 32767.5f) - 1.0f;
+            m_humanizeRng = m_humanizeRng * 1664525u + 1013904223u;
+            const float rGain  = (static_cast<float>((m_humanizeRng >> 8U) & 0xFFFFu) / 32767.5f) - 1.0f;
+            pitch = 1.0f + rPitch * 0.015f;
+            gain *= (1.0f + rGain * 0.015f);
+        }
+    }
+
+    if (!m_offlineClock)
+    {
+        ma_sound_stop(chosen->sound);
+        ma_sound_seek_to_pcm_frame(chosen->sound, 0);
+        ma_sound_set_pitch(chosen->sound, pitch);
+        ma_sound_set_volume(chosen->sound, std::clamp(gain, 0.0f, 1.0f));
+        ma_sound_set_fade_in_milliseconds(chosen->sound, 0.0f, 1.0f, stoleActive ? 3 : 1);
+        ma_sound_start(chosen->sound);
+    }
+    AudioVisualizer::GetInstance().AddImpulse(isUiSfx ? 0.08f : 0.20f);
+}
+
 void AudioManager::PlaySFX(const std::string& path)
 {
-    if (!m_initialized || !m_engine) return;
-    CacheSFX(path);
-    const auto it = m_sfxCache.find(path);
-    if (it == m_sfxCache.end()) return;
-    ma_sound* chosen = nullptr;
-    for (auto* voice : it->second)
-        if (voice) { chosen = voice; if (!ma_sound_is_playing(voice)) break; }
-    if (chosen)
-    {
-        // 离线时钟下不发声，但保留与实时播放一致的可视化冲击
-        if (!m_offlineClock)
-        {
-            ma_sound_stop(chosen);
-            ma_sound_seek_to_pcm_frame(chosen, 0);
-            ma_sound_start(chosen);
-        }
-        AudioVisualizer::GetInstance().AddImpulse(0.20f);
-    }
+    PlaySFXInternal(path, false, false);
 }
 
 void AudioManager::PlaySFXFromHandle(sakura::core::SoundHandle handle)
 {
-    auto path = sakura::core::ResourceManager::GetInstance().GetSoundPath(handle);
-    if (!path)
-    {
-        LOG_WARN("PlaySFXFromHandle: 无效 SoundHandle {}", handle);
-        return;
-    }
-
-    PlaySFX(*path);
+    if (auto path = sakura::core::ResourceManager::GetInstance().GetSoundPath(handle))
+        PlaySFXInternal(*path, false, false);
 }
-
-// ── 音量控制 ──────────────────────────────────────────────────────────────────
 
 void AudioManager::SetMasterVolume(float vol)
 {
-    m_masterVolume = std::max(0.0f, std::min(1.0f, vol));
+    m_masterVolume = std::clamp(vol, 0.0f, 1.0f);
     if (m_engine)
-    {
         ma_engine_set_volume(m_engine, m_masterVolume);
-    }
     ApplyMusicVolume();
+    ApplySfxVolumes();
 }
 
 void AudioManager::SetMusicVolume(float vol)
 {
-    m_musicVolume = std::max(0.0f, std::min(1.0f, vol));
+    m_musicVolume = std::clamp(vol, 0.0f, 1.0f);
     ApplyMusicVolume();
 }
 
 void AudioManager::SetSFXVolume(float vol)
 {
-    m_sfxVolume = std::max(0.0f, std::min(1.0f, vol));
-    if (m_sfxGroup) ma_sound_group_set_volume(m_sfxGroup, m_sfxVolume);
+    m_sfxVolume = std::clamp(vol, 0.0f, 1.0f);
+    ApplySfxVolumes();
+}
+
+void AudioManager::SetHitsoundVolume(float vol)
+{
+    m_hitsoundVolume = std::clamp(vol, 0.0f, 1.0f);
+    ApplySfxVolumes();
+}
+
+void AudioManager::SetUISFXVolume(float vol)
+{
+    m_uiSfxVolume = std::clamp(vol, 0.0f, 1.0f);
+    ApplySfxVolumes();
 }
 
 void AudioManager::ApplyMusicVolume()
 {
-    if (m_music)
+    for (auto& deck : m_decks)
     {
-        ma_sound_set_volume(m_music, m_musicVolume);
+        if (deck.sound)
+            ma_sound_set_volume(deck.sound, m_musicVolume);
     }
 }
 
-// ── 播放速度 ──────────────────────────────────────────────────────────────────
+void AudioManager::ApplySfxVolumes()
+{
+    if (m_sfxGroup)
+        ma_sound_group_set_volume(m_sfxGroup, std::clamp(m_sfxVolume * m_hitsoundVolume, 0.0f, 1.0f));
+    if (m_uiSfxGroup)
+        ma_sound_group_set_volume(m_uiSfxGroup, std::clamp(m_sfxVolume * m_uiSfxVolume, 0.0f, 1.0f));
+}
+
+bool AudioManager::SetLatencyMode(std::string_view mode)
+{
+    const std::string normalized = (mode == "ultra_low" || mode == "safe") ? std::string(mode) : std::string("balanced");
+    if (m_latencyMode == normalized && m_periodFrames == SfxGenerator::LatencyFramesForMode(normalized))
+        return true;
+    m_latencyMode  = normalized;
+    m_periodFrames = SfxGenerator::LatencyFramesForMode(normalized);
+    return m_initialized ? RebuildAudioBackend() : true;
+}
+
+std::vector<AudioDeviceInfo> AudioManager::GetPlaybackDevices() const
+{
+    std::vector<AudioDeviceInfo> list;
+    list.push_back({ "default", "系统默认输出设备", true });
+    if (m_offlineClock)
+        return list;
+
+    ma_context tempCtx{};
+    ma_context* ctx = m_context;
+    bool ownsTemp   = false;
+    if (!ctx && ma_context_init(nullptr, 0, nullptr, &tempCtx) == MA_SUCCESS)
+    {
+        ctx      = &tempCtx;
+        ownsTemp = true;
+    }
+    if (ctx)
+    {
+        ma_device_info* pInfos = nullptr;
+        ma_uint32 count        = 0;
+        if (ma_context_get_devices(ctx, &pInfos, &count, nullptr, nullptr) == MA_SUCCESS)
+        {
+            for (ma_uint32 i = 0; i < count; ++i)
+            {
+                std::string devName(pInfos[i].name);
+                if (!devName.empty())
+                    list.push_back({ devName, devName, pInfos[i].isDefault == MA_TRUE });
+            }
+        }
+    }
+    if (ownsTemp)
+        ma_context_uninit(&tempCtx);
+    return list;
+}
+
+bool AudioManager::SetOutputDevice(std::string_view deviceId)
+{
+    const std::string nextId = deviceId.empty() ? std::string("default") : std::string(deviceId);
+    if (m_outputDeviceId == nextId)
+        return true;
+    m_outputDeviceId = nextId;
+    return m_initialized ? RebuildAudioBackend() : true;
+}
 
 void AudioManager::SetPlaybackSpeed(float speed)
 {
-    m_playbackSpeed = std::max(0.1f, std::min(4.0f, speed));
-    if (m_music)
+    m_playbackSpeed = std::clamp(speed, 0.1f, 4.0f);
+    for (auto& deck : m_decks)
     {
-        ma_sound_set_pitch(m_music, m_playbackSpeed / m_activeStretchRate);
+        if (deck.sound)
+            ma_sound_set_pitch(deck.sound, m_playbackSpeed / deck.activeStretchRate);
     }
-    LOG_DEBUG("播放速度设置为 {:.2f}x", m_playbackSpeed);
 }
-
-// ── Hitsound 系统 ─────────────────────────────────────────────────────────────
 
 bool AudioManager::LoadHitsoundSet(std::string_view name)
 {
-    // 生成 v4 六套主题合成音效（升级缓存目录确保全部 6 套打击音干净生成）
-    const std::string cacheRoot   = sakura::core::Paths::User("cache/sfx-v4");
-    const std::string defaultBase = sakura::core::Paths::User("cache/sfx-v4/default/");
+    const std::string cacheRoot   = sakura::core::Paths::User("cache/sfx-v5");
+    const std::string defaultBase = sakura::core::Paths::User("cache/sfx-v5/default/");
     SfxGenerator::GenerateDefaults(cacheRoot);
 
     const std::string requestedName(name);
@@ -601,20 +938,14 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     std::string requestedBase = defaultBase;
     if (!requestedName.empty() && requestedName != "." && requestedName != ".." && requestedName != "ui")
     {
-        std::filesystem::path candidateDir = std::filesystem::path(cacheRoot) / requestedName;
         std::error_code ec;
-        if (std::filesystem::is_directory(candidateDir, ec))
+        if (std::filesystem::is_directory(std::filesystem::path(cacheRoot) / requestedName, ec))
         {
             useRequestedDir = true;
-            requestedBase   = sakura::core::Paths::User("cache/sfx-v4/" + requestedName + "/");
+            requestedBase   = sakura::core::Paths::User("cache/sfx-v5/" + requestedName + "/");
         }
     }
-
     m_hitsoundSetName = useRequestedDir ? requestedName : "default";
-    if (!useRequestedDir && !requestedName.empty() && requestedName != "default")
-    {
-        LOG_WARN("[AudioManager] 未知或缺失 hitsound set '{}'，回退至 default", requestedName);
-    }
 
     auto& skinMgr = sakura::core::SkinManager::GetInstance();
     auto resolveWavPath = [&](std::string_view fileName) -> std::string
@@ -622,7 +953,6 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
         std::string customPath = skinMgr.ResolveCustomHitsoundFile(fileName);
         if (!customPath.empty())
             return customPath;
-
         if (useRequestedDir)
         {
             std::string candidate = requestedBase + std::string(fileName);
@@ -630,15 +960,21 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
             if (std::filesystem::exists(candidate, ec))
                 return candidate;
         }
-
         return defaultBase + std::string(fileName);
     };
 
-    m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]         = resolveWavPath("tap.wav");
-    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]   = resolveWavPath("hold_start.wav");
-    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldTick)]    = resolveWavPath("hold_tick.wav");
-    m_hitsoundPaths[static_cast<int>(HitsoundType::Circle)]      = resolveWavPath("circle.wav");
-    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderStart)] = resolveWavPath("slider_start.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Tap)]          = resolveWavPath("tap.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldStart)]    = resolveWavPath("hold_start.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldTick)]     = resolveWavPath("hold_tick.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::HoldEnd)]      = resolveWavPath("hold_end.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::ThumbBar)]     = resolveWavPath("thumb_bar.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::Circle)]       = resolveWavPath("circle.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderStart)]  = resolveWavPath("slider_start.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::SliderTick)]   = resolveWavPath("slider_tick.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::LinkChord)]    = resolveWavPath("link_chord.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::SynergyBurst)] = resolveWavPath("synergy_burst.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::FeverTrigger)] = resolveWavPath("fever_trigger.wav");
+    m_hitsoundPaths[static_cast<int>(HitsoundType::ComboBreak)]   = resolveWavPath("combo_break.wav");
 
     m_judgeSFXPaths[0] = resolveWavPath("perfect.wav");
     m_judgeSFXPaths[1] = resolveWavPath("great.wav");
@@ -646,8 +982,7 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_judgeSFXPaths[3] = resolveWavPath("bad.wav");
     m_judgeSFXPaths[4] = resolveWavPath("miss.wav");
 
-    // UI 音效统一放 ui/
-    std::string ui = sakura::core::Paths::User("cache/sfx-v4/ui/");
+    const std::string ui = sakura::core::Paths::User("cache/sfx-v5/ui/");
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonHover)]     = ui + "button_hover.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::ButtonClick)]     = ui + "button_click.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::Transition)]      = ui + "transition.wav";
@@ -657,56 +992,58 @@ bool AudioManager::LoadHitsoundSet(std::string_view name)
     m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationBeat)] = ui + "calibration_beat.wav";
     m_uiSFXPaths[static_cast<int>(UISFXType::CalibrationHit)]  = ui + "calibration_hit.wav";
 
-    LOG_INFO("[AudioManager] 已加载 hitsound set: {} (requested={})", m_hitsoundSetName, name);
-    for (const auto& path : m_hitsoundPaths) CacheSFX(path);
-    for (const auto& path : m_judgeSFXPaths) CacheSFX(path);
-    for (const auto& path : m_uiSFXPaths) CacheSFX(path);
+    for (const auto& p : m_hitsoundPaths) CacheSFX(p, false);
+    for (const auto& p : m_judgeSFXPaths) CacheSFX(p, false);
+    for (const auto& p : m_uiSFXPaths)    CacheSFX(p, true);
     return true;
 }
 
 void AudioManager::PlayHitsound(HitsoundType type)
 {
-    if(!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled",true))return;
-    if (!m_initialized) return;
-    int idx = static_cast<int>(type);
-    if (idx < 0 || idx >= static_cast<int>(m_hitsoundPaths.size())) return;
-    const auto& path = m_hitsoundPaths[idx];
-    if (!path.empty() && std::filesystem::exists(path))
-        PlaySFX(path);
+    if (!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled", true) || !m_initialized)
+        return;
+    const int idx = static_cast<int>(type);
+    if (idx < 0 || idx >= static_cast<int>(HitsoundType::Count))
+        return;
+    const auto& path = m_hitsoundPaths[static_cast<std::size_t>(idx)];
+    const bool allowHumanize = (type != HitsoundType::FeverTrigger && type != HitsoundType::ComboBreak);
+    if (!path.empty())
+        PlaySFXInternal(path, false, allowHumanize);
 }
 
 void AudioManager::PlayHitsoundForNote(sakura::game::NoteType noteType)
 {
-    HitsoundType ht;
     switch (noteType)
     {
-        case sakura::game::NoteType::Hold:   ht = HitsoundType::HoldStart;   break;
-        case sakura::game::NoteType::Circle: ht = HitsoundType::Circle;       break;
-        case sakura::game::NoteType::Slider: ht = HitsoundType::SliderStart;  break;
-        default:                             ht = HitsoundType::Tap;          break;
+        case sakura::game::NoteType::Hold:   PlayHitsound(HitsoundType::HoldStart);   break;
+        case sakura::game::NoteType::Circle: PlayHitsound(HitsoundType::Circle);      break;
+        case sakura::game::NoteType::Slider: PlayHitsound(HitsoundType::SliderStart); break;
+        default:                             PlayHitsound(HitsoundType::Tap);         break;
     }
-    PlayHitsound(ht);
 }
 
 void AudioManager::PlayJudgeSFX(sakura::game::JudgeResult result)
 {
-    if (!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled", true)) return;
-    if (!m_initialized) return;
-    int idx = static_cast<int>(result);
-    if (idx < 0 || idx >= static_cast<int>(m_judgeSFXPaths.size())) return;
-    const auto& path = m_judgeSFXPaths[idx];
-    if (!path.empty() && std::filesystem::exists(path))
-        PlaySFX(path);
+    if (!sakura::core::Config::GetInstance().Get<bool>("audio.hitsounds_enabled", true) || !m_initialized)
+        return;
+    const int idx = static_cast<int>(result);
+    if (idx < 0 || idx >= static_cast<int>(m_judgeSFXPaths.size()))
+        return;
+    const auto& path = m_judgeSFXPaths[static_cast<std::size_t>(idx)];
+    if (!path.empty())
+        PlaySFXInternal(path, false, false);
 }
 
 void AudioManager::PlayUISFX(UISFXType type)
 {
-    if (!m_initialized) return;
-    int idx = static_cast<int>(type);
-    if (idx < 0 || idx >= static_cast<int>(m_uiSFXPaths.size())) return;
-    const auto& path = m_uiSFXPaths[idx];
-    if (!path.empty() && std::filesystem::exists(path))
-        PlaySFX(path);
+    if (!m_initialized)
+        return;
+    const int idx = static_cast<int>(type);
+    if (idx < 0 || idx >= static_cast<int>(m_uiSFXPaths.size()))
+        return;
+    const auto& path = m_uiSFXPaths[static_cast<std::size_t>(idx)];
+    if (!path.empty())
+        PlaySFXInternal(path, true, false);
 }
 
 } // namespace sakura::audio

@@ -292,6 +292,7 @@ jobs:
       - name: Create GitHub Release (with 5xx retry resilience)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ env.RELEASE_TAG }}
           IS_PRE: ${{ steps.prerelease.outputs.value }}
         run: |
@@ -307,12 +308,12 @@ jobs:
             "dist/Sakura-${TAG}-SHA256SUMS.txt"
           )
           for attempt in $(seq 1 8); do
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              if gh release upload "$TAG" "${FILES[@]}" --clobber && gh release edit "$TAG" --tag "$TAG" --draft=false $PRE_FLAG; then
+            if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              if gh release upload "$TAG" "${FILES[@]}" --clobber --repo "${GITHUB_REPOSITORY}" && gh release edit "$TAG" --tag "$TAG" --draft=false $PRE_FLAG --repo "${GITHUB_REPOSITORY}"; then
                 exit 0
               fi
             else
-              if gh release create "$TAG" "${FILES[@]}" --title "Sakura-樱 ${TAG}" --generate-notes $PRE_FLAG; then
+              if gh release create "$TAG" "${FILES[@]}" --title "Sakura-樱 ${TAG}" --generate-notes $PRE_FLAG --repo "${GITHUB_REPOSITORY}"; then
                 exit 0
               fi
             fi

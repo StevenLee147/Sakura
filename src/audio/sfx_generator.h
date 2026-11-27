@@ -12,10 +12,21 @@ class SfxGenerator
 {
 public:
     // 生成所有合成音效（若文件已存在则跳过）
-    // basePath: 例如 "resources/sound/sfx"
+    // basePath: 例如 "userdata/cache/sfx-v5"
     static void GenerateDefaults(std::string_view basePath);
 
+    // 多复音并发增益缩放与缓冲帧数映射（纯函数，供音频引擎与单元测试共用）
+    static float ComputePolyphonicGainScale(int concurrentTriggers);
+    static int   LatencyFramesForMode(std::string_view mode);
+
 private:
+    static bool WriteChordWav(std::string_view path,
+                              float rootFreq,
+                              float ratio2,
+                              float ratio3,
+                              int durationMs,
+                              float amplitude = 0.55f,
+                              bool upwardShimmer = false);
     // 写入单个 WAV 文件（正弦波，单声道, 44100 Hz, 16-bit PCM）
     // frequency: Hz
     // durationMs: 毫秒

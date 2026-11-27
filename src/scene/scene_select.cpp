@@ -296,7 +296,7 @@ void SceneSelect::Select(int index,int difficulty) {
     m_difficulty=std::clamp(targetDiff,0,static_cast<int>(c.difficulties.size())-1);
     const bool diffChanged = (m_difficulty != prevDifficulty);
     if(changed) {
-        sakura::audio::AudioManager::GetInstance().FadeOutMusic(150); m_previewTimer=0; m_previewPlaying=false;
+        m_previewTimer=0.30f; m_previewPlaying=false;
         ResourceManager::GetInstance().UnloadTexture(m_cover);
         const std::string coverPath=c.coverFile.empty()?"":(c.folderPath+"/"+c.coverFile);
         m_cover=coverPath.empty()?INVALID_HANDLE:ResourceManager::GetInstance().LoadTexture(coverPath).value_or(INVALID_HANDLE);
@@ -875,11 +875,16 @@ void SceneSelect::OnUpdate(float dt) {
     auto& audio=sakura::audio::AudioManager::GetInstance();
     if(m_selected>=0) {
         m_previewTimer+=dt;
-        if(!m_previewPlaying&&m_previewTimer>0.45f) {
-            const auto& c=m_charts[m_selected];audio.SetPlaybackSpeed(1);m_previewPlaying=true;
-            if(!audio.PlayMusic(c.folderPath+"/"+c.musicFile,0,c.previewTime/1000.0))ToastManager::Instance().Show("音乐预览不可用，请检查音频文件",ToastType::Warning);
+        if(!m_previewPlaying&&m_previewTimer>0.40f) {
+            const auto& c=m_charts[m_selected];
+            audio.SetPlaybackSpeed(1.0f);
+            m_previewPlaying=true;
+            const double totalDurSec=std::max(5.0,static_cast<double>(m_chartEnd)/1000.0);
+            const double startSec=(c.previewTime>0)?(static_cast<double>(c.previewTime)/1000.0):(totalDurSec*0.25);
+            const double loopEndSec=startSec+22.0;
+            if(!audio.CrossfadeMusic(c.folderPath+"/"+c.musicFile,startSec,startSec,loopEndSec,280))
+                ToastManager::Instance().Show("音乐预览不可用，请检查音频文件",ToastType::Warning);
         }
-        if(m_previewPlaying&&m_previewTimer>16){audio.FadeOutMusic(400);m_previewPlaying=false;m_previewTimer=-0.5f;}
     }
 }
 

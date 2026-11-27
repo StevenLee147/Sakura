@@ -150,7 +150,13 @@ void SceneSettings::AddToggle(int page, const std::string& title, const std::str
     auto bounds = ControlBounds(m_pages[page].size());
     bounds.x = 0.864f; bounds.width = 0.057f;
     auto toggle = std::make_unique<Toggle>(bounds, Config::GetInstance().Get<bool>(key, true), m_font, 0.022f);
-    toggle->SetOnChange([this, key](bool value) { Config::GetInstance().Set(key, value); m_dirty = true; });
+    toggle->SetOnChange([this, key](bool value)
+    {
+        Config::GetInstance().Set(key, value);
+        if (key == "audio.menu_bgm_enabled")
+            sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
+        m_dirty = true;
+    });
     m_pages[page].push_back({title, hint, std::move(toggle)});
 }
 
@@ -195,6 +201,14 @@ void SceneSettings::AddChoice(int page, const std::string& title, const std::str
         {
             sakura::audio::AudioManager::GetInstance().LoadHitsoundSet(values[index].get<std::string>());
             sakura::audio::AudioManager::GetInstance().PlayHitsound(sakura::audio::HitsoundType::Tap);
+        }
+        if (key == "audio.latency_mode")
+        {
+            sakura::audio::AudioManager::GetInstance().SetLatencyMode(values[index].get<std::string>());
+        }
+        if (key == "audio.output_device")
+        {
+            sakura::audio::AudioManager::GetInstance().SetOutputDevice(values[index].get<std::string>());
         }
         if (key == "graphics.skin_path")
         {
@@ -250,16 +264,34 @@ void SceneSettings::BuildPages()
     { if (Save()) m_manager.SwitchScene(std::make_unique<SceneSelect>(m_manager), TransitionType::Fade, 0.25f); });
 
     AddSlider(1, "主音量", "音乐与音效的总音量", "audio.master_volume", 0, 1, 0.01f);
-    AddSlider(1, "音乐音量", "歌曲、选曲试听与校准节拍", "audio.music_volume", 0, 1, 0.01f);
-    AddSlider(1, "音效音量", "打击与界面提示音", "audio.sfx_volume", 0, 1, 0.01f);
+    AddSlider(1, "音乐音量", "歌曲、选曲交叉试听与夜樱菜单环境音", "audio.music_volume", 0, 1, 0.01f);
+    AddSlider(1, "打击音独立音量", "双区 10 类音符打击音效增益", "audio.hitsound_volume", 0, 1, 0.01f);
+    AddSlider(1, "界面音独立音量", "按钮悬停、点击与转场反馈音增益", "audio.ui_sfx_volume", 0, 1, 0.01f);
     AddSlider(1, "全局音频偏移 / ms", "正值延后判定；建议先进行节拍校准", "audio.global_offset_ms", -500, 500, 1, true);
-    AddToggle(1, "打击音效", "界面提示音仍由音效音量控制", "audio.hitsounds_enabled");
-    AddAction(1, "节拍校准", "跟随节拍按空格，测量设备与操作延迟", "开始校准", [this]
-    { if (Save()) m_manager.SwitchScene(std::make_unique<SceneCalibration>(m_manager), TransitionType::Fade, 0.25f); });
-    AddChoice(1, "打击音色", "选择后播放试听", "audio.hitsound",
+    {
+        auto& am = sakura::audio::AudioManager::GetInstance();
+        std::ostringstream latHint;
+        latHint << "当前管线：" << am.GetActualSampleRate() << " Hz · " << am.GetPeriodFrames()
+                << " frames (~" << std::fixed << std::setprecision(1) << am.GetEstimatedOutputLatencyMs() << " ms)";
+        AddChoice(1, "音频缓冲延迟档位", latHint.str(), "audio.latency_mode",
+            {"超低延迟 (128f)", "均衡推荐 (256f)", "安全防爆 (512f)"},
+            {"ultra_low", "balanced", "safe"});
+        std::vector<std::string> devLabels;
+        std::vector<nlohmann::json> devValues;
+        for (const auto& d : am.GetPlaybackDevices())
+        {
+            devLabels.push_back(d.name);
+            devValues.push_back(d.id);
+        }
+        AddChoice(1, "音频输出设备", "支持耳机与蓝牙设备热插拔无感自动重连", "audio.output_device", devLabels, devValues);
+    }
+    AddChoice(1, "打击音色", "6 套双区 12 复音防爆音包，选择后试听", "audio.hitsound",
         {"墨樱晶石 / Default", "霓虹电音 / Cyber", "竞技极简 / Pure", "浮世竹韵 / Ukiyo", "轻柔 / Soft", "鼓点 / Drum"},
         {"default", "cyber", "pure", "ukiyo", "soft", "drum"});
-    AddToggle(1, "判定提示音", "额外播放 Perfect / Great 等判定音色", "audio.judgment_sounds");
+    AddToggle(1, "打击音效与微调", "启用双区打击音及 ±1.5% 防疲劳人性化微变调", "audio.hitsounds_enabled");
+    AddToggle(1, "大厅夜樱环境音", "在主菜单、统计、道场与市场无缝播放夜樱背景乐", "audio.menu_bgm_enabled");
+    AddAction(1, "节拍校准", "跟随节拍按空格，测量设备与操作延迟", "开始校准", [this]
+    { if (Save()) m_manager.SwitchScene(std::make_unique<SceneCalibration>(m_manager), TransitionType::Fade, 0.25f); });
 
     for (int i = 0; i < 7; ++i)
     {
@@ -480,9 +512,11 @@ void SceneSettings::SyncAudio()
 {
     auto& cfg = Config::GetInstance();
     auto& audio = sakura::audio::AudioManager::GetInstance();
-    audio.SetMasterVolume(cfg.Get<float>("audio.master_volume", 1));
+    audio.SetMasterVolume(cfg.Get<float>("audio.master_volume", 1.0f));
     audio.SetMusicVolume(cfg.Get<float>("audio.music_volume", 0.8f));
     audio.SetSFXVolume(cfg.Get<float>("audio.sfx_volume", 0.8f));
+    audio.SetHitsoundVolume(cfg.Get<float>("audio.hitsound_volume", 0.85f));
+    audio.SetUISFXVolume(cfg.Get<float>("audio.ui_sfx_volume", 0.75f));
 }
 
 bool SceneSettings::Save()

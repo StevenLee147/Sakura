@@ -114,6 +114,7 @@ void SceneCourse::OnEnter()
             CourseSession::GetInstance().Abort();
             m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
         });
+    sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
 
     m_particles.Clear();
     m_petalEmitter = m_particles.EmitContinuous(

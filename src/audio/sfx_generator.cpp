@@ -284,13 +284,95 @@ bool SfxGenerator::WriteSweepWav(std::string_view path,
     return f.good();
 }
 
+float SfxGenerator::ComputePolyphonicGainScale(int concurrentTriggers)
+{
+    if (concurrentTriggers <= 2)
+        return 1.0f;
+    const float scale = 1.0f / std::sqrt(1.0f + 0.22f * static_cast<float>(concurrentTriggers - 2));
+    return std::clamp(scale, 0.55f, 1.0f);
+}
+
+int SfxGenerator::LatencyFramesForMode(std::string_view mode)
+{
+    if (mode == "ultra_low")
+        return 128;
+    if (mode == "safe")
+        return 512;
+    return 256;
+}
+
+bool SfxGenerator::WriteChordWav(std::string_view path,
+                                 float rootFreq,
+                                 float ratio2,
+                                 float ratio3,
+                                 int durationMs,
+                                 float amplitude,
+                                 bool upwardShimmer)
+{
+    if (std::filesystem::exists(path))
+        return true;
+
+    constexpr int SAMPLE_RATE = 44100;
+    const int numSamples = std::max(1, (SAMPLE_RATE * durationMs) / 1000);
+    std::vector<int16_t> samples(static_cast<std::size_t>(numSamples));
+
+    const SynthProfile profile = DetectSynthProfile(path);
+    const int attackSamples = std::max(1, SAMPLE_RATE / 1800);
+    const int fadeStart     = static_cast<int>(numSamples * 0.45f);
+
+    float p1 = 0.0f, p2 = 0.0f, p3 = 0.0f;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float t    = static_cast<float>(i) / static_cast<float>(SAMPLE_RATE);
+        const float norm = static_cast<float>(i) / static_cast<float>(numSamples);
+        float env        = amplitude;
+        if (i < attackSamples)
+            env *= static_cast<float>(i) / static_cast<float>(attackSamples);
+        if (i >= fadeStart && numSamples > fadeStart)
+            env *= (1.0f - static_cast<float>(i - fadeStart) / static_cast<float>(numSamples - fadeStart));
+
+        const float bend = upwardShimmer ? (1.0f + 0.12f * norm) : (1.0f + 0.16f * std::exp(-t * 180.0f));
+        p1 += kTwoPi * (rootFreq * bend) / static_cast<float>(SAMPLE_RATE);
+        p2 += kTwoPi * (rootFreq * ratio2 * bend) / static_cast<float>(SAMPLE_RATE);
+        p3 += kTwoPi * (rootFreq * ratio3 * bend) / static_cast<float>(SAMPLE_RATE);
+
+        const float decay = std::exp(-t * (profile == SynthProfile::Pure ? 48.0f : 24.0f));
+        float wave = 0.50f * std::sin(p1) + 0.32f * std::sin(p2) + 0.24f * std::sin(p3);
+        if (profile == SynthProfile::Cyber)
+            wave += 0.15f * std::sin(p2 * 2.0f);
+        const float crispClick = std::sin(kTwoPi * 2640.0f * t) * std::exp(-t * 540.0f) * 0.26f;
+        const float raw = env * decay * wave + amplitude * crispClick;
+        const float sat = std::tanh(raw * 1.25f) * 0.88f;
+        samples[static_cast<std::size_t>(i)] = static_cast<int16_t>(std::clamp(sat, -1.0f, 1.0f) * 32767.0f);
+    }
+
+    std::filesystem::path fsPath(path);
+    if (fsPath.has_parent_path())
+        std::filesystem::create_directories(fsPath.parent_path());
+
+    std::ofstream f(fsPath, std::ios::binary);
+    if (!f)
+        return false;
+
+    const uint32_t dataSize = static_cast<uint32_t>(numSamples * 2);
+    f.write("RIFF", 4); WriteLE32(f, 36 + dataSize);
+    f.write("WAVE", 4);
+    f.write("fmt ", 4); WriteLE32(f, 16);
+    WriteLE16(f, 1); WriteLE16(f, 1);
+    WriteLE32(f, 44100); WriteLE32(f, 88200);
+    WriteLE16(f, 2); WriteLE16(f, 16);
+    f.write("data", 4); WriteLE32(f, dataSize);
+    f.write(reinterpret_cast<const char*>(samples.data()), dataSize);
+    return f.good();
+}
+
 // ── GenerateDefaults ──────────────────────────────────────────────────────────
 
 void SfxGenerator::GenerateDefaults(std::string_view basePath)
 {
     std::string base(basePath);
 
-    // ── Hitsound Sets ─────────────────────────────────────────────────────────
+    // ── Hitsound Sets (v5: 10 dual-zone gameplay hitsounds + 2 stage SFX + 5 judge SFX) ──
 
     struct SetDef
     {
@@ -298,6 +380,7 @@ void SfxGenerator::GenerateDefaults(std::string_view basePath)
         float tap;
         float hold;
         float circle;
+        float thumb;
         int   tapMs;
         int   holdMs;
         int   tickMs;
@@ -305,30 +388,37 @@ void SfxGenerator::GenerateDefaults(std::string_view basePath)
         int   sliderMs;
     };
     const SetDef sets[] = {
-        { "default",  880.0f, 660.0f, 1100.0f, 50, 80, 20, 40, 60 },
-        { "soft",     660.0f, 528.0f,  880.0f, 50, 80, 20, 40, 60 },
-        { "drum",     220.0f, 180.0f,  440.0f, 50, 80, 20, 40, 60 },
-        { "cyber",   1240.0f, 960.0f, 1480.0f, 44, 70, 18, 38, 52 },
-        { "pure",    1040.0f, 780.0f, 1320.0f, 32, 36, 16, 32, 36 },
-        { "ukiyo",    520.0f, 390.0f,  780.0f, 58, 88, 22, 48, 64 },
+        { "default",  880.0f, 660.0f, 1100.0f, 330.0f, 50, 80, 20, 40, 60 },
+        { "soft",     660.0f, 528.0f,  880.0f, 264.0f, 50, 80, 20, 40, 60 },
+        { "drum",     220.0f, 180.0f,  440.0f, 138.0f, 52, 82, 20, 42, 62 },
+        { "cyber",   1240.0f, 960.0f, 1480.0f, 440.0f, 44, 70, 18, 38, 52 },
+        { "pure",    1040.0f, 780.0f, 1320.0f, 390.0f, 32, 36, 16, 32, 36 },
+        { "ukiyo",    520.0f, 390.0f,  780.0f, 260.0f, 58, 88, 22, 48, 64 },
     };
 
     for (const auto& s : sets)
     {
         const bool isPure = (std::string_view(s.dir) == "pure");
         std::string d = base + "/" + s.dir + "/";
-        WriteWav(d + "tap.wav",               s.tap,    s.tapMs,    0.6f, 0.5f);
-        WriteWav(d + "hold_start.wav",        s.hold,   s.holdMs,   0.5f, 0.4f);
-        WriteWav(d + "hold_tick.wav",         s.hold,   s.tickMs,   0.3f, 0.2f);
-        WriteWav(d + "circle.wav",            s.circle, s.circleMs, 0.6f, 0.5f);
-        WriteSweepWav(d + "slider_start.wav", s.hold,   s.tap,      s.sliderMs, 0.5f);
+        WriteWav(d + "tap.wav",               s.tap,           s.tapMs,               0.58f, 0.50f);
+        WriteWav(d + "hold_start.wav",        s.hold,          s.holdMs,              0.50f, 0.42f);
+        WriteWav(d + "hold_tick.wav",         s.hold * 1.12f,  s.tickMs,              0.28f, 0.25f);
+        WriteSweepWav(d + "hold_end.wav",     s.hold,          s.tap * 1.25f,         isPure ? 34 : 52, 0.46f);
+        WriteChordWav(d + "thumb_bar.wav",    s.thumb,         1.50f, 2.00f,          isPure ? 42 : 68, 0.60f, false);
+        WriteWav(d + "circle.wav",            s.circle,        s.circleMs,            0.56f, 0.50f);
+        WriteSweepWav(d + "slider_start.wav", s.hold,          s.tap,                 s.sliderMs, 0.48f);
+        WriteWav(d + "slider_tick.wav",       s.circle * 1.18f, isPure ? 15 : 20,     0.26f, 0.30f);
+        WriteChordWav(d + "link_chord.wav",   s.tap,           1.50f, 2.00f,          isPure ? 48 : 84, 0.58f, false);
+        WriteChordWav(d + "synergy_burst.wav", s.tap,          1.25f, 1.50f,          isPure ? 58 : 105, 0.62f, true);
+        WriteChordWav(d + "fever_trigger.wav", 523.25f,        1.25f, 1.50f,          180, 0.60f, true);
+        WriteSweepWav(d + "combo_break.wav",  390.0f,          155.0f,                95,  0.46f);
 
         // 判定音效也放在各 set 目录
-        WriteWav(d + "perfect.wav",  1320.0f, isPure ? 42 : 80, 0.7f, 0.4f);
-        WriteWav(d + "great.wav",    1100.0f, isPure ? 38 : 70, 0.6f, 0.4f);
-        WriteWav(d + "good.wav",      880.0f, isPure ? 34 : 60, 0.5f, 0.4f);
-        WriteWav(d + "bad.wav",       440.0f, isPure ? 32 : 50, 0.4f, 0.3f);
-        WriteWav(d + "miss.wav",      220.0f, isPure ? 44 : 80, 0.4f, 0.2f);
+        WriteWav(d + "perfect.wav",  1320.0f, isPure ? 42 : 80, 0.66f, 0.4f);
+        WriteWav(d + "great.wav",    1100.0f, isPure ? 38 : 70, 0.58f, 0.4f);
+        WriteWav(d + "good.wav",      880.0f, isPure ? 34 : 60, 0.48f, 0.4f);
+        WriteWav(d + "bad.wav",       440.0f, isPure ? 32 : 50, 0.40f, 0.3f);
+        WriteWav(d + "miss.wav",      220.0f, isPure ? 44 : 80, 0.40f, 0.2f);
     }
 
     // ── UI 音效 ────────────────────────────────────────────────────────────────

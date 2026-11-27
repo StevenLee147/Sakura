@@ -3,6 +3,7 @@
 #include "scene_market.h"
 #include "scene_menu.h"
 #include "scene_select.h"
+#include "audio/audio_manager.h"
 #include "core/config.h"
 #include "core/input.h"
 #include "core/paths.h"
@@ -77,6 +78,7 @@ void SceneMarket::OnEnter()
     m_time   = 0.0f;
     m_topBar = std::make_unique<TopBar>("ATELIER MARKET  ·  在线谱面市场", m_font,
         [this]() { m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.36f); });
+    sakura::audio::AudioManager::GetInstance().EnsureMenuBgm();
 
     m_particles.Clear();
     m_petalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 2.8f, sakura::effects::ParticlePresets::SakuraPetal());

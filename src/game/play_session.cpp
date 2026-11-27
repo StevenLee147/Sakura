@@ -164,7 +164,12 @@ void PlaySession::PressLane(int lane, int now)
         if (result == JudgeResult::None) return;
         const bool linkSyn = (result != JudgeResult::Miss && result != JudgeResult::Bad)
             && TryConsumeLinkSynergy(note.linkId, now, true);
-        Emit({result, true, lane, 0, 0, note.time - now, true, linkSyn});
+        const HitEventKind kind = linkSyn
+            ? HitEventKind::LinkChord
+            : (note.type == NoteType::Hold
+                ? HitEventKind::HoldHead
+                : (lane == kThumbLaneIndex ? HitEventKind::ThumbTap : HitEventKind::Tap));
+        Emit({result, true, lane, 0, 0, note.time - now, true, linkSyn, kind});
         note.isJudged = true;
         if (note.type == NoteType::Hold)
         {
@@ -224,10 +229,19 @@ void PlaySession::PressMouse(int now, bool rightButton)
             note.result = result;
         }
     }
+    bool linkConsumed = false;
     if (result != JudgeResult::Miss && result != JudgeResult::Bad && TryConsumeLinkSynergy(note.linkId, now, false))
+    {
         synergy = true;
+        linkConsumed = true;
+    }
     note.isJudged = true;
-    Emit({result, false, 0, note.x, note.y, note.time - now, true, synergy});
+    const HitEventKind kind = (synergy && note.requireLane >= 0)
+        ? HitEventKind::SynergyBurst
+        : (linkConsumed
+            ? HitEventKind::LinkChord
+            : (note.type == NoteType::Slider ? HitEventKind::SliderHead : HitEventKind::Circle));
+    Emit({result, false, 0, note.x, note.y, note.time - now, true, synergy, kind});
     if (note.type == NoteType::Slider)
     {
         note.result = JudgeResult::None;
@@ -309,7 +323,7 @@ void PlaySession::Advance(int now)
         {
             // The tail rewards holding; timing is measured only on the head.
             note.result = result == JudgeResult::Miss ? result : JudgeResult::Perfect;
-            Emit({note.result, true, note.lane});
+            Emit({note.result, true, note.lane, 0.0f, 0.0f, 0, false, false, HitEventKind::HoldTail});
         }
     }
     std::erase_if(m_holds, [](const HoldState& hold) { return hold.finalized; });
@@ -331,7 +345,7 @@ void PlaySession::Advance(int now)
             const auto result = m_judge.UpdateSliderTracking(slider, note, now, x, y, down);
             if (result == JudgeResult::None) break;
             const auto& point = note.sliderPath[slider.nextWaypointIndex - 1];
-            Emit({result, false, 0, point.first, point.second});
+            Emit({result, false, 0, point.first, point.second, 0, false, false, HitEventKind::SliderTick});
         }
         if (slider.finalized) note.result = slider.isMissed ? JudgeResult::Miss : slider.headResult;
     }

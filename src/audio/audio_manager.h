@@ -5,7 +5,10 @@
 
 #include "core/resource_manager.h"
 #include "game/note.h"
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
+#include <deque>
 #include <string>
 #include <string_view>
 #include <array>
@@ -13,6 +16,8 @@
 #include <vector>
 
 // 前向声明 miniaudio 类型（避免在头文件中包含大型单文件库）
+struct ma_context;
+struct ma_device;
 struct ma_engine;
 struct ma_sound;
 struct ma_decoder;
@@ -35,15 +40,30 @@ enum class UISFXType
     Count
 };
 
-// ── Hitsound 类型 ─────────────────────────────────────────────────────────────
+// ── Hitsound 类型 (v2.4.0: 10 类双区演奏音 + 2 类舞台反馈音) ──────────────────
 
 enum class HitsoundType
 {
     Tap,
     HoldStart,
     HoldTick,
+    HoldEnd,
+    ThumbBar,
     Circle,
     SliderStart,
+    SliderTick,
+    LinkChord,
+    SynergyBurst,
+    FeverTrigger,
+    ComboBreak,
+    Count
+};
+
+struct AudioDeviceInfo
+{
+    std::string id;
+    std::string name;
+    bool        isDefault = false;
 };
 
 // AudioManager — 单例音频管理器
@@ -77,6 +97,12 @@ public:
     // startPositionSeconds: 起播位置（秒），在 ma_sound_start 前 seek，避免竞争
     bool PlayMusic(const std::string& path, int loops = 0, double startPositionSeconds = 0.0,
                    bool startPaused = false);
+    bool CrossfadeMusic(const std::string& path,
+                        double startSec = 0.0,
+                        double loopStartSec = 0.0,
+                        double loopEndSec = 0.0,
+                        int fadeMs = 280);
+    void EnsureMenuBgm();
     void Update(float dt);
 
     // 使用已加载的 MusicHandle 播放（通过句柄反查原始路径）
@@ -117,10 +143,25 @@ public:
     void SetMasterVolume(float vol);
     void SetMusicVolume(float vol);
     void SetSFXVolume(float vol);
+    void SetHitsoundVolume(float vol);
+    void SetUISFXVolume(float vol);
 
-    float GetMasterVolume() const { return m_masterVolume; }
-    float GetMusicVolume()  const { return m_musicVolume;  }
-    float GetSFXVolume()    const { return m_sfxVolume;    }
+    float GetMasterVolume()   const { return m_masterVolume;   }
+    float GetMusicVolume()    const { return m_musicVolume;    }
+    float GetSFXVolume()      const { return m_sfxVolume;      }
+    float GetHitsoundVolume() const { return m_hitsoundVolume; }
+    float GetUISFXVolume()    const { return m_uiSfxVolume;    }
+
+    // 低延迟缓冲与输出设备热插拔接口 (v2.4.0)
+    bool SetLatencyMode(std::string_view mode);
+    const std::string& GetLatencyMode() const { return m_latencyMode; }
+    std::vector<AudioDeviceInfo> GetPlaybackDevices() const;
+    bool SetOutputDevice(std::string_view deviceId);
+    const std::string& GetOutputDevice() const { return m_outputDeviceId; }
+    int GetActualSampleRate() const { return m_actualSampleRate; }
+    int GetPeriodFrames() const { return m_periodFrames; }
+    float GetEstimatedOutputLatencyMs() const;
+    void NotifyDeviceReroute();
 
     // ── 播放速度（编辑器/练习用）──────────────────────────────────────────────
 
@@ -157,48 +198,90 @@ private:
     AudioManager() = default;
     ~AudioManager();
 
+    static constexpr std::size_t kVoicesPerSfx = 12;
+
+    struct SfxVoiceSlot
+    {
+        ma_sound*     sound     = nullptr;
+        std::uint64_t playOrder = 0;
+    };
+
+    struct MusicDeck
+    {
+        ma_sound*                  sound             = nullptr;
+        ma_decoder*                decoder           = nullptr;
+        void*                      stretchedBuffer   = nullptr;
+        std::vector<float>         stretchedPcm;
+        std::vector<unsigned char> compressedMusic;
+        float                      activeStretchRate = 1.0f;
+        std::string                path;
+        double                     loopStartSec      = 0.0;
+        double                     loopEndSec        = 0.0;
+        bool                       fadingOut         = false;
+        float                      fadeOutTimer      = 0.0f;
+        float                      fadeOutDuration   = 0.0f;
+    };
+
     // 更新音乐 ma_sound 的实际音量（master * music）
     void ApplyMusicVolume();
+    void ApplySfxVolumes();
+    void ClearDeck(MusicDeck& deck);
+    bool InitDeckFromFile(MusicDeck& deck, const std::string& path, bool shouldLoop, double startSec, bool startPaused, int fadeInMs);
+    bool RebuildAudioBackend();
+    void PlaySFXInternal(const std::string& path, bool isUiSfx, bool allowHumanize);
 
-    ma_engine* m_engine    = nullptr;   // miniaudio 高层引擎
-    ma_sound*  m_music     = nullptr;   // 当前背景音乐 sound 对象
-    ma_decoder* m_musicDecoder = nullptr;
-    void* m_stretchedBuffer = nullptr;
-    std::vector<float> m_stretchedPcm;
-    float m_activeStretchRate = 1.0f;
-    std::vector<unsigned char> m_compressedMusic;
-    ma_sound* m_sfxGroup = nullptr;
-    std::unordered_map<std::string, std::array<ma_sound*, 4>> m_sfxCache;
-    void CacheSFX(const std::string& path);
-    std::string m_musicPath;            // 当前音乐文件路径
+    ma_context* m_context      = nullptr;
+    ma_device*  m_device       = nullptr;
+    ma_engine*  m_engine       = nullptr;
+    std::array<MusicDeck, 2> m_decks{};
+    int         m_activeDeck   = 0;
+    ma_sound*   m_sfxGroup     = nullptr;
+    ma_sound*   m_uiSfxGroup   = nullptr;
+    std::unordered_map<std::string, std::array<SfxVoiceSlot, kVoicesPerSfx>> m_sfxCache;
+    std::unordered_map<std::string, std::array<SfxVoiceSlot, 6>> m_uiSfxCache;
+    std::uint64_t m_voicePlayCounter = 0;
+    std::uint32_t m_humanizeRng      = 0xA341316Cu;
+    std::deque<std::uint64_t> m_recentHitTimestampsMs;
+    void CacheSFX(const std::string& path, bool isUi = false);
+    std::string m_musicPath;
+
+    std::string m_latencyMode      = "balanced";
+    std::string m_outputDeviceId   = "default";
+    int         m_actualSampleRate = 48000;
+    int         m_periodFrames     = 256;
+    std::atomic<bool> m_deviceRebuildPending{ false };
+    float       m_rebuildCooldown  = 0.0f;
 
     float m_masterVolume   = 1.0f;
     float m_musicVolume    = 0.8f;
     float m_sfxVolume      = 0.8f;
+    float m_hitsoundVolume = 0.85f;
+    float m_uiSfxVolume    = 0.75f;
     float m_playbackSpeed  = 1.0f;
 
     bool  m_initialized    = false;
     bool  m_musicPaused    = false;
 
     // 离线时钟：虚拟播放头（秒）与播放状态，仅 m_offlineClock 时使用
-    bool   m_offlineClock   = false;
-    double m_virtualCursor  = 0.0;
+    bool   m_offlineClock    = false;
+    double m_virtualCursor   = 0.0;
     double m_virtualDuration = -1.0;
-    bool   m_virtualPlaying = false;
-    bool   m_virtualAtEnd   = false;
-    bool   m_virtualLooping = false;
+    double m_virtualLoopStart = 0.0;
+    double m_virtualLoopEnd   = 0.0;
+    bool   m_virtualPlaying  = false;
+    bool   m_virtualAtEnd    = false;
+    bool   m_virtualLooping  = false;
 
     // 淡出状态
     bool  m_fadingOut      = false;
     float m_fadeTimer      = 0.0f;
     float m_fadeDuration   = 0.0f;
-    float m_fadeStartVol   = 0.0f;
 
     // Hitsound 文件路径缓存（按类型索引）
     std::string m_hitsoundSetName;
-    std::array<std::string, 5>  m_hitsoundPaths;   // indexed by HitsoundType
+    std::array<std::string, static_cast<std::size_t>(HitsoundType::Count)> m_hitsoundPaths;
     std::array<std::string, 5>  m_judgeSFXPaths;   // Perfect/Great/Good/Bad/Miss
-    std::array<std::string, static_cast<std::size_t>(UISFXType::Count)> m_uiSFXPaths; // indexed by UISFXType
+    std::array<std::string, static_cast<std::size_t>(UISFXType::Count)> m_uiSFXPaths;
 };
 
 } // namespace sakura::audio

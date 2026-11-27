@@ -188,7 +188,8 @@ private:
     void AddJudgeFlash(sakura::game::JudgeResult r, bool isKb, int lane = 0,
                        float px = 0.f, float py = 0.f,
                        int hitErrorMs = 0, bool showHitError = false,
-                       bool isSynergy = false);
+                       bool isSynergy = false,
+                       sakura::game::HitEventKind noteKind = sakura::game::HitEventKind::Tap);
 
     // 渲染各部分
     void RenderBackground(sakura::core::Renderer& renderer);
