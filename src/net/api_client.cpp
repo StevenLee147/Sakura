@@ -4435,4 +4435,229 @@ void APIClient::FetchRatingLadderAsync(int limit, std::function<void(RatingLadde
     });
 }
 
+SeasonCurrentResult APIClient::FetchCurrentSeason(const std::string& seasonId)
+{
+    SeasonCurrentResult out;
+    std::string path = "/api/v1/season/current";
+    if (!seasonId.empty())
+        path += "?season_id=" + UrlEncode(seasonId);
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：已切换至本地赛季推演" : res.error;
+        return out;
+    }
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取赛季信息失败");
+            return out;
+        }
+        out.ok         = true;
+        out.seasonId   = SafeJsonStringOr(j, "season_id", "");
+        out.themeTitle = SafeJsonStringOr(j, "theme_title", "");
+        if (j.contains("stages") && j["stages"].is_array())
+        {
+            for (const auto& s : j["stages"])
+            {
+                if (!s.is_object()) continue;
+                SeasonStageOnlineInfo st;
+                st.slotIndex       = JsonIntOr(s, "slot_index", 0);
+                st.slotRole        = SafeJsonStringOr(s, "slot_role", "vanguard");
+                st.roleTitle       = SafeJsonStringOr(s, "role_title", "课题");
+                st.chartId         = SafeJsonStringOr(s, "chart_id", "");
+                st.chartTitle      = SafeJsonStringOr(s, "chart_title", "");
+                st.difficulty      = SafeJsonStringOr(s, "difficulty", "Normal");
+                st.difficultyLevel = JsonFloatOr(s, "difficulty_level", 1.0f);
+                st.maxStageSP      = JsonIntOr(s, "max_stage_sp", 1000);
+                out.stages.push_back(std::move(st));
+            }
+        }
+        if (j.contains("my_standing") && j["my_standing"].is_object())
+        {
+            const auto& ms = j["my_standing"];
+            out.myStanding.present           = true;
+            out.myStanding.totalSP           = JsonIntOr(ms, "total_sp", 0);
+            out.myStanding.rankTier          = SafeJsonStringOr(ms, "rank_tier", "青铜樱");
+            out.myStanding.tierIndex         = JsonIntOr(ms, "tier_index", 1);
+            out.myStanding.nextTierName      = SafeJsonStringOr(ms, "next_tier_name", "");
+            out.myStanding.nextTierThreshold = JsonIntOr(ms, "next_tier_threshold", 1200);
+            out.myStanding.spToNextTier      = JsonIntOr(ms, "sp_to_next_tier", 1200);
+            if (ms.contains("rank") && ms["rank"].is_number_integer())
+                out.myStanding.rank = ms["rank"].get<int>();
+            if (ms.contains("stage_sp") && ms["stage_sp"].is_array())
+                for (std::size_t i = 0; i < 3 && i < ms["stage_sp"].size(); ++i)
+                    out.myStanding.stageSP[i] = static_cast<int>(ms["stage_sp"][i].get<double>());
+            if (ms.contains("stage_scores") && ms["stage_scores"].is_array())
+                for (std::size_t i = 0; i < 3 && i < ms["stage_scores"].size(); ++i)
+                    out.myStanding.stageScores[i] = static_cast<int>(ms["stage_scores"][i].get<double>());
+            if (ms.contains("stage_accuracies") && ms["stage_accuracies"].is_array())
+                for (std::size_t i = 0; i < 3 && i < ms["stage_accuracies"].size(); ++i)
+                    out.myStanding.stageAccuracies[i] = static_cast<float>(ms["stage_accuracies"][i].get<double>());
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("赛季响应解析失败: ") + e.what();
+        return out;
+    }
+}
+
+SeasonSubmitResult APIClient::SubmitSeasonScore(const std::string& seasonId, const sakura::game::GameResult& result)
+{
+    SeasonSubmitResult out;
+    if (!IsAuthenticated())
+    {
+        out.error = "未登录在线账号";
+        return out;
+    }
+    nlohmann::json body = {
+        { "chart_id", result.chartId },
+        { "chart_title", result.chartTitle },
+        { "chart_hash", result.chartHash.empty() ? result.chartId : result.chartHash },
+        { "difficulty", result.difficulty },
+        { "difficulty_level", result.difficultyLevel },
+        { "score", result.score },
+        { "accuracy", result.accuracy },
+        { "max_combo", result.maxCombo },
+        { "grade", GradeToStr(result.grade) },
+        { "synergy_count", result.synergyCount },
+        { "is_full_combo", result.isFullCombo },
+        { "is_all_perfect", result.isAllPerfect },
+        { "assisted", result.assisted },
+        { "playback_rate", result.playbackRate }
+    };
+    if (!seasonId.empty())
+        body["season_id"] = seasonId;
+    const std::string replayRaw = ReadWholeFileUtf8(result.replayFile);
+    if (!replayRaw.empty())
+        body["replay_data"] = replayRaw;
+
+    const auto res = SendWithAuthRetry(MakeRequest("POST", "/api/v1/season/submit", body.dump(), true));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：赛季积分已在本地记录" : res.error;
+        return out;
+    }
+    MarkOnlineFromAuthenticatedSuccess();
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "赛季成绩提交被拒绝");
+            return out;
+        }
+        out.ok        = true;
+        out.seasonId  = SafeJsonStringOr(j, "season_id", "");
+        out.slotIndex = JsonIntOr(j, "slot_index", 0);
+        out.stageSP   = JsonIntOr(j, "stage_sp", 0);
+        out.totalSP   = JsonIntOr(j, "total_sp", 0);
+        out.rankTier  = SafeJsonStringOr(j, "rank_tier", "青铜樱");
+        out.tierIndex = JsonIntOr(j, "tier_index", 1);
+        out.rank      = JsonIntOr(j, "rank", 0);
+        out.newBest   = JsonBoolOr(j, "new_best", false);
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("赛季提交解析失败: ") + e.what();
+        return out;
+    }
+}
+
+SeasonLeaderboardResult APIClient::FetchSeasonLeaderboard(const std::string& seasonId, int limit)
+{
+    SeasonLeaderboardResult out;
+    const int safeLimit = std::clamp(limit, 1, 100);
+    std::string path = "/api/v1/season/leaderboard?limit=" + std::to_string(safeLimit);
+    if (!seasonId.empty())
+        path += "&season_id=" + UrlEncode(seasonId);
+    const auto res = IsAuthenticated()
+        ? SendWithAuthRetry(MakeRequest("GET", path, {}, true))
+        : GetTransport()->Send(MakeRequest("GET", path, {}, false));
+    if (res.IsNetworkError() || res.statusCode >= 500)
+    {
+        MarkOfflinePreserveSession();
+        out.error = res.error.empty() ? "离线：无法拉取赛季天梯" : res.error;
+        return out;
+    }
+    m_status.store(OnlineStatus::Online);
+    try
+    {
+        const auto j = nlohmann::json::parse(res.body);
+        if (!res.IsSuccess() || !JsonBoolOr(j, "ok", false))
+        {
+            out.error = SafeJsonStringOr(j, "error", "获取赛季天梯失败");
+            return out;
+        }
+        out.ok       = true;
+        out.seasonId = SafeJsonStringOr(j, "season_id", "");
+        if (j.contains("my_rank") && j["my_rank"].is_number_integer())
+            out.myRank = j["my_rank"].get<int>();
+        if (j.contains("entries") && j["entries"].is_array())
+        {
+            for (const auto& e : j["entries"])
+            {
+                if (!e.is_object()) continue;
+                SeasonLeaderboardRow row;
+                row.rank          = JsonIntOr(e, "rank", 0);
+                row.userId        = SafeJsonStringOr(e, "user_id", "");
+                row.username      = SafeJsonStringOr(e, "username", "");
+                row.featuredTitle = SafeJsonStringOr(e, "featured_title", "");
+                row.danBadge      = SafeJsonStringOr(e, "dan_badge", "");
+                row.totalSP       = JsonIntOr(e, "total_sp", 0);
+                row.rankTier      = SafeJsonStringOr(e, "rank_tier", "青铜樱");
+                if (e.contains("stage_sp") && e["stage_sp"].is_array())
+                    for (std::size_t i = 0; i < 3 && i < e["stage_sp"].size(); ++i)
+                        row.stageSP[i] = static_cast<int>(e["stage_sp"][i].get<double>());
+                out.entries.push_back(std::move(row));
+            }
+        }
+        return out;
+    }
+    catch (const std::exception& e)
+    {
+        out.error = std::string("赛季天梯解析失败: ") + e.what();
+        return out;
+    }
+}
+
+void APIClient::FetchCurrentSeasonAsync(const std::string& seasonId, std::function<void(SeasonCurrentResult)> cb)
+{
+    PostTask([this, seasonId, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchCurrentSeason(seasonId);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::SubmitSeasonScoreAsync(const std::string& seasonId, const sakura::game::GameResult& result,
+                                       std::function<void(SeasonSubmitResult)> cb)
+{
+    PostTask([this, seasonId, result, cb = std::move(cb)]() mutable
+    {
+        auto res = SubmitSeasonScore(seasonId, result);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
+void APIClient::FetchSeasonLeaderboardAsync(const std::string& seasonId, int limit,
+                                            std::function<void(SeasonLeaderboardResult)> cb)
+{
+    PostTask([this, seasonId, limit, cb = std::move(cb)]() mutable
+    {
+        auto res = FetchSeasonLeaderboard(seasonId, limit);
+        if (cb) PostMainCallback([cb = std::move(cb), res = std::move(res)]() mutable { cb(std::move(res)); });
+    });
+}
+
 } // namespace sakura::net

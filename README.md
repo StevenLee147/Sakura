@@ -2,11 +2,11 @@
 
 左手节奏，右手旋律。Sakura 是 Windows 上的双操作区音游：左侧 A / S / D / F 四轨下落，右侧鼠标点击与滑动，以夜樱、月光和花瓣为视觉主题。
 
-当前版本：**v2.5.0** · Official 2.0 Release · Windows x64 · C++20 / SDL3 + TypeScript Hono Online Stack
+当前版本：**v3.0.0** · Official 3.0 Release · Windows x64 · C++20 / SDL3 + TypeScript Hono Online Stack
 
 [下载发行版](https://github.com/StevenLee147/Sakura/releases) · [玩家指南](doc/PLAYER_GUIDE.md) · [谱面规范](doc/CHART_FORMAT_SPEC.md) · [反馈问题](https://github.com/StevenLee147/Sakura/issues)
 
-**Sakura-樱 v2.0.0 正式版**完整提供双域协同演奏与舞台演出（Chart Format v4）、六课交互教程、15 首纯原声 Suno OGG 精选曲库（43 张多难度谱面）、樱华道场 6 阶段位认定、UTC+8 每日挑战全球日榜、幽灵对手实时伴跑与 `SceneArena` 在线多人对战、Phira / osu! / StepMania 智能双区谱面转换器、4 套视觉皮肤与 6 套打击音包、B30 + R10 潜力值 **Sakura Rating** 与 1080p 生涯名片导出、游戏内 SHA-256 流式热更新原子自重启，以及全球排行榜、在线谱面市场（`SceneMarket`）与多端幂等云存档同步（默认接入官方在线服 `https://steven-lee.tech:233`，同时内置零配置本地双模服务端 `server/`）。详见 [路线图](doc/ROADMAP.md)。
+**Sakura-樱 v3.0.0 正式版**完整提供双域协同演奏与舞台演出（Chart Format v4）、六课交互教程、**21 首纯原声 Suno OGG 精选曲库（Vol.02～Vol.05 共 61 张多难度谱面，最高定数 Master 15.0）**、**樱华赛季排位赛（Sakura Season Ranked，五阶 SP 段位晋升与全球赛季天梯）**、宿命劲敌社交与 `ProfileCardModal` 在线玩家生涯名片、`miniaudio` 128/256/512 帧低延迟热插拔音频管线与 10 类 12 路防削波打击音效池、DPAPI 加密持久化登录与游客无损转正、选歌末次谱面精准记忆与双碟 280ms 交叉淡入试听、樱华道场 6 阶段位认定、UTC+8 每日挑战全球日榜、幽灵对手伴跑与 `SceneArena` 8 人多人对战、Phira / osu! / StepMania 双区谱面转换器、B30 + R10 **Sakura Rating** 与 1080p 生涯名片导出、游戏内 SHA-256 原子热更新自重启，以及在线谱面市场（`SceneMarket`）与多端幂等云存档同步（默认接入官方在线服 `https://steven-lee.tech:233`）。详见 [路线图](doc/ROADMAP.md)。
 
 ![Sakura 的主菜单、曲库、视觉设置与双区舞台](doc/images/sakura-0.6-overview.jpg)
 
@@ -27,9 +27,11 @@
 
 五键轨道、暂停与重试均可在设置中修改。正式演奏记录成绩、Sakura Rating 与 Sakura Bloom 满开统计；练习、自动演示和回放均明确标记为辅助模式。
 
-## 2.0 核心特性
+## 3.0 核心特性
 
-- **15 首纯 Suno OGG 原创曲目、43 张多难度谱面（Vol.02～Vol.04）**：100% 采用真实创作 Suno OGG 音源（全面零合成占位曲），涵盖《樱落呼吸》（附原生硬件加速 MP4 动态夜樱舞台）、《樱光初醒》《繁星》《遥远的星》《樱光未落》《樱落侧链梦》《樱落流光》《一瞬花绽》《Petal Storm: Overdrive》及 Vol.04《月夜序曲 · Prelude》《Sakura Memories》《樱落脉动》《樱语疾行》《破碎推进到F》《破碎阈值》，覆盖 Lv.2.5～Lv.14.5 小数定数梯度。
+- **21 首纯 Suno OGG 原创曲目、61 张多难度谱面（Vol.02～Vol.05「镜花里章」）**：100% 采用真实创作 Suno OGG 音源（全面零合成占位曲），包含 Vol.05 全新收录的 6 首第二版 VIP / Ω 编曲《Petal Storm: Overdrive [VIP]》《一瞬花绽 · 里绽》《遥远的星 · 回响》《樱花落下的呼吸 · 终章》《樱语疾行 · 极速》及封顶魔王曲《破碎阈值 · Ω》（**Master 15.0**），完整覆盖 Lv.2.5～Lv.15.0 小数定数梯度与双语同步歌词。
+- **樱华赛季排位赛（Sakura Season Ranked）与宿命劲敌社交**：按 UTC+8 自然月确定性轮换先锋/中坚/大将三阶排位课题，完赛累积 Season Points (SP) 冲击**青铜樱 → 白银月 → 黄金华 → 绯红霞 → 极星神乐**五阶段位与全球赛季天梯；内置 `ProfileCardModal` B15 生涯名片弹窗、宿命劲敌关注、劲敌圈专属排行榜（`scope=rivals`）、选歌实时 `VS Rival +/-` 分差胶囊与全球 Sakura Rating Top 100 天梯。
+- **低延迟热插拔音频引擎与 12 路防爆打击音池**：支持 128 / 256 / 512 帧三级音频缓冲延迟调节、输出设备枚举切换与蓝牙/USB 耳机断连自动重建（零崩溃热恢复），配备 10 类双区立体声打击音效、12 路微淡出防削波混音池（±1.5% 拟真音高微扰）及选歌双碟 280ms 无缝交叉淡入高潮循环预听。
 - **核心手感打磨与双区同押提示**：支持局内 **3xR 防误触快速重开**（1.5 秒内三连 `R` 键确认重开）、**左手同押鎏金连接横梁**（±6 ms）与**跨区同步流光连线提示**（±8 ms），锁线消除下落残影并强化命中反馈。
 - **樱华道场 6 阶段位认定、每日挑战日榜与命名多曲单**：内置 `SceneCourse` 6 阶段位考核（初段至皆传，配备继承制生命槽与专属段位称号徽章）、UTC+8 确定性轮换**每日挑战全球排行榜**（断网离线同算法可用）及支持云端并集同步的**命名多曲单收藏夹**。
 - **4 套自定义主题皮肤、6 套打击音包与 Chart Format v4 舞台演出**：内置墨樱流光、霓虹赛博、竞技极简、浮世金翠 4 套视觉皮肤与 6 套打击音色（支持 `skins/<id>/skin.json` 与自定义 WAV 覆盖），配合 **Chart v4** 舞台脉冲/暗角/色调事件与中英日**双语同步歌词**。
@@ -72,7 +74,7 @@ ctest --test-dir build/release -C Release --output-on-failure --no-tests=error
 .\build\release\Release\Sakura.exe
 ```
 
-以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v2.5.0`。
+以上命令构建默认分支；要构建本次标签版本，在配置前执行 `git checkout v3.0.0`。
 
 也可使用 `debug` 或 `relwithdebinfo` preset；测试时分别指定 `-C Debug` 或 `-C RelWithDebInfo`。Windows 使用 Visual Studio 多配置目录，例如 `cmake --build build/debug --config Release` 同样可生成 Release。
 

@@ -375,6 +375,79 @@ struct RatingLadderResult
     std::vector<RatingLadderRow> entries;
 };
 
+// v3.0.0 Sakura Season Ranked
+struct SeasonStageOnlineInfo
+{
+    int         slotIndex       = 0;
+    std::string slotRole;
+    std::string roleTitle;
+    std::string chartId;
+    std::string chartTitle;
+    std::string difficulty;
+    float       difficultyLevel = 1.0f;
+    int         maxStageSP      = 1000;
+};
+
+struct SeasonMyOnlineStanding
+{
+    bool               present           = false;
+    std::array<int, 3> stageScores{ 0, 0, 0 };
+    std::array<float, 3> stageAccuracies{ 0.0f, 0.0f, 0.0f };
+    std::array<int, 3> stageSP{ 0, 0, 0 };
+    int                totalSP           = 0;
+    std::string        rankTier          = "青铜樱";
+    int                tierIndex         = 1;
+    std::string        nextTierName      = "白银月";
+    int                nextTierThreshold = 1200;
+    int                spToNextTier      = 1200;
+    std::optional<int> rank;
+};
+
+struct SeasonCurrentResult
+{
+    bool                               ok = false;
+    std::string                        error;
+    std::string                        seasonId;
+    std::string                        themeTitle;
+    std::vector<SeasonStageOnlineInfo> stages;
+    SeasonMyOnlineStanding             myStanding;
+};
+
+struct SeasonSubmitResult
+{
+    bool        ok        = false;
+    std::string error;
+    std::string seasonId;
+    int         slotIndex = 0;
+    int         stageSP   = 0;
+    int         totalSP   = 0;
+    std::string rankTier;
+    int         tierIndex = 1;
+    int         rank      = 0;
+    bool        newBest   = false;
+};
+
+struct SeasonLeaderboardRow
+{
+    int                rank      = 0;
+    std::string        userId;
+    std::string        username;
+    std::string        featuredTitle;
+    std::string        danBadge;
+    int                totalSP   = 0;
+    std::string        rankTier;
+    std::array<int, 3> stageSP{ 0, 0, 0 };
+};
+
+struct SeasonLeaderboardResult
+{
+    bool                              ok = false;
+    std::string                       error;
+    std::string                       seasonId;
+    std::optional<int>                myRank;
+    std::vector<SeasonLeaderboardRow> entries;
+};
+
 class APIClient
 {
 public:
@@ -452,6 +525,11 @@ public:
     RivalListResult FetchRivals();
     RatingLadderResult FetchRatingLadder(int limit = 100);
 
+    // v3.0.0 Sakura Season Ranked
+    SeasonCurrentResult FetchCurrentSeason(const std::string& seasonId = {});
+    SeasonSubmitResult SubmitSeasonScore(const std::string& seasonId, const sakura::game::GameResult& result);
+    SeasonLeaderboardResult FetchSeasonLeaderboard(const std::string& seasonId = {}, int limit = 100);
+
     // v1.2.0 Online Chart Market & Multi-Device Cloud Sync
     static MarketInstallState GetInstalledMarketState(const MarketChartItem& item,
                                                       const std::string& chartsRootDir = {},
@@ -527,6 +605,11 @@ public:
     void RemoveRivalAsync(const std::string& targetUserId, std::function<void(RivalActionResult)> cb);
     void FetchRivalsAsync(std::function<void(RivalListResult)> cb);
     void FetchRatingLadderAsync(int limit, std::function<void(RatingLadderResult)> cb);
+    void FetchCurrentSeasonAsync(const std::string& seasonId, std::function<void(SeasonCurrentResult)> cb);
+    void SubmitSeasonScoreAsync(const std::string& seasonId, const sakura::game::GameResult& result,
+                                std::function<void(SeasonSubmitResult)> cb);
+    void FetchSeasonLeaderboardAsync(const std::string& seasonId, int limit,
+                                     std::function<void(SeasonLeaderboardResult)> cb);
     void DownloadReplayAsync(const std::string& scoreId, const std::string& destPath,
                              std::function<void(bool, std::string)> cb);
     void PublishChartPackageAsync(const std::string& sakuraFilePath, const std::string& description,

@@ -1,0 +1,53 @@
+{
+  "version": 4,
+  "id": "instant_bloom_vip",
+  "title": "一瞬花绽 · 里绽",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 05 · 镜花里章",
+  "tags": [
+    "original",
+    "vip",
+    "artcore",
+    "v4-stage",
+    "vol5"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 54090,
+  "bpm": 140.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 5.0,
+      "chart_file": "normal.json",
+      "note_count": 357,
+      "hold_count": 12,
+      "mouse_note_count": 108,
+      "thumb_count": 6,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 8.5,
+      "chart_file": "hard.json",
+      "note_count": 658,
+      "hold_count": 15,
+      "mouse_note_count": 185,
+      "thumb_count": 16,
+      "synergy_count": 77
+    },
+    {
+      "name": "Expert",
+      "level": 12.0,
+      "chart_file": "expert.json",
+      "note_count": 997,
+      "hold_count": 3,
+      "mouse_note_count": 279,
+      "thumb_count": 27,
+      "synergy_count": 129
+    }
+  ]
+}

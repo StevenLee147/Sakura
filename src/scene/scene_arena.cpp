@@ -7,6 +7,7 @@
 #include "core/config.h"
 #include "core/input.h"
 #include "core/paths.h"
+#include "data/database.h"
 #include "game/chart_loader.h"
 #include "game/chart_utils.h"
 #include "game/play_session.h"
@@ -346,13 +347,19 @@ void SceneArena::OnEnter()
 
     *m_alive         = true;
     m_font           = ResourceManager::GetInstance().GetDefaultFontHandle();
-    m_topBar         = std::make_unique<TopBar>("MULTIPLAYER ARENA  ·  多人对战", m_font,
+    m_topBar         = std::make_unique<TopBar>("SEASON & ARENA  ·  排位与对战", m_font,
         [this]()
         {
             if (m_currentRoom.has_value()) LeaveCurrentRoom();
             else m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
         });
     m_profileModal   = std::make_unique<ProfileCardModal>(m_font);
+    m_arenaTabMode   = m_initialRoomCode.empty() ? 0 : 1;
+    m_seasonSpec     = SeasonEngine::ComputeSeasonSpec();
+    m_seasonStanding = SeasonEngine::ComputeLocalStanding(m_seasonSpec, sakura::data::Database::GetInstance().GetAllBestScores());
+    m_seasonMyRank.reset();
+    m_seasonLbEntries.clear();
+    m_seasonLbScroll = 0;
     m_time           = 0.0f;
     m_pollTimer      = 0.0f;
     m_chatCooldown   = 0.0f;
@@ -431,6 +438,20 @@ void SceneArena::OnEnter()
 
     m_btnCreateRoom = MakeBtn({ 0.580f, 0.782f, 0.360f, 0.058f }, "✦ 创建对战房间  /  CREATE ROOM", m_font,
         [this]() { CreateRoom(); }, ButtonVariant::Primary, 0.020f);
+
+    m_btnTabSeason = MakeBtn({ 0.360f, 0.052f, 0.156f, 0.042f }, "✦ 樱华排位赛", m_font,
+        [this]() { m_arenaTabMode = 0; RefreshSeasonData(); }, ButtonVariant::Primary, 0.0175f);
+    m_btnTabRooms = MakeBtn({ 0.526f, 0.052f, 0.156f, 0.042f }, "◈ 多人对战房", m_font,
+        [this]() { m_arenaTabMode = 1; RefreshLobby(); }, ButtonVariant::Secondary, 0.0175f);
+    m_btnRefreshSeason = MakeBtn({ 0.790f, 0.798f, 0.150f, 0.048f }, "刷新排位 / F5", m_font,
+        [this]() { RefreshSeasonData(); }, ButtonVariant::Secondary, 0.0175f);
+    for (int i = 0; i < 3; ++i)
+    {
+        const float sy = 0.392f + static_cast<float>(i) * 0.152f;
+        m_btnPlaySeasonStage[static_cast<std::size_t>(i)] = MakeBtn(
+            { 0.420f, sy + 0.036f, 0.102f, 0.058f }, "出击 →", m_font,
+            [this, i]() { LaunchSeasonStage(i); }, ButtonVariant::Primary, 0.0175f);
+    }
 
     // 选曲与难度切换按钮（大厅建房与房主选歌复用）
     auto cycleSong = [this](int delta)
@@ -567,6 +588,7 @@ void SceneArena::OnEnter()
     }
     else
     {
+        RefreshSeasonData();
         RefreshLobby();
     }
 }
@@ -602,6 +624,92 @@ void SceneArena::OnExit()
     m_btnReadyOrStart.reset();
     for (auto& btn : m_chatButtons)
         btn.reset();
+    m_btnTabSeason.reset();
+    m_btnTabRooms.reset();
+    m_btnRefreshSeason.reset();
+    for (auto& btn : m_btnPlaySeasonStage)
+        btn.reset();
+}
+
+void SceneArena::RefreshSeasonData()
+{
+    m_seasonSpec     = SeasonEngine::ComputeSeasonSpec();
+    const auto allPb = sakura::data::Database::GetInstance().GetAllBestScores();
+    m_seasonStanding = SeasonEngine::ComputeLocalStanding(m_seasonSpec, allPb);
+    auto& api = APIClient::GetInstance();
+    m_seasonStatusText = "正在同步当季全球排位天梯...";
+    auto alive = m_alive;
+
+    if (api.IsAuthenticated())
+    {
+        for (const auto& pb : allPb)
+        {
+            const int slot = SeasonEngine::MatchSeasonSlot(m_seasonSpec, pb.chartId, pb.difficulty);
+            if (slot >= 0 && !pb.assisted)
+                api.SubmitSeasonScoreAsync(m_seasonSpec.seasonId, pb, {});
+        }
+    }
+
+    api.FetchCurrentSeasonAsync(m_seasonSpec.seasonId, [this, alive](SeasonCurrentResult res)
+    {
+        if (!*alive || !res.ok) return;
+        if (res.myStanding.present && res.myStanding.totalSP >= m_seasonStanding.totalSP)
+        {
+            m_seasonStanding.stageScores     = res.myStanding.stageScores;
+            m_seasonStanding.stageAccuracies = res.myStanding.stageAccuracies;
+            m_seasonStanding.stageSP         = res.myStanding.stageSP;
+            m_seasonStanding.totalSP         = res.myStanding.totalSP;
+            m_seasonStanding.tier            = SeasonEngine::EvaluateTier(res.myStanding.totalSP);
+            m_seasonMyRank                   = res.myStanding.rank;
+            auto& cfg = Config::GetInstance();
+            cfg.Set("online.season_id", m_seasonSpec.seasonId);
+            cfg.Set("online.season_total_sp", res.myStanding.totalSP);
+            cfg.Save();
+        }
+    });
+
+    api.FetchSeasonLeaderboardAsync(m_seasonSpec.seasonId, 100, [this, alive](SeasonLeaderboardResult lb)
+    {
+        if (!*alive) return;
+        if (!lb.ok)
+        {
+            m_seasonStatusText = "离线推演模式 · 完赛课题后联网自动同步全球排位";
+            return;
+        }
+        if (lb.myRank.has_value())
+            m_seasonMyRank = lb.myRank;
+        m_seasonLbEntries  = std::move(lb.entries);
+        m_seasonStatusText = m_seasonLbEntries.empty()
+            ? "当季天梯虚位以待 · 完成三阶课题抢占极星席位"
+            : "点击右侧选手可查看生涯名片与宿命劲敌状态";
+    });
+}
+
+void SceneArena::LaunchSeasonStage(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= 3 || m_launchingMatch)
+        return;
+    const auto& st = m_seasonSpec.stages[static_cast<std::size_t>(slotIndex)];
+    const ChartInfo* target = FindChartInList(m_charts, st.chartId, st.chartTitle);
+    if (!target)
+    {
+        ToastManager::Instance().Show("本地曲库未找到当季课题曲：" + st.chartTitle, ToastType::Warning, 3.2f);
+        return;
+    }
+    int diffIdx = ResolveMatchingDifficultyIndex(*target, st.difficulty, st.difficultyLevel);
+    if (!target->difficulties.empty())
+        diffIdx = std::clamp(diffIdx, 0, static_cast<int>(target->difficulties.size()) - 1);
+    else
+        diffIdx = 0;
+
+    m_launchingMatch      = true;
+    PlayOptions opts;
+    opts.mode             = PlayMode::Standard;
+    opts.rate             = 1.0f;
+    opts.isSeasonMatch    = true;
+    opts.seasonId         = m_seasonSpec.seasonId;
+    opts.seasonSlotIndex  = slotIndex;
+    m_manager.SwitchScene(std::make_unique<SceneGame>(m_manager, *target, diffIdx, opts), TransitionType::SakuraSweep, 0.42f);
 }
 
 void SceneArena::RescanLocalCharts()
@@ -1393,6 +1501,25 @@ void SceneArena::OnUpdate(float dt)
     }
     else
     {
+        if (m_btnTabSeason)
+        {
+            VisualStyle::ApplyButton(m_btnTabSeason.get(), m_arenaTabMode == 0 ? ButtonVariant::Primary : ButtonVariant::Secondary);
+            m_btnTabSeason->Update(dt);
+        }
+        if (m_btnTabRooms)
+        {
+            VisualStyle::ApplyButton(m_btnTabRooms.get(), m_arenaTabMode == 1 ? ButtonVariant::Primary : ButtonVariant::Secondary);
+            m_btnTabRooms->Update(dt);
+        }
+        if (m_btnBack) m_btnBack->Update(dt);
+        if (m_arenaTabMode == 0)
+        {
+            if (m_btnRefreshSeason) m_btnRefreshSeason->Update(dt);
+            for (auto& btn : m_btnPlaySeasonStage)
+                if (btn) btn->Update(dt);
+            return;
+        }
+
         if (m_codeInput)     m_codeInput->Update(dt);
         if (m_roomNameInput) m_roomNameInput->Update(dt);
 
@@ -1445,8 +1572,8 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
         ? (m_currentRoom->status == "finished"
             ? "PODIUM / 多人赛果领奖台"
             : "ARENA ROOM / 多人对战房间")
-        : "ARENA / 在线多人对战大厅";
-    renderer.DrawText(m_font, pageTitle, 0.04f, 0.060f, 0.036f, kWhite);
+        : (m_arenaTabMode == 0 ? "SEASON RANKED / 樱华赛季排位赛" : "ARENA / 在线多人对战大厅");
+    renderer.DrawText(m_font, pageTitle, 0.04f, 0.060f, 0.033f, kWhite);
 
     const std::string subLine = m_statusText.empty()
         ? "最高 8 人实时同场竞速 · 6 位邀请码秒进 · 同步开局与赛后领奖台"
@@ -1493,6 +1620,107 @@ void SceneArena::OnRender(sakura::core::Renderer& renderer)
     // =========================================================================
     if (!m_currentRoom.has_value())
     {
+        if (m_btnTabSeason) m_btnTabSeason->Render(renderer);
+        if (m_btnTabRooms)  m_btnTabRooms->Render(renderer);
+
+        if (m_arenaTabMode == 0)
+        {
+            VisualStyle::DrawGlassCard(renderer, LOBBY_LEFT_PANEL,
+                { 24, 28, 56, 228 }, { 12, 16, 36, 240 },
+                { 250, 216, 157, 190 }, { 246, 178, 206, 92 }, 0.018f, 0.56f);
+
+            const auto& tier = m_seasonStanding.tier;
+            const Color tierCol{ tier.colorR, tier.colorG, tier.colorB, 255 };
+            VisualStyle::DrawBadgePill(renderer, { 0.058f, 0.186f, 0.165f, 0.026f },
+                "SEASON " + m_seasonSpec.seasonId, m_font, 0.0128f, { 52, 38, 76, 224 }, kGold, kGold);
+            VisualStyle::DrawTextFit(renderer, m_font, m_seasonSpec.themeTitle, 0.232f, 0.184f, 0.0205f, 0.290f, kWhite);
+
+            const NormRect tierBanner{ 0.058f, 0.224f, 0.464f, 0.138f };
+            renderer.DrawRoundedGradientRect(tierBanner, 0.013f,
+                { 34, 28, 62, 226 }, { 20, 24, 50, 226 }, { 18, 20, 42, 236 }, { 14, 18, 36, 236 });
+            renderer.DrawRoundedRectOutlineGradient(tierBanner, 0.013f, tierCol, kPink.WithAlpha(110), 0.0014f);
+
+            renderer.DrawText(m_font, "CURRENT TIER · 当季樱华段位", 0.076f, 0.238f, 0.0128f, kDim);
+            renderer.DrawText(m_font, "✦ 「" + tier.tierName + "」", 0.076f, 0.264f, 0.032f, tierCol);
+            const std::string spRight = std::to_string(m_seasonStanding.totalSP) + " / 3500 SP" +
+                (m_seasonMyRank.has_value() ? ("  ·  #" + std::to_string(*m_seasonMyRank)) : "");
+            renderer.DrawText(m_font, spRight, 0.504f, 0.268f, 0.021f, kGold, TextAlign::Right);
+
+            const float denom = static_cast<float>(std::max(1, tier.nextTierThreshold - tier.minSP));
+            const float prog  = tier.spToNextTier == 0
+                ? 1.0f
+                : std::clamp(static_cast<float>(m_seasonStanding.totalSP - tier.minSP) / denom, 0.03f, 1.0f);
+            renderer.DrawRoundedRect({ 0.076f, 0.318f, 0.428f, 0.014f }, 0.007f, { 26, 32, 58, 220 }, true);
+            renderer.DrawRoundedGradientRect({ 0.076f, 0.318f, 0.428f * prog, 0.014f }, 0.007f, tierCol, kGold, tierCol, kGold);
+            const std::string nextHint = tier.spToNextTier == 0
+                ? "已登顶最高段位「极星神乐」· 冲击 3500 满分神座"
+                : ("距离晋升「" + tier.nextTierName + "」还需 " + std::to_string(tier.spToNextTier) + " SP");
+            renderer.DrawText(m_font, nextHint, 0.076f, 0.338f, 0.0128f, kDim);
+
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto& st = m_seasonSpec.stages[static_cast<std::size_t>(i)];
+                const float sy = 0.382f + static_cast<float>(i) * 0.152f;
+                const NormRect card{ 0.058f, sy, 0.464f, 0.136f };
+                const Color roleCol = (i == 0) ? kMint : ((i == 1) ? kGold : kPink);
+                VisualStyle::DrawGlassCard(renderer, card,
+                    { 20, 26, 50, 218 }, { 14, 18, 36, 232 }, roleCol.WithAlpha(165), { 120, 130, 180, 48 }, 0.012f, 0.36f);
+                VisualStyle::DrawBadgePill(renderer, { 0.072f, sy + 0.014f, 0.106f, 0.025f },
+                    st.roleTitle, m_font, 0.0122f, { 38, 32, 66, 224 }, roleCol, roleCol);
+                VisualStyle::DrawBadgePill(renderer, { 0.186f, sy + 0.014f, 0.152f, 0.025f },
+                    FormatDifficultyBadge(st.difficulty, st.difficultyLevel), m_font, 0.0122f, { 34, 38, 68, 224 }, kGold, kGold);
+                VisualStyle::DrawTextFit(renderer, m_font, st.chartTitle, 0.072f, sy + 0.048f, 0.021f, 0.335f, kWhite);
+                const int mySc = m_seasonStanding.stageScores[static_cast<std::size_t>(i)];
+                const int mySp = m_seasonStanding.stageSP[static_cast<std::size_t>(i)];
+                const std::string recLine = mySc > 0
+                    ? ("最佳 " + FormatScore(mySc) + " (" + FmtFloat(m_seasonStanding.stageAccuracies[static_cast<std::size_t>(i)], 2) +
+                       "%)  ·  " + std::to_string(mySp) + " / " + std::to_string(st.maxStageSP) + " SP")
+                    : ("尚未完赛 · 满额上限 " + std::to_string(st.maxStageSP) + " SP");
+                VisualStyle::DrawTextFit(renderer, m_font, recLine, 0.072f, sy + 0.090f, 0.0142f, 0.335f, mySp > 0 ? kGold : kDim);
+                if (m_btnPlaySeasonStage[static_cast<std::size_t>(i)])
+                    m_btnPlaySeasonStage[static_cast<std::size_t>(i)]->Render(renderer);
+            }
+
+            VisualStyle::DrawGlassCard(renderer, LOBBY_RIGHT_PANEL,
+                { 24, 30, 58, 226 }, { 14, 18, 36, 240 },
+                { 250, 216, 157, 182 }, { 158, 240, 255, 84 }, 0.018f, 0.56f);
+            VisualStyle::DrawBadgePill(renderer, { 0.580f, 0.186f, 0.155f, 0.026f },
+                "SEASON LADDER", m_font, 0.0125f, { 46, 36, 74, 222 }, kCyan, kCyan);
+            renderer.DrawText(m_font, "当季全球 SP 排位榜", 0.745f, 0.184f, 0.0195f, kWhite);
+            VisualStyle::DrawTextFit(renderer, m_font, m_seasonStatusText, 0.580f, 0.222f, 0.0135f, 0.360f, kDim);
+            VisualStyle::DrawGildedDivider(renderer, 0.580f, 0.940f, 0.250f, 0.72f);
+
+            if (m_seasonLbEntries.empty())
+            {
+                renderer.DrawText(m_font, "暂无排位上榜选手", 0.760f, 0.480f, 0.021f, kWhite, TextAlign::Center);
+                renderer.DrawText(m_font, "点击左侧三阶课题「出击 →」率先登榜", 0.760f, 0.520f, 0.0145f, kDim, TextAlign::Center);
+            }
+            else
+            {
+                const int totalLb = static_cast<int>(m_seasonLbEntries.size());
+                for (int s = 0; s < 8 && (m_seasonLbScroll + s) < totalLb; ++s)
+                {
+                    const auto& row = m_seasonLbEntries[static_cast<std::size_t>(m_seasonLbScroll + s)];
+                    const float ry  = 0.262f + static_cast<float>(s) * 0.064f;
+                    const auto rowTier = SeasonEngine::EvaluateTier(row.totalSP);
+                    const Color rCol{ rowTier.colorR, rowTier.colorG, rowTier.colorB, 255 };
+                    renderer.DrawRoundedRect({ 0.580f, ry, 0.360f, 0.056f }, 0.009f, { 18, 24, 46, 208 }, true);
+                    renderer.DrawText(m_font, "#" + std::to_string(row.rank), 0.592f, ry + 0.016f, 0.0175f,
+                        row.rank == 1 ? kGold : kPink);
+                    const std::string uname = (row.danBadge.empty() ? "" : ("[" + row.danBadge + "] ")) + row.username;
+                    VisualStyle::DrawTextFit(renderer, m_font, uname, 0.638f, ry + 0.008f, 0.0165f, 0.180f, kWhite);
+                    VisualStyle::DrawTextFit(renderer, m_font, "「" + row.rankTier + "」", 0.638f, ry + 0.031f, 0.0128f, 0.160f, rCol);
+                    renderer.DrawText(m_font, std::to_string(row.totalSP) + " SP", 0.928f, ry + 0.016f, 0.0175f, kGold, TextAlign::Right);
+                }
+            }
+
+            if (m_btnRefreshSeason) m_btnRefreshSeason->Render(renderer);
+            if (m_btnBack)          m_btnBack->Render(renderer);
+            m_particles.Render(renderer);
+            if (m_profileModal) m_profileModal->Render(renderer);
+            if (m_topBar) { m_topBar->Render(renderer); m_topBar->RenderDrawer(renderer); }
+            return;
+        }
         // ── 左栏 ({0.04, 0.17, 0.50, 0.70})：公开房间列表 ────────────────────
         VisualStyle::DrawGlassCard(renderer, LOBBY_LEFT_PANEL,
             { 22, 28, 54, 222 }, { 12, 16, 34, 236 },
@@ -2233,6 +2461,48 @@ void SceneArena::OnEvent(const SDL_Event& event)
     }
 
     // ── 大厅态事件处理 ────────────────────────────────────────────────────────
+    if (m_btnTabSeason && m_btnTabSeason->HandleEvent(event)) return;
+    if (m_btnTabRooms  && m_btnTabRooms->HandleEvent(event))  return;
+    if (m_arenaTabMode == 0)
+    {
+        if (m_btnBack && m_btnBack->HandleEvent(event)) return;
+        if (m_btnRefreshSeason && m_btnRefreshSeason->HandleEvent(event)) return;
+        for (auto& btn : m_btnPlaySeasonStage)
+            if (btn && btn->HandleEvent(event)) return;
+        if (event.type == SDL_EVENT_MOUSE_WHEEL && !m_seasonLbEntries.empty())
+        {
+            m_seasonLbScroll = std::clamp(m_seasonLbScroll - static_cast<int>(event.wheel.y),
+                0, std::max(0, static_cast<int>(m_seasonLbEntries.size()) - 8));
+            return;
+        }
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
+        {
+            const auto [mx, my] = Input::GetMousePosition();
+            const int totalLb = static_cast<int>(m_seasonLbEntries.size());
+            for (int s = 0; s < 8 && (m_seasonLbScroll + s) < totalLb; ++s)
+            {
+                const float ry = 0.262f + static_cast<float>(s) * 0.064f;
+                if (mx >= 0.580f && mx <= 0.940f && my >= ry && my <= ry + 0.056f)
+                {
+                    const auto& row = m_seasonLbEntries[static_cast<std::size_t>(m_seasonLbScroll + s)];
+                    if (!row.userId.empty() && m_profileModal)
+                        m_profileModal->Open(row.userId, row.username);
+                    return;
+                }
+            }
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
+        {
+            if (event.key.scancode == SDL_SCANCODE_ESCAPE)
+            {
+                m_manager.SwitchScene(std::make_unique<SceneMenu>(m_manager), TransitionType::SilkShutter, 0.38f);
+                return;
+            }
+            if (event.key.scancode == SDL_SCANCODE_F5) { RefreshSeasonData(); return; }
+        }
+        return;
+    }
+
     const bool anyInputFocused = (m_codeInput && m_codeInput->IsFocused()) ||
                                  (m_roomNameInput && m_roomNameInput->IsFocused());
     if (anyInputFocused && event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)

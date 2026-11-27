@@ -1,0 +1,54 @@
+{
+  "version": 4,
+  "id": "sakura_breath_vip",
+  "title": "樱花落下的呼吸 · 终章",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 05 · 镜花里章",
+  "tags": [
+    "original",
+    "vip",
+    "finale",
+    "sakura",
+    "v4-stage",
+    "vol5"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 166390,
+  "bpm": 171.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 5.5,
+      "chart_file": "normal.json",
+      "note_count": 456,
+      "hold_count": 16,
+      "mouse_note_count": 140,
+      "thumb_count": 13,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 9.0,
+      "chart_file": "hard.json",
+      "note_count": 822,
+      "hold_count": 6,
+      "mouse_note_count": 237,
+      "thumb_count": 27,
+      "synergy_count": 90
+    },
+    {
+      "name": "Expert",
+      "level": 12.5,
+      "chart_file": "expert.json",
+      "note_count": 1156,
+      "hold_count": 11,
+      "mouse_note_count": 352,
+      "thumb_count": 31,
+      "synergy_count": 123
+    }
+  ]
+}

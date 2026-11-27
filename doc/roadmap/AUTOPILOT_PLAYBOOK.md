@@ -33,12 +33,12 @@
 | 11 | `v1.6.0` | `stable` (`clear`) | `minor` | `V1_6_GHOST_AND_MULTIPLAYER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
 | 12 | `v1.7.0` | `stable` (`clear`) | `minor` | `V1_7_PHIRA_CONVERTER_AND_VOL4.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
 | 13 | `v2.0.0` | `stable` (`clear`) | `major` | `V2_0_SELF_UPDATER_AND_CAREER.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
-| 14 | `v2.1.0` | `stable` (`clear`) | `minor` | `V2_1_AUTH_PERSISTENCE_AND_ACCOUNT.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
-| 15 | `v2.2.0` | `stable` (`clear`) | `minor` | `V2_2_ONLINE_TRANSPORT_AND_ARENA.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
-| 16 | `v2.3.0` | `stable` (`clear`) | `minor` | `V2_3_UI_OVERHAUL_AND_SELECT_UX.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
-| 17 | `v2.4.0` | `stable` (`clear`) | `minor` | `V2_4_LOW_LATENCY_AUDIO_AND_SFX.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
-| 18 | `v2.5.0` | `stable` (`clear`) | `minor` | `V2_5_RIVALS_SOCIAL_AND_POLISH.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
-| 19 | `v3.0.0` | `stable` (`clear`) | `major` | `V3_0_SEASON_RANKED_AND_VOL5.md` | ⏳ 待发布（双产物 + SHA256 + `:233`） |
+| 14 | `v2.1.0` | `stable` (`clear`) | `minor` | `V2_1_AUTH_PERSISTENCE_AND_ACCOUNT.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 15 | `v2.2.0` | `stable` (`clear`) | `minor` | `V2_2_ONLINE_TRANSPORT_AND_ARENA.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 16 | `v2.3.0` | `stable` (`clear`) | `minor` | `V2_3_UI_OVERHAUL_AND_SELECT_UX.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 17 | `v2.4.0` | `stable` (`clear`) | `minor` | `V2_4_LOW_LATENCY_AUDIO_AND_SFX.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 18 | `v2.5.0` | `stable` (`clear`) | `minor` | `V2_5_RIVALS_SOCIAL_AND_POLISH.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
+| 19 | `v3.0.0` | `stable` (`clear`) | `major` | `V3_0_SEASON_RANKED_AND_VOL5.md` | ✅ 已发布上线（双产物 + SHA256 + `:233`） |
 
 ---
 

@@ -304,6 +304,48 @@ export interface ArenaProgressInput {
   finished: boolean;
 }
 
+export interface SeasonStageSpec {
+  slotIndex: number;
+  slotRole: "vanguard" | "mid" | "boss";
+  roleTitle: string;
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+  maxStageSP: number;
+}
+
+export interface SeasonMyStanding {
+  stageScores: [number, number, number];
+  stageAccuracies: [number, number, number];
+  stageSP: [number, number, number];
+  totalSP: number;
+  rankTier: string;
+  tierIndex: number;
+  nextTierName: string;
+  nextTierThreshold: number;
+  spToNextTier: number;
+  rank: number | null;
+}
+
+export interface SeasonCurrentPayload {
+  seasonId: string;
+  themeTitle: string;
+  stages: [SeasonStageSpec, SeasonStageSpec, SeasonStageSpec];
+  myStanding: SeasonMyStanding | null;
+}
+
+export interface SeasonLeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  featuredTitle: string;
+  danBadge: string;
+  totalSP: number;
+  rankTier: string;
+  stageSP: [number, number, number];
+}
+
 export interface IStorageAdapter {
   readonly mode: "sqlite" | "postgres";
   createGuestUser(nickname?: string): UserRecord;
@@ -392,5 +434,29 @@ export interface IStorageAdapter {
   sendArenaChat(code: string, userId: string, phraseId: number, nowSec?: number, nowMs?: number): ArenaRoomRecord;
   getArenaRoomState(code: string, callerUserId?: string, nowSec?: number): ArenaRoomRecord | null;
   sweepArenaHeartbeats(nowSec?: number): number;
+  getCurrentSeason(seasonIdUtc8?: string, viewerUserId?: string): SeasonCurrentPayload;
+  submitSeasonScore(
+    userId: string,
+    sub: ScoreSubmission,
+    seasonIdUtc8?: string
+  ): {
+    seasonId: string;
+    slotIndex: number;
+    stageSP: number;
+    totalSP: number;
+    rankTier: string;
+    tierIndex: number;
+    rank: number;
+    newBest: boolean;
+  };
+  getSeasonLeaderboard(
+    seasonIdUtc8?: string,
+    limit?: number,
+    viewerUserId?: string
+  ): {
+    seasonId: string;
+    entries: SeasonLeaderboardEntry[];
+    myRank: number | null;
+  };
   close(): void;
 }

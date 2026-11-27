@@ -1,6 +1,6 @@
-# Sakura-樱 架构设计文档 (v2.0)
+# Sakura-樱 架构设计文档 (v3.0)
 
-> C++20 / SDL3 / miniaudio + WSOLA / SQLite3 / WinHTTP + TypeScript Hono Online Stack
+> C++20 / SDL3 / miniaudio 低延迟热插拔音频 + WSOLA / DPAPI AuthStore / SQLite3 / WinHTTP 连接池 + TypeScript Hono Online Stack
 
 ---
 
@@ -488,4 +488,7 @@ CREATE TABLE statistics (
 | B30/R10 Sakura Rating 与生涯名片 (`PPCalculator` / `SceneStats`) | `src/game/pp_calculator.h/.cpp`、`src/scene/scene_stats.h/.cpp` | 结合小数定数与准度曲线计算 `0.75 * B30 + 0.25 * R10` 综合潜力值（含防退化保护）与五阶星徽；`SceneStats` 提供 5×6 B30 矩阵视图并支持离线渲染导出 `1920×1080` 月夜墨樱生涯名片 PNG |
 | 原子热替换自更新器 (`Updater` v2) | `src/core/updater.h/.cpp` | 自动识别便携版与安装版，后台流式下载 Release 产物并校验 `SHA256SUMS.txt`，生成带 PID 等待锁与回滚保护的 PowerShell 热替换自重启脚本或拉起静默安装升级 |
 | HTTP 传输与在线客户端 (`HttpClient` / `APIClient` / `SceneMarket`) | `src/net/http_client.h/.cpp`、`src/net/api_client.h/.cpp`、`src/scene/scene_market.h/.cpp` | Windows 原生 `WinHttpTransport` + Linux CI `MockHttpTransport`；封装账号通行证、排行榜、在线谱面市场搜索/评分/一键安装、工房直传与幂等云存档同步 |
-| 双模在线服务端 | `server/src/` | Node.js + TypeScript + Hono 后端，支持零配置 SQLite 与生产环境 `https://steven-lee.tech:233` 部署，统一承载鉴权、排行榜、日榜、多人房间、谱面市场与云同步 |
+| 双模在线服务端 | `server/src/` | Node.js + TypeScript + Hono 后端，支持零配置 SQLite 与生产环境 `https://steven-lee.tech:233` 部署，统一承载双令牌鉴权（`auth_sessions`）、劲敌关系（`user_follows`）、樱华赛季排位（`season_scores`）、排行榜、日榜、多人房间、谱面市场与云同步 |
+| 持久化认证与全局顶栏 (`AuthStore` / `TopBar` / `AccountDrawer`) | `src/core/auth_store.*`、`src/ui/top_bar.*`、`src/ui/account_drawer.*` | DPAPI 加密独立 `auth_session.json`（免疫设置重置）、90 天 Refresh Token 单航班轮换与四态认证机；`SelectContextManager` 确保每次返回选歌页精准恢复末次浏览谱面 |
+| 低延迟双碟音频引擎 (`AudioManager` / `SFXGenerator` v5) | `src/audio/audio_manager.*`、`src/audio/sfx_generator.*` | 支持 128/256/512 帧缓冲档位、播放设备切换与热插拔自动自愈、10 类双区打击音 + 12 路软限幅微淡出混音池、选歌双碟 280ms 交叉淡入与 22s 副歌无缝循环 |
+| 劲敌社交与樱华赛季排位 (`ProfileCardModal` / `SeasonEngine`) | `src/ui/profile_card_modal.*`、`src/game/season.*` | 跨场景玩家 B15 生涯名片弹窗、宿命劲敌互关与 `VS Rival +/-` 分差胶囊；跨平台确定性月度三课题轮换、SP 积分曲线与五阶樱华段位（青铜樱 ～ 极星神乐） |

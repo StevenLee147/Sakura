@@ -983,6 +983,34 @@ bool RunVerifyOnline(const std::string& baseUrl)
         if (!ratingLadderV250.ok || ratingLadderV250.entries.empty() || !ratingLadderV250.entries[0].isRival)
             return failStep("V250FetchRatingLadder", ratingLadderV250.error);
 
+        // v3.0.0 E2E: Sakura Season Ranked current spec, stage submission & global SP leaderboard
+        const auto curSeasonV300 = api.FetchCurrentSeason("2026-11");
+        if (!curSeasonV300.ok || curSeasonV300.stages.size() != 3)
+            return failStep("V300FetchCurrentSeason", curSeasonV300.error);
+
+        sakura::game::GameResult seasonPlayV300{};
+        seasonPlayV300.chartId         = curSeasonV300.stages[0].chartId;
+        seasonPlayV300.chartTitle      = curSeasonV300.stages[0].chartTitle;
+        seasonPlayV300.chartHash       = curSeasonV300.stages[0].chartId;
+        seasonPlayV300.difficulty      = curSeasonV300.stages[0].difficulty;
+        seasonPlayV300.difficultyLevel = curSeasonV300.stages[0].difficultyLevel;
+        seasonPlayV300.score           = 1000000;
+        seasonPlayV300.accuracy        = 100.0f;
+        seasonPlayV300.maxCombo        = 500;
+        seasonPlayV300.grade           = sakura::game::Grade::SS;
+        seasonPlayV300.isFullCombo     = true;
+        seasonPlayV300.isAllPerfect    = true;
+        seasonPlayV300.assisted        = false;
+        seasonPlayV300.playbackRate    = 1.0f;
+
+        const auto subSeasonV300 = api.SubmitSeasonScore("2026-11", seasonPlayV300);
+        if (!subSeasonV300.ok || subSeasonV300.stageSP != 1000 || subSeasonV300.totalSP != 1000)
+            return failStep("V300SubmitSeasonScore", subSeasonV300.error);
+
+        const auto seasonLbV300 = apiRivalV220.FetchSeasonLeaderboard("2026-11", 50);
+        if (!seasonLbV300.ok || seasonLbV300.entries.empty() || seasonLbV300.entries[0].totalSP != 1000)
+            return failStep("V300FetchSeasonLeaderboard", seasonLbV300.error);
+
         apiRivalV220.Shutdown();
     }
 

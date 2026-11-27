@@ -1,0 +1,54 @@
+{
+  "version": 4,
+  "id": "sakura_sprint_vip",
+  "title": "樱语疾行 · 极速",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 05 · 镜花里章",
+  "tags": [
+    "original",
+    "vip",
+    "drum-and-bass",
+    "high-speed",
+    "v4-stage",
+    "vol5"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 136000,
+  "bpm": 176.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 6.5,
+      "chart_file": "normal.json",
+      "note_count": 380,
+      "hold_count": 17,
+      "mouse_note_count": 115,
+      "thumb_count": 11,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 10.0,
+      "chart_file": "hard.json",
+      "note_count": 677,
+      "hold_count": 15,
+      "mouse_note_count": 189,
+      "thumb_count": 23,
+      "synergy_count": 81
+    },
+    {
+      "name": "Expert",
+      "level": 13.5,
+      "chart_file": "expert.json",
+      "note_count": 942,
+      "hold_count": 17,
+      "mouse_note_count": 273,
+      "thumb_count": 26,
+      "synergy_count": 123
+    }
+  ]
+}

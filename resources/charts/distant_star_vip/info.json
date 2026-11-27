@@ -1,0 +1,54 @@
+{
+  "version": 4,
+  "id": "distant_star_vip",
+  "title": "遥远的星 · 回响",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 05 · 镜花里章",
+  "tags": [
+    "original",
+    "vip",
+    "melodic",
+    "starlight",
+    "v4-stage",
+    "vol5"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 74600,
+  "bpm": 185.5,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Easy",
+      "level": 3.5,
+      "chart_file": "easy.json",
+      "note_count": 198,
+      "hold_count": 12,
+      "mouse_note_count": 61,
+      "thumb_count": 10,
+      "synergy_count": 0
+    },
+    {
+      "name": "Normal",
+      "level": 6.0,
+      "chart_file": "normal.json",
+      "note_count": 304,
+      "hold_count": 16,
+      "mouse_note_count": 92,
+      "thumb_count": 11,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 9.5,
+      "chart_file": "hard.json",
+      "note_count": 542,
+      "hold_count": 2,
+      "mouse_note_count": 153,
+      "thumb_count": 20,
+      "synergy_count": 60
+    }
+  ]
+}

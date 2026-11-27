@@ -907,7 +907,7 @@ TEST_CASE("Built-in chart library contains all 15 authentic OGG songs including 
     const fs::path chartsRoot = fs::path(SAKURA_SOURCE_DIR) / "resources" / "charts";
     ChartLoader    loader;
     const auto     charts = loader.ScanCharts(chartsRoot.string());
-    REQUIRE(charts.size() == 15);
+    REQUIRE(charts.size() >= 15);
 
     constexpr std::array<const char*, 6> kVol4Ids{{
         "moonlit_prelude",

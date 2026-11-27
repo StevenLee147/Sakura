@@ -29,6 +29,9 @@ struct PlayOptions
     std::string ghostRivalName;
     bool isArenaMatch = false;
     std::string arenaRoomCode;
+    bool isSeasonMatch = false;
+    std::string seasonId;
+    int seasonSlotIndex = -1;
     std::string replayFile;
 };
 

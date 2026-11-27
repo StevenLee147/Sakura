@@ -12,6 +12,7 @@
 #include "game/chart.h"
 #include "game/play_session.h"
 #include "game/pp_calculator.h"
+#include "game/season.h"
 #include "effects/particle_system.h"
 #include "effects/glow.h"
 #include "effects/background.h"
@@ -49,6 +50,8 @@ private:
     int m_scoreDelta = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::string m_onlineStatusText;
+    std::string m_seasonBannerText;
+    bool m_seasonPromoted = false;
     bool m_onlineRankReady = false;
     std::array<int,41> m_histogram{};
     double m_meanError = 0, m_deviation = 0;

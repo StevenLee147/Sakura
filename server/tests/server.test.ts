@@ -2541,3 +2541,115 @@ test("Sakura Online Server v2.5.0 Player Profiles, Rivals, Rival Leaderboards & 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("Sakura Online Server v3.0.0 Season Ranked Stages, SP Calculation, Tier Promotion & Season Leaderboard", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sakura-srv-v300-"));
+  const storage = new SqliteStorageAdapter(tmpDir);
+  const app = createApp({ storage, jwtSecret: "v300-test-secret", serverVersion: "v3.0.0" });
+
+  try {
+    const reg = async (username: string) => {
+      const r = await app.request("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password: "pass_v300_ok" }),
+      });
+      assert.equal(r.status, 201);
+      return (await r.json()) as { token: string; user: { id: string } };
+    };
+    const u1 = await reg("KaguraZenith");
+    const u2 = await reg("MoonlitBlade");
+
+    const curRes = await app.request("/api/v1/season/current?season_id=2026-11", {
+      headers: { Authorization: `Bearer ${u1.token}` },
+    });
+    assert.equal(curRes.status, 200);
+    const cur = (await curRes.json()) as {
+      season_id: string;
+      stages: Array<{ slot_index: number; slot_role: string; chart_id: string; difficulty: string; difficulty_level: number; max_stage_sp: number }>;
+      my_standing: { total_sp: number; rank_tier: string };
+    };
+    assert.equal(cur.season_id, "2026-11");
+    assert.equal(cur.stages.length, 3);
+    assert.ok(cur.stages[0].difficulty_level >= 6.0 && cur.stages[0].difficulty_level <= 9.5);
+    assert.ok(cur.stages[1].difficulty_level >= 9.5 && cur.stages[1].difficulty_level <= 12.5);
+    assert.ok(cur.stages[2].difficulty_level >= 12.5 && cur.stages[2].difficulty_level <= 15.0);
+    assert.equal(new Set(cur.stages.map((s) => s.chart_id)).size, 3);
+    assert.equal(cur.my_standing.total_sp, 0);
+    assert.equal(cur.my_standing.rank_tier, "青铜樱");
+
+    const badAssisted = await app.request("/api/v1/season/submit", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${u1.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        season_id: "2026-11",
+        chart_id: cur.stages[0].chart_id,
+        difficulty: cur.stages[0].difficulty,
+        score: 1000000,
+        accuracy: 100,
+        assisted: true,
+      }),
+    });
+    assert.equal(badAssisted.status, 422);
+
+    for (let i = 0; i < 3; i++) {
+      const r = await app.request("/api/v1/season/submit", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${u1.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          season_id: "2026-11",
+          chart_id: cur.stages[i].chart_id,
+          difficulty: cur.stages[i].difficulty,
+          score: 1000000,
+          accuracy: 100.0,
+          max_combo: 800,
+          grade: "SS",
+          is_full_combo: true,
+          is_all_perfect: true,
+          assisted: false,
+          playback_rate: 1.0,
+        }),
+      });
+      assert.equal(r.status, 200);
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const r = await app.request("/api/v1/season/submit", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${u2.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          season_id: "2026-11",
+          chart_id: cur.stages[i].chart_id,
+          difficulty: cur.stages[i].difficulty,
+          score: 940000,
+          accuracy: 94.0,
+          max_combo: 400,
+          grade: "A",
+          is_full_combo: false,
+          is_all_perfect: false,
+          assisted: false,
+          playback_rate: 1.0,
+        }),
+      });
+      assert.equal(r.status, 200);
+    }
+
+    const lbRes = await app.request("/api/v1/season/leaderboard?season_id=2026-11", {
+      headers: { Authorization: `Bearer ${u2.token}` },
+    });
+    assert.equal(lbRes.status, 200);
+    const lb = (await lbRes.json()) as {
+      my_rank: number;
+      entries: Array<{ rank: number; username: string; total_sp: number; rank_tier: string; stage_sp: [number, number, number] }>;
+    };
+    assert.equal(lb.entries.length, 2);
+    assert.equal(lb.entries[0].username, "KaguraZenith");
+    assert.equal(lb.entries[0].total_sp, 3500);
+    assert.equal(lb.entries[0].rank_tier, "极星神乐");
+    assert.deepEqual(lb.entries[0].stage_sp, [1000, 1150, 1350]);
+    assert.equal(lb.my_rank, 2);
+  } finally {
+    storage.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

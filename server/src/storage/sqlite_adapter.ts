@@ -25,6 +25,10 @@ import {
   RatingLadderEntry,
   RivalSummaryItem,
   ScoreSubmission,
+  SeasonCurrentPayload,
+  SeasonLeaderboardEntry,
+  SeasonMyStanding,
+  SeasonStageSpec,
   UserProfileData,
   UserProfileScoreItem,
   UserRecord,
@@ -60,6 +64,162 @@ export function computeDailyChallenge(dateUtc8?: string): DailyChallengeSpec {
     date: resolved,
     ...DAILY_CHALLENGE_POOL[idx],
   };
+}
+
+interface SeasonPoolItem {
+  chartId: string;
+  chartTitle: string;
+  difficulty: string;
+  difficultyLevel: number;
+}
+
+const VANGUARD_SEASON_POOL: ReadonlyArray<SeasonPoolItem> = [
+  { chartId: "petal_storm_vip", chartTitle: "Petal Storm: Overdrive [VIP]", difficulty: "Normal", difficultyLevel: 6.5 },
+  { chartId: "sakura_sprint_vip", chartTitle: "樱语疾行 · 极速", difficulty: "Normal", difficultyLevel: 6.5 },
+  { chartId: "sakura_breath", chartTitle: "樱落呼吸", difficulty: "Hard", difficultyLevel: 7.5 },
+  { chartId: "instant_bloom_vip", chartTitle: "一瞬花绽 · 里绽", difficulty: "Hard", difficultyLevel: 8.5 },
+  { chartId: "sakura_breath_vip", chartTitle: "樱花落下的呼吸 · 终章", difficulty: "Hard", difficultyLevel: 9.0 },
+  { chartId: "distant_star_vip", chartTitle: "遥远的星 · 回响", difficulty: "Hard", difficultyLevel: 9.5 },
+];
+
+const MID_SEASON_POOL: ReadonlyArray<SeasonPoolItem> = [
+  { chartId: "sakura_sprint_vip", chartTitle: "樱语疾行 · 极速", difficulty: "Hard", difficultyLevel: 10.0 },
+  { chartId: "petal_storm_vip", chartTitle: "Petal Storm: Overdrive [VIP]", difficulty: "Hard", difficultyLevel: 10.5 },
+  { chartId: "shattered_threshold_omega", chartTitle: "破碎阈值 · Ω", difficulty: "Hard", difficultyLevel: 11.0 },
+  { chartId: "sidechain_dream", chartTitle: "樱落侧链梦", difficulty: "Expert", difficultyLevel: 11.5 },
+  { chartId: "instant_bloom_vip", chartTitle: "一瞬花绽 · 里绽", difficulty: "Expert", difficultyLevel: 12.0 },
+  { chartId: "sakura_breath_vip", chartTitle: "樱花落下的呼吸 · 终章", difficulty: "Expert", difficultyLevel: 12.5 },
+];
+
+const BOSS_SEASON_POOL: ReadonlyArray<SeasonPoolItem> = [
+  { chartId: "sakura_sprint", chartTitle: "樱语疾行", difficulty: "Expert", difficultyLevel: 13.0 },
+  { chartId: "sakura_sprint_vip", chartTitle: "樱语疾行 · 极速", difficulty: "Expert", difficultyLevel: 13.5 },
+  { chartId: "shattered_threshold_omega", chartTitle: "破碎阈值 · Ω", difficulty: "Expert", difficultyLevel: 13.8 },
+  { chartId: "petal_storm_vip", chartTitle: "Petal Storm: Overdrive [VIP]", difficulty: "Expert", difficultyLevel: 14.5 },
+  { chartId: "petal_storm_overdrive", chartTitle: "Petal Storm: Overdrive", difficulty: "Expert", difficultyLevel: 14.5 },
+  { chartId: "shattered_threshold_omega", chartTitle: "破碎阈值 · Ω", difficulty: "Master", difficultyLevel: 15.0 },
+];
+
+const SEASON_THEMES: ReadonlyArray<string> = [
+  "镜花幻月 · Mirror Blossom",
+  "绯霞神乐 · Crimson Kagura",
+  "星穹夜樱 · Astral Sakura",
+  "流光剑心 · Luminous Blade",
+  "霜月绝响 · Frostmoon Echo",
+  "极星满开 · Zenith Bloom",
+];
+
+function fnv1a32Utf8(text: string): number {
+  let h = 2166136261 >>> 0;
+  const buf = Buffer.from(text, "utf8");
+  for (let i = 0; i < buf.length; i++) {
+    h ^= buf[i];
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+export function resolveSeasonIdUtc8(seasonIdUtc8?: string): string {
+  const trimmed = (seasonIdUtc8 ?? "").trim();
+  if (!trimmed) {
+    return new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 7);
+  }
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(trimmed)) {
+    throw new Error("Invalid season_id format; expected YYYY-MM.");
+  }
+  return trimmed;
+}
+
+export function computeSeasonSpec(seasonIdUtc8?: string): {
+  seasonId: string;
+  themeTitle: string;
+  stages: [SeasonStageSpec, SeasonStageSpec, SeasonStageSpec];
+} {
+  const resolved = resolveSeasonIdUtc8(seasonIdUtc8);
+  const year = Number(resolved.slice(0, 4));
+  const month = Number(resolved.slice(5, 7));
+  const themeIdx = (((year * 12 + (month - 1)) % 6) + 6) % 6;
+  const chosenIds: string[] = [];
+  const pick = (
+    pool: ReadonlyArray<SeasonPoolItem>,
+    slotIndex: number,
+    slotRole: "vanguard" | "mid" | "boss",
+    roleTitle: string,
+    maxStageSP: number
+  ): SeasonStageSpec => {
+    const h = fnv1a32Utf8(`${resolved}#${slotRole}`);
+    let idx = h % pool.length;
+    for (let step = 0; step < pool.length; step++) {
+      const cand = (idx + step) % pool.length;
+      if (!chosenIds.includes(pool[cand].chartId)) {
+        idx = cand;
+        break;
+      }
+    }
+    chosenIds.push(pool[idx].chartId);
+    return {
+      slotIndex,
+      slotRole,
+      roleTitle,
+      chartId: pool[idx].chartId,
+      chartTitle: pool[idx].chartTitle,
+      difficulty: pool[idx].difficulty,
+      difficultyLevel: pool[idx].difficultyLevel,
+      maxStageSP,
+    };
+  };
+  const s0 = pick(VANGUARD_SEASON_POOL, 0, "vanguard", "先锋课题", 1000);
+  const s1 = pick(MID_SEASON_POOL, 1, "mid", "中坚课题", 1150);
+  const s2 = pick(BOSS_SEASON_POOL, 2, "boss", "大将课题", 1350);
+  return {
+    seasonId: resolved,
+    themeTitle: SEASON_THEMES[themeIdx],
+    stages: [s0, s1, s2],
+  };
+}
+
+export function calculateStageSP(
+  sub: Pick<ScoreSubmission, "score" | "accuracy" | "isFullCombo" | "isAllPerfect" | "synergyCount" | "assisted" | "playbackRate">,
+  chartLevel: number,
+  slotIndex: number
+): number {
+  const rate = sub.playbackRate !== undefined ? Number(sub.playbackRate) : 1.0;
+  if (sub.assisted || !Number.isFinite(rate) || Math.abs(rate - 1.0) >= 0.01) return 0;
+  const maxSP = slotIndex === 0 ? 1000 : slotIndex === 1 ? 1150 : slotIndex === 2 ? 1350 : 0;
+  if (maxSP <= 0 || sub.score <= 0 || sub.accuracy <= 0) return 0;
+
+  const acc = Math.max(0, Math.min(100, Number(sub.accuracy)));
+  let accFactor = 0;
+  if (acc < 70) accFactor = 0.25 * (acc / 70.0);
+  else if (acc < 90) accFactor = 0.25 + 0.35 * ((acc - 70.0) / 20.0);
+  else if (acc < 95) accFactor = 0.60 + 0.16 * ((acc - 90.0) / 5.0);
+  else if (acc < 98) accFactor = 0.76 + 0.12 * ((acc - 95.0) / 3.0);
+  else if (acc < 99.5) accFactor = 0.88 + 0.07 * ((acc - 98.0) / 1.5);
+  else accFactor = 0.95 + 0.05 * ((acc - 99.5) / 0.5);
+
+  const scoreNorm = Math.max(0, Math.min(1, Number(sub.score) / 1_000_000.0));
+  const slotMin = slotIndex === 0 ? 6.0 : slotIndex === 1 ? 9.5 : 12.5;
+  const slotSpan = slotIndex === 0 ? 3.5 : slotIndex === 1 ? 3.0 : 2.5;
+  const lvNorm = Math.max(0, Math.min(1, (Number(chartLevel) - slotMin) / slotSpan));
+  const comboBonus = sub.isAllPerfect ? 0.030 : sub.isFullCombo ? 0.015 : 0.0;
+  const synBonus = Math.min(0.010, Math.max(0, Number(sub.synergyCount || 0)) * 0.0005);
+  const ratio = Math.max(0, Math.min(1, 0.845 * accFactor + 0.125 * scoreNorm + comboBonus + 0.008 * lvNorm + synBonus));
+  return Math.max(0, Math.min(maxSP, Math.round(ratio * maxSP)));
+}
+
+export function evaluateSeasonTier(totalSP: number): {
+  tierIndex: number;
+  rankTier: string;
+  nextTierName: string;
+  nextTierThreshold: number;
+  spToNextTier: number;
+} {
+  const sp = Math.max(0, Math.trunc(totalSP || 0));
+  if (sp < 1200) return { tierIndex: 1, rankTier: "青铜樱", nextTierName: "白银月", nextTierThreshold: 1200, spToNextTier: 1200 - sp };
+  if (sp < 1900) return { tierIndex: 2, rankTier: "白银月", nextTierName: "黄金华", nextTierThreshold: 1900, spToNextTier: 1900 - sp };
+  if (sp < 2500) return { tierIndex: 3, rankTier: "黄金华", nextTierName: "绯红霞", nextTierThreshold: 2500, spToNextTier: 2500 - sp };
+  if (sp < 3050) return { tierIndex: 4, rankTier: "绯红霞", nextTierName: "极星神乐", nextTierThreshold: 3050, spToNextTier: 3050 - sp };
+  return { tierIndex: 5, rankTier: "极星神乐", nextTierName: "", nextTierThreshold: 3500, spToNextTier: 0 };
 }
 
 function extractUniqueChartIds(col: Record<string, unknown>): string[] {
@@ -386,6 +546,26 @@ export class SqliteStorageAdapter implements IStorageAdapter {
         played_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_daily_scores_lb ON daily_scores(date_utc8, score DESC);
+      CREATE TABLE IF NOT EXISTS season_scores (
+        season_id        TEXT NOT NULL,
+        user_id          TEXT NOT NULL,
+        slot_index       INTEGER NOT NULL,
+        chart_id         TEXT NOT NULL,
+        difficulty       TEXT NOT NULL,
+        difficulty_level REAL NOT NULL,
+        score            INTEGER NOT NULL,
+        accuracy         REAL NOT NULL,
+        max_combo        INTEGER NOT NULL,
+        grade            TEXT NOT NULL,
+        is_full_combo    INTEGER NOT NULL DEFAULT 0,
+        is_all_perfect   INTEGER NOT NULL DEFAULT 0,
+        stage_sp         INTEGER NOT NULL,
+        replay_data      TEXT,
+        updated_at       INTEGER NOT NULL,
+        PRIMARY KEY (season_id, user_id, slot_index),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_season_scores_season_user ON season_scores(season_id, user_id);
       CREATE TABLE IF NOT EXISTS arena_rooms (
         code TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2584,6 +2764,207 @@ export class SqliteStorageAdapter implements IStorageAdapter {
       }
     }
     return { entries, myRank, myRating };
+  }
+
+  private aggregateSeasonStandings(seasonId: string) {
+    const rows = this.db.prepare(`
+      SELECT s.user_id, s.slot_index, s.score, s.accuracy, s.stage_sp, s.updated_at,
+             u.username, u.featured_title, u.dan_badge
+      FROM season_scores s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.season_id = ?
+    `).all(seasonId) as Array<Record<string, unknown>>;
+
+    const map = new Map<string, {
+      userId: string;
+      username: string;
+      featuredTitle: string;
+      danBadge: string;
+      stageScores: [number, number, number];
+      stageAccuracies: [number, number, number];
+      stageSP: [number, number, number];
+      totalSP: number;
+      totalScore: number;
+      maxUpdatedAt: number;
+    }>();
+
+    for (const r of rows) {
+      const uid = String(r.user_id);
+      const slot = Number(r.slot_index);
+      if (slot < 0 || slot > 2) continue;
+      let rec = map.get(uid);
+      if (!rec) {
+        rec = {
+          userId: uid,
+          username: String(r.username),
+          featuredTitle: String(r.featured_title || ""),
+          danBadge: String(r.dan_badge || ""),
+          stageScores: [0, 0, 0],
+          stageAccuracies: [0, 0, 0],
+          stageSP: [0, 0, 0],
+          totalSP: 0,
+          totalScore: 0,
+          maxUpdatedAt: 0,
+        };
+        map.set(uid, rec);
+      }
+      rec.stageScores[slot] = Number(r.score || 0);
+      rec.stageAccuracies[slot] = Number(r.accuracy || 0);
+      rec.stageSP[slot] = Number(r.stage_sp || 0);
+      rec.maxUpdatedAt = Math.max(rec.maxUpdatedAt, Number(r.updated_at || 0));
+    }
+
+    const list = Array.from(map.values());
+    for (const item of list) {
+      item.totalSP = item.stageSP[0] + item.stageSP[1] + item.stageSP[2];
+      item.totalScore = item.stageScores[0] + item.stageScores[1] + item.stageScores[2];
+    }
+    list.sort((a, b) => b.totalSP - a.totalSP || b.totalScore - a.totalScore || a.maxUpdatedAt - b.maxUpdatedAt);
+    return list;
+  }
+
+  getCurrentSeason(seasonIdUtc8?: string, viewerUserId?: string): SeasonCurrentPayload {
+    const spec = computeSeasonSpec(seasonIdUtc8);
+    let myStanding: SeasonMyStanding | null = null;
+    if (viewerUserId && this.findUserById(viewerUserId)) {
+      const standings = this.aggregateSeasonStandings(spec.seasonId);
+      const idx = standings.findIndex((s) => s.userId === viewerUserId);
+      if (idx >= 0) {
+        const me = standings[idx];
+        const tier = evaluateSeasonTier(me.totalSP);
+        myStanding = {
+          stageScores: me.stageScores,
+          stageAccuracies: me.stageAccuracies,
+          stageSP: me.stageSP,
+          totalSP: me.totalSP,
+          rankTier: tier.rankTier,
+          tierIndex: tier.tierIndex,
+          nextTierName: tier.nextTierName,
+          nextTierThreshold: tier.nextTierThreshold,
+          spToNextTier: tier.spToNextTier,
+          rank: idx + 1,
+        };
+      } else {
+        const tier = evaluateSeasonTier(0);
+        myStanding = {
+          stageScores: [0, 0, 0],
+          stageAccuracies: [0, 0, 0],
+          stageSP: [0, 0, 0],
+          totalSP: 0,
+          rankTier: tier.rankTier,
+          tierIndex: tier.tierIndex,
+          nextTierName: tier.nextTierName,
+          nextTierThreshold: tier.nextTierThreshold,
+          spToNextTier: tier.spToNextTier,
+          rank: null,
+        };
+      }
+    }
+    return { seasonId: spec.seasonId, themeTitle: spec.themeTitle, stages: spec.stages, myStanding };
+  }
+
+  submitSeasonScore(userId: string, sub: ScoreSubmission, seasonIdUtc8?: string) {
+    const user = this.findUserById(userId);
+    if (!user) throw new Error("User not found.");
+    if (sub.assisted) throw new Error("Assisted plays cannot be submitted to Season Ranked.");
+    const rate = sub.playbackRate !== undefined ? Number(sub.playbackRate) : 1.0;
+    if (!Number.isFinite(rate) || Math.abs(rate - 1.0) >= 0.01) {
+      throw new Error("Only 1.0x standard speed plays are eligible for Season Ranked.");
+    }
+    if (!Number.isFinite(sub.score) || sub.score <= 0 || sub.score > 1_000_000) {
+      throw new Error("Invalid score value for Season Ranked.");
+    }
+    if (!Number.isFinite(sub.accuracy) || sub.accuracy <= 0 || sub.accuracy > 100.01) {
+      throw new Error("Invalid accuracy value for Season Ranked.");
+    }
+
+    const spec = computeSeasonSpec(seasonIdUtc8);
+    const slotIndex = spec.stages.findIndex(
+      (st) => st.chartId === (sub.chartId || "").trim() && st.difficulty === (sub.difficulty || "").trim()
+    );
+    if (slotIndex < 0) {
+      throw new Error("Submitted chart and difficulty do not match any active Season Ranked stage.");
+    }
+    const stage = spec.stages[slotIndex];
+    const stageSP = calculateStageSP(sub, stage.difficultyLevel, slotIndex);
+    const now = Math.floor(Date.now() / 1000);
+
+    const prev = this.db.prepare(
+      "SELECT stage_sp, score FROM season_scores WHERE season_id = ? AND user_id = ? AND slot_index = ?"
+    ).get(spec.seasonId, user.id, slotIndex) as { stage_sp: number; score: number } | undefined;
+
+    const newBest =
+      !prev ||
+      stageSP > Number(prev.stage_sp) ||
+      (stageSP === Number(prev.stage_sp) && Math.trunc(sub.score) > Number(prev.score));
+
+    if (newBest) {
+      this.db.prepare(`
+        INSERT INTO season_scores (
+          season_id, user_id, slot_index, chart_id, difficulty, difficulty_level,
+          score, accuracy, max_combo, grade, is_full_combo, is_all_perfect,
+          stage_sp, replay_data, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(season_id, user_id, slot_index) DO UPDATE SET
+          score = excluded.score,
+          accuracy = excluded.accuracy,
+          max_combo = excluded.max_combo,
+          grade = excluded.grade,
+          is_full_combo = excluded.is_full_combo,
+          is_all_perfect = excluded.is_all_perfect,
+          stage_sp = excluded.stage_sp,
+          replay_data = COALESCE(excluded.replay_data, season_scores.replay_data),
+          updated_at = excluded.updated_at
+      `).run(
+        spec.seasonId, user.id, slotIndex, stage.chartId, stage.difficulty, stage.difficultyLevel,
+        Math.trunc(sub.score), Number(sub.accuracy), Math.max(0, Math.trunc(sub.maxCombo || 0)),
+        (sub.grade || "D").trim() || "D", sub.isFullCombo ? 1 : 0, sub.isAllPerfect ? 1 : 0,
+        stageSP, sub.replayData ?? null, now
+      );
+    }
+
+    const standings = this.aggregateSeasonStandings(spec.seasonId);
+    const myIdx = standings.findIndex((s) => s.userId === user.id);
+    const totalSP = myIdx >= 0 ? standings[myIdx].totalSP : stageSP;
+    const rank = myIdx >= 0 ? myIdx + 1 : 1;
+    const tier = evaluateSeasonTier(totalSP);
+    return {
+      seasonId: spec.seasonId,
+      slotIndex,
+      stageSP,
+      totalSP,
+      rankTier: tier.rankTier,
+      tierIndex: tier.tierIndex,
+      rank,
+      newBest,
+    };
+  }
+
+  getSeasonLeaderboard(seasonIdUtc8?: string, limit = 100, viewerUserId?: string) {
+    const spec = computeSeasonSpec(seasonIdUtc8);
+    const capped = Math.max(1, Math.min(100, Math.trunc(limit || 100)));
+    const standings = this.aggregateSeasonStandings(spec.seasonId);
+    let myRank: number | null = null;
+    const entries: SeasonLeaderboardEntry[] = [];
+    for (let i = 0; i < standings.length; i++) {
+      const rank = i + 1;
+      if (viewerUserId && standings[i].userId === viewerUserId) myRank = rank;
+      if (entries.length < capped) {
+        const s = standings[i];
+        const tier = evaluateSeasonTier(s.totalSP);
+        entries.push({
+          rank,
+          userId: s.userId,
+          username: s.username,
+          featuredTitle: s.featuredTitle,
+          danBadge: s.danBadge,
+          totalSP: s.totalSP,
+          rankTier: tier.rankTier,
+          stageSP: s.stageSP,
+        });
+      }
+    }
+    return { seasonId: spec.seasonId, entries, myRank };
   }
 
   close(): void {

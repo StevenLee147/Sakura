@@ -166,11 +166,46 @@ void SceneResult::OnEnter()
     sakura::audio::AudioManager::GetInstance().StopMusic();
 
     // ── 保存成绩到数据库 ──────────────────────────────────────────────────────
+    m_seasonBannerText.clear();
+    m_seasonPromoted = false;
+    const auto seasonSpec = sakura::game::SeasonEngine::ComputeSeasonSpec(m_options.seasonId);
+    const int seasonSlot  = sakura::game::SeasonEngine::MatchSeasonSlot(seasonSpec, m_result.chartId, m_result.difficulty);
+    const auto prevSeasonStanding = (!m_result.assisted && seasonSlot >= 0)
+        ? sakura::game::SeasonEngine::ComputeLocalStanding(seasonSpec, sakura::data::Database::GetInstance().GetAllBestScores())
+        : sakura::game::SeasonStanding{};
+
     if (!m_result.assisted) {
         auto& db=sakura::data::Database::GetInstance();const auto best=db.GetBestScore(m_result.chartId,m_result.difficulty,m_result.chartHash);
         m_newBest=!best || m_result.score>best->score; m_scoreDelta=m_result.score-(best?best->score:0);
         m_savedScore=db.SaveScore(m_result);
         if(!m_savedScore)sakura::ui::ToastManager::Instance().Show("成绩未能保存，请检查数据目录和剩余空间",sakura::ui::ToastType::Error,6);
+    }
+
+    if (!m_result.assisted && std::abs(m_options.rate - 1.0f) < 0.01f && seasonSlot >= 0)
+    {
+        const auto nextStanding = sakura::game::SeasonEngine::ComputeLocalStanding(
+            seasonSpec, sakura::data::Database::GetInstance().GetAllBestScores());
+        const int stageSP = sakura::game::SeasonEngine::CalculateStageSP(
+            m_result, seasonSpec.stages[static_cast<std::size_t>(seasonSlot)].difficultyLevel, seasonSlot, m_options.rate);
+        const int deltaSP = std::max(0, nextStanding.totalSP - prevSeasonStanding.totalSP);
+        m_seasonPromoted  = (nextStanding.tier.tierIndex > prevSeasonStanding.tier.tierIndex);
+        auto& cfg = sakura::core::Config::GetInstance();
+        cfg.Set("online.season_id", seasonSpec.seasonId);
+        cfg.Set("online.season_total_sp", std::max(nextStanding.totalSP, cfg.Get<int>("online.season_total_sp", 0)));
+        cfg.Save();
+
+        if (m_seasonPromoted)
+        {
+            m_seasonBannerText = "✦ 段位晋升！「" + prevSeasonStanding.tier.tierName + "」→「" +
+                nextStanding.tier.tierName + "」 (" + std::to_string(nextStanding.totalSP) + " SP)";
+            sakura::ui::ToastManager::Instance().Show(m_seasonBannerText, sakura::ui::ToastType::Achievement, 4.5f);
+        }
+        else
+        {
+            m_seasonBannerText = "✦ 樱华排位 " + std::to_string(stageSP) + " SP" +
+                (deltaSP > 0 ? (" (+" + std::to_string(deltaSP) + ")") : "") +
+                "  ·  「" + nextStanding.tier.tierName + "」 " + std::to_string(nextStanding.totalSP) + " SP";
+        }
     }
 
     if (m_savedScore) for (const auto& achievement : sakura::game::AchievementManager::GetInstance().CheckAndUnlock(m_result))
@@ -227,12 +262,32 @@ void SceneResult::OnEnter()
                     m_onlineStatusText += "  ·  今日日榜 #" + std::to_string(dres.rank);
                 });
         }
+        if (!m_result.assisted && std::abs(m_options.rate - 1.0f) < 0.01f && seasonSlot >= 0 &&
+            sakura::net::APIClient::GetInstance().IsAuthenticated())
+        {
+            sakura::net::APIClient::GetInstance().SubmitSeasonScoreAsync(
+                seasonSpec.seasonId, m_result,
+                [this, alive](sakura::net::SeasonSubmitResult sres)
+                {
+                    if (!*alive || !sres.ok) return;
+                    auto& c = sakura::core::Config::GetInstance();
+                    c.Set("online.season_id", sres.seasonId);
+                    c.Set("online.season_total_sp", sres.totalSP);
+                    c.Save();
+                    if (sres.rank > 0)
+                        m_seasonBannerText += "  ·  全球 #" + std::to_string(sres.rank);
+                });
+        }
     }
 
     // ── 樱花飘落持续发射器 ────────────────────────────────────────────────────
     m_particles.Clear();
     auto petalCfg = sakura::effects::ParticlePresets::SakuraPetal();
     m_sakuraPetalEmitter = m_particles.EmitContinuous(0.5f, -0.02f, 4.0f, petalCfg);
+    if (m_seasonPromoted)
+    {
+        m_particles.Emit(0.24f, 0.365f, 52, sakura::effects::ParticlePresets::ComboMilestone());
+    }
 }
 
 // ── OnExit ────────────────────────────────────────────────────────────────────
@@ -434,8 +489,15 @@ void SceneResult::OnRender(sakura::core::Renderer& r)
         m_newBest ? gold : pink);
     if (!m_onlineStatusText.empty())
     {
-        VisualStyle::DrawTextFit(r, m_fontUI, m_onlineStatusText, 0.074f, 0.825f, 0.0155f, 0.332f,
+        VisualStyle::DrawTextFit(r, m_fontUI, m_onlineStatusText, 0.074f, 0.820f, 0.0145f, 0.332f,
             m_onlineRankReady ? gold : dim);
+    }
+    if (!m_seasonBannerText.empty())
+    {
+        VisualStyle::DrawBadgePill(r, {0.068f, 0.840f, 0.344f, 0.024f}, m_seasonBannerText, m_fontUI, 0.0118f,
+            m_seasonPromoted ? Color{86, 44, 78, 232} : Color{30, 38, 68, 212},
+            m_seasonPromoted ? gold : Color{158, 240, 255, 185},
+            m_seasonPromoted ? gold : Color{158, 240, 255, 255});
     }
 
     // ── 右上判定明细琉璃卡片 ─────────────────────────────────────────────────

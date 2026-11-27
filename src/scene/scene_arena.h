@@ -8,6 +8,7 @@
 #include "core/resource_manager.h"
 #include "effects/particle_system.h"
 #include "game/chart.h"
+#include "game/season.h"
 #include "net/api_client.h"
 #include "ui/button.h"
 #include "ui/profile_card_modal.h"
@@ -69,6 +70,18 @@ private:
     std::unique_ptr<sakura::ui::TextInput> m_roomNameInput;
 
     // 大厅态按钮
+    int m_arenaTabMode = 0; // 0=Season Ranked, 1=Arena Rooms
+    sakura::game::SeasonSpec m_seasonSpec;
+    sakura::game::SeasonStanding m_seasonStanding;
+    std::optional<int> m_seasonMyRank;
+    std::vector<sakura::net::SeasonLeaderboardRow> m_seasonLbEntries;
+    int m_seasonLbScroll = 0;
+    std::string m_seasonStatusText;
+    std::unique_ptr<sakura::ui::Button> m_btnTabSeason;
+    std::unique_ptr<sakura::ui::Button> m_btnTabRooms;
+    std::unique_ptr<sakura::ui::Button> m_btnRefreshSeason;
+    std::array<std::unique_ptr<sakura::ui::Button>, 3> m_btnPlaySeasonStage;
+
     std::unique_ptr<sakura::ui::Button> m_btnBack;
     std::unique_ptr<sakura::ui::Button> m_btnRefreshLobby;
     std::unique_ptr<sakura::ui::Button> m_btnCreateRoom;
@@ -99,6 +112,8 @@ private:
     void ApplyHostChartSelection();
     void ToggleReadyOrStart();
     void TryLaunchArenaMatch(const sakura::net::ArenaRoomState& room);
+    void RefreshSeasonData();
+    void LaunchSeasonStage(int slotIndex);
 };
 
 } // namespace sakura::scene

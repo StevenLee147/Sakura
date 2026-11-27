@@ -18,6 +18,7 @@
 #include "core/paths.h"
 #include "game/chart_loader.h"
 #include "game/pp_calculator.h"
+#include "game/season.h"
 #include "utils/logger.h"
 #include "utils/easing.h"
 #include "effects/particle_system.h"
@@ -930,7 +931,7 @@ void SceneMenu::SetupAccountModal()
 
     m_btnArena = std::make_unique<sakura::ui::Button>(
         sakura::core::NormRect{ 0.695f, 0.188f, 0.253f, 0.042f },
-        "✦ 多人对战  /  ARENA", m_fontButton, 0.019f, 0.012f);
+        "✦ 排位竞技  /  SEASON & ARENA", m_fontButton, 0.0180f, 0.012f);
     sakura::ui::VisualStyle::ApplyButton(m_btnArena.get(), sakura::ui::ButtonVariant::Accent);
     m_btnArena->SetTextAlign(sakura::core::TextAlign::Center);
     m_btnArena->SetOnClick([this]()
@@ -1569,6 +1570,23 @@ void SceneMenu::OnRender(sakura::core::Renderer& renderer)
     if (m_btnMarket)         m_btnMarket->Render(renderer);
     if (m_btnDojo)           m_btnDojo->Render(renderer);
     if (m_btnArena)          m_btnArena->Render(renderer);
+    {
+        const auto sSpec  = sakura::game::SeasonEngine::ComputeSeasonSpec();
+        const auto localS = sakura::game::SeasonEngine::ComputeLocalStanding(
+            sSpec, sakura::data::Database::GetInstance().GetAllBestScores());
+        int effSP = localS.totalSP;
+        auto& cfg = sakura::core::Config::GetInstance();
+        if (cfg.Get<std::string>("online.season_id", "") == sSpec.seasonId)
+            effSP = std::max(effSP, cfg.Get<int>("online.season_total_sp", 0));
+        const auto tierInfo = sakura::game::SeasonEngine::EvaluateTier(effSP);
+        const sakura::core::Color tCol{ tierInfo.colorR, tierInfo.colorG, tierInfo.colorB, 255 };
+        sakura::ui::VisualStyle::DrawBadgePill(
+            renderer,
+            { 0.695f, 0.238f, 0.253f, 0.030f },
+            "★ 赛季 " + sSpec.seasonId + " · 「" + tierInfo.tierName + "」 " + std::to_string(effSP) + " SP",
+            m_fontSub, 0.0128f,
+            { 30, 26, 56, 215 }, tCol.WithAlpha(185), tCol);
+    }
 
     // ── 在线账号登录/转正/改密/快捷切换弹层 ───────────────────────────────────
     if (m_showAccountModal)

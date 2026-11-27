@@ -1,0 +1,53 @@
+{
+  "version": 4,
+  "id": "petal_storm_vip",
+  "title": "Petal Storm: Overdrive [VIP]",
+  "artist": "Sakura Soundworks",
+  "charter": "Sakura Chart Studio",
+  "source": "Sakura Official Pack · Vol. 05 · 镜花里章",
+  "tags": [
+    "original",
+    "vip",
+    "speedcore",
+    "v4-stage",
+    "vol5"
+  ],
+  "music_file": "music.ogg",
+  "cover_file": "cover.png",
+  "background_file": "",
+  "preview_time": 14570,
+  "bpm": 196.0,
+  "offset": 0,
+  "difficulties": [
+    {
+      "name": "Normal",
+      "level": 6.5,
+      "chart_file": "normal.json",
+      "note_count": 679,
+      "hold_count": 26,
+      "mouse_note_count": 208,
+      "thumb_count": 22,
+      "synergy_count": 0
+    },
+    {
+      "name": "Hard",
+      "level": 10.5,
+      "chart_file": "hard.json",
+      "note_count": 1177,
+      "hold_count": 14,
+      "mouse_note_count": 347,
+      "thumb_count": 52,
+      "synergy_count": 133
+    },
+    {
+      "name": "Expert",
+      "level": 14.5,
+      "chart_file": "expert.json",
+      "note_count": 1682,
+      "hold_count": 20,
+      "mouse_note_count": 505,
+      "thumb_count": 54,
+      "synergy_count": 175
+    }
+  ]
+}

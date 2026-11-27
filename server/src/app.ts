@@ -11,7 +11,13 @@ import {
   verifyJwt,
   verifyPassword,
 } from "./auth.js";
-import { computeChartRating, computeDailyChallenge } from "./storage/sqlite_adapter.js";
+import {
+  calculateStageSP,
+  computeChartRating,
+  computeDailyChallenge,
+  computeSeasonSpec,
+  evaluateSeasonTier,
+} from "./storage/sqlite_adapter.js";
 import {
   ArenaRoomRecord,
   CloudAchievementRecord,
@@ -24,7 +30,7 @@ import {
   UserRecord,
 } from "./storage/types.js";
 
-export { computeChartRating, computeDailyChallenge };
+export { calculateStageSP, computeChartRating, computeDailyChallenge, computeSeasonSpec, evaluateSeasonTier };
 
 function serializeLeaderboardEntry(e: LeaderboardEntry) {
   return {
@@ -241,7 +247,7 @@ function parseScoreSubmission(body: Record<string, unknown>): ScoreSubmission {
 export function createApp(opts: AppOptions): Hono {
   const app = new Hono();
   const { storage, jwtSecret } = opts;
-  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v2.5.0";
+  const serverVersion = opts.serverVersion || process.env.SAKURA_LATEST_VERSION || "v3.0.0";
 
   app.use("*", cors());
 
@@ -1381,6 +1387,127 @@ export function createApp(opts: AppOptions): Hono {
         is_rival: e.isRival,
       })),
     });
+  });
+
+  app.get("/api/v1/season/current", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    try {
+      const cur = storage.getCurrentSeason(c.req.query("season_id"), auth?.sub);
+      return respondJsonWithETag(c, {
+        ok: true,
+        season_id: cur.seasonId,
+        theme_title: cur.themeTitle,
+        stages: cur.stages.map((s) => ({
+          slot_index: s.slotIndex,
+          slot_role: s.slotRole,
+          role_title: s.roleTitle,
+          chart_id: s.chartId,
+          chart_title: s.chartTitle,
+          difficulty: s.difficulty,
+          difficulty_level: s.difficultyLevel,
+          max_stage_sp: s.maxStageSP,
+        })),
+        my_standing: cur.myStanding
+          ? {
+              stage_scores: cur.myStanding.stageScores,
+              stage_accuracies: cur.myStanding.stageAccuracies,
+              stage_sp: cur.myStanding.stageSP,
+              total_sp: cur.myStanding.totalSP,
+              rank_tier: cur.myStanding.rankTier,
+              tier_index: cur.myStanding.tierIndex,
+              next_tier_name: cur.myStanding.nextTierName,
+              next_tier_threshold: cur.myStanding.nextTierThreshold,
+              sp_to_next_tier: cur.myStanding.spToNextTier,
+              rank: cur.myStanding.rank,
+            }
+          : null,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid season request.";
+      return c.json({ ok: false, error: msg }, 400);
+    }
+  });
+
+  app.post("/api/v1/season/submit", async (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    if (!auth) return c.json({ ok: false, error: "Unauthorized." }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON body." }, 400);
+    }
+    try {
+      const sub: ScoreSubmission = {
+        chartId: String(body.chart_id ?? body.chartId ?? ""),
+        chartTitle: String(body.chart_title ?? body.chartTitle ?? ""),
+        chartHash: String(body.chart_hash ?? body.chartHash ?? ""),
+        difficulty: String(body.difficulty ?? ""),
+        difficultyLevel: Number(body.difficulty_level ?? body.difficultyLevel ?? 0),
+        score: Number(body.score ?? 0),
+        accuracy: Number(body.accuracy ?? 0),
+        maxCombo: Number(body.max_combo ?? body.maxCombo ?? 0),
+        grade: String(body.grade ?? "D"),
+        perfectCount: Number(body.perfect_count ?? 0),
+        greatCount: Number(body.great_count ?? 0),
+        goodCount: Number(body.good_count ?? 0),
+        badCount: Number(body.bad_count ?? 0),
+        missCount: Number(body.miss_count ?? 0),
+        totalJudgments: Number(body.total_judgments ?? 0),
+        synergyCount: Number(body.synergy_count ?? 0),
+        isFullCombo: Boolean(body.is_full_combo ?? body.isFullCombo),
+        isAllPerfect: Boolean(body.is_all_perfect ?? body.isAllPerfect),
+        assisted: Boolean(body.assisted),
+        playbackRate: body.playback_rate !== undefined ? Number(body.playback_rate) : 1.0,
+        replayData: typeof body.replay_data === "string" ? body.replay_data : undefined,
+      };
+      const seasonId = typeof body.season_id === "string" ? body.season_id : undefined;
+      const res = storage.submitSeasonScore(auth.sub, sub, seasonId);
+      return c.json({
+        ok: true,
+        season_id: res.seasonId,
+        slot_index: res.slotIndex,
+        stage_sp: res.stageSP,
+        total_sp: res.totalSP,
+        rank_tier: res.rankTier,
+        tier_index: res.tierIndex,
+        rank: res.rank,
+        new_best: res.newBest,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Season score rejected.";
+      return c.json({ ok: false, error: msg }, 422);
+    }
+  });
+
+  app.get("/api/v1/season/leaderboard", (c) => {
+    const auth = resolveAuth(c.req.header("Authorization"));
+    try {
+      const limit = Number(c.req.query("limit") || "100");
+      const res = storage.getSeasonLeaderboard(
+        c.req.query("season_id"),
+        Number.isFinite(limit) ? limit : 100,
+        auth?.sub
+      );
+      return respondJsonWithETag(c, {
+        ok: true,
+        season_id: res.seasonId,
+        my_rank: res.myRank,
+        entries: res.entries.map((e) => ({
+          rank: e.rank,
+          user_id: e.userId,
+          username: e.username,
+          featured_title: e.featuredTitle,
+          dan_badge: e.danBadge,
+          total_sp: e.totalSP,
+          rank_tier: e.rankTier,
+          stage_sp: e.stageSP,
+        })),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to fetch season leaderboard.";
+      return c.json({ ok: false, error: msg }, 400);
+    }
   });
 
   return app;
